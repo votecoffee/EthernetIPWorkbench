@@ -1,4 +1,4 @@
-use crate::{capture, eds, model::Settings, scanner::Schedule};
+use crate::{capture, eds, integration, model::Settings, scanner::Schedule};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},
@@ -17,6 +17,8 @@ pub struct Preferences {
     pub schedule: Schedule,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub auto_reconnect: bool,
+    #[serde(skip_serializing_if = "integration::Options::is_disabled")]
+    pub integration: integration::Options,
 }
 
 impl Default for Preferences {
@@ -29,6 +31,7 @@ impl Default for Preferences {
             gui_capture_seconds: 0,
             schedule: Schedule::Deadline,
             auto_reconnect: false,
+            integration: integration::Options::default(),
         }
     }
 }
@@ -56,6 +59,7 @@ pub fn load_profile(path: &Path) -> Result<(Settings, Option<Preferences>), Stri
 
 pub fn profile_text(settings: &Settings, preferences: &Preferences) -> Result<String, String> {
     settings.validate()?;
+    preferences.integration.validate()?;
     if preferences.directory.trim().is_empty() {
         return Err("Enter a capture directory".into());
     }

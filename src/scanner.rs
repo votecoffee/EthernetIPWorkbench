@@ -1,5 +1,6 @@
 use crate::{
     capture::Slot,
+    integration::Publisher,
     model::{self, Settings, Value},
 };
 use ethernetip_connections::forward_open::{
@@ -64,7 +65,7 @@ pub struct IdentityPin {
     pub serial: u32,
 }
 
-enum ExpectedIdentity {
+pub enum ExpectedIdentity {
     Model(IdentityKey),
     Device(IdentityPin),
 }
@@ -417,7 +418,15 @@ impl Connection {
         schedule: Schedule,
         permit_writes: bool,
     ) -> std::result::Result<Self, String> {
-        Self::start_inner(settings, slot, generation, schedule, permit_writes, None)
+        Self::start_with_publisher(
+            settings,
+            slot,
+            generation,
+            schedule,
+            permit_writes,
+            None,
+            None,
+        )
     }
 
     pub fn start_verified_input(
@@ -434,13 +443,14 @@ impl Connection {
         expected: IdentityKey,
         schedule: Schedule,
     ) -> std::result::Result<Self, String> {
-        Self::start_inner(
+        Self::start_with_publisher(
             settings,
             slot,
             1,
             schedule,
             false,
             Some(ExpectedIdentity::Model(expected)),
+            None,
         )
     }
 
@@ -462,23 +472,25 @@ impl Connection {
         permit_writes: bool,
         expected: IdentityPin,
     ) -> std::result::Result<Self, String> {
-        Self::start_inner(
+        Self::start_with_publisher(
             settings,
             slot,
             generation,
             schedule,
             permit_writes,
             Some(ExpectedIdentity::Device(expected)),
+            None,
         )
     }
 
-    fn start_inner(
+    pub fn start_with_publisher(
         settings: Settings,
         slot: Slot,
         generation: u64,
         schedule: Schedule,
         permit_writes: bool,
         expected: Option<ExpectedIdentity>,
+        publisher: Option<Publisher>,
     ) -> std::result::Result<Self, String> {
         settings.validate()?;
         if !permit_writes && !settings.input_only_without_writes() {
@@ -498,6 +510,7 @@ impl Connection {
             tx_spacing: Arc::new(Mutex::new(Spacing::default())),
             send_timing: Arc::new(Mutex::new(SendTiming::default())),
             input_times: Arc::new(InputTimes::new()),
+            publisher,
         };
         let connection = shared.clone();
         let worker = thread::Builder::new()
@@ -575,6 +588,7 @@ struct Shared {
     tx_spacing: Arc<Mutex<Spacing>>,
     send_timing: Arc<Mutex<SendTiming>>,
     input_times: Arc<InputTimes>,
+    publisher: Option<Publisher>,
 }
 
 struct Session {
@@ -860,6 +874,9 @@ fn run(
             });
             status.state = "Waiting for input";
         }
+        if let Some(publisher) = &shared.publisher {
+            publisher.set_active_generation(generation);
+        }
         thread::scope(|scope| {
             let sender = scope.spawn(|| {
                 let result = produce(
@@ -884,6 +901,9 @@ fn run(
             result.and(tx)
         })
     })();
+    if let Some(publisher) = &shared.publisher {
+        publisher.set_active_generation(0);
+    }
     let close_result = session.forward_close(&close);
     let mut status = shared.status.lock().unwrap();
     // A watchdog timeout remains the primary result. Preserve the existing
@@ -1186,6 +1206,9 @@ fn receive(
                             status.input.clear();
                             status.input.extend_from_slice(bytes);
                             status.input_run = run;
+                            if let Some(publisher) = &shared.publisher {
+                                publisher.record(stamp, generation, seq, cip, bytes);
+                            }
                             if let Some(sink) = &*slot.read().unwrap() {
                                 sink.record(stamp, generation, seq, cip, bytes);
                             }

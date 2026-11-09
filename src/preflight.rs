@@ -71,6 +71,7 @@ pub fn inspect(
     profile: Option<&eds::Profile>,
 ) -> Report {
     let mut connection_errors: Vec<_> = settings.validate().err().into_iter().collect();
+    connection_errors.extend(preferences.integration.validate().err());
     let mut capture_errors: Vec<_> = settings.csv_fields().err().into_iter().collect();
     if !(1..=1_000_000).contains(&preferences.capacity) {
         capture_errors.push("Capture capacity must be between 1 and 1,000,000 samples".into());

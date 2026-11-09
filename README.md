@@ -190,6 +190,42 @@ To exercise a custom profile against a localhost fixture, pass its TOML file as 
 .\target\release\assembly-scanner.exe --loopback-benchmark deadline .\.local\custom-run .\.local\profile.toml
 ```
 
+### Connect other software
+
+Enable one or more read-only feeds under **Software integration** in the device setup. The same settings work in a saved TOML profile used by CLI `capture`. Use a distinct HTTP port, MQTT topic, and shared-memory name for each device. Feeds start with the scanner session and keep their sample indexes across automatic reconnects. They close when the session ends. The scanner copies accepted input into a bounded queue. HTTP, MQTT, shared memory, and CSV processing run off the cyclic receive thread.
+
+```toml
+[app.integration]
+http_port = 8765
+shared_memory = "bench"
+
+[app.integration.mqtt]
+broker = "127.0.0.1"
+port = 1883
+topic = "bench/scanner/samples"
+period_ms = 100
+```
+
+Omit any transport to leave it disabled. The sample index starts at 1 for each stream, including unchanged input values. `stream_start_utc_us` identifies the stream and is a Unix timestamp in microseconds. Add `elapsed_us` to it for a receive time estimate anchored to the host clock. The `generation` identifies the Class 1 connection. An `active_generation` of zero means cyclic I/O is inactive. Compare the sample generation to the active generation and check the sample age when consuming latest values.
+
+**HTTP API** binds to `127.0.0.1` and accepts read-only requests from local processes. `GET /v1/status` returns the current generation and integration counters. `GET /v1/latest` returns the latest sample and its age. `GET /v1/samples?after=123` returns up to 64 retained samples after index 123. Continue with the last index received. The newest 1,024 dispatched samples are retained. Compare indexes and `oldest_sample_index` to detect missed history, and reset the cursor when `stream_start_utc_us` changes. Each sample includes raw `payload_hex`, both packet sequence fields, and a `values` object with decoded values as strings. All named input fields are exported, independently of CSV column selection.
+
+**MQTT** publishes the same sample JSON to the configured topic. At each configured period it takes the latest new sample from the active generation. It uses MQTT 3.1.1 over TCP with QoS 0 and retain disabled. Use a trusted listener, such as a local broker that bridges to remote consumers over TLS. Treat the publish rate as an upper bound. Compare indexes for freshness and use CSV or the HTTP cursor when you need every available packet.
+
+**Shared memory** is a Windows snapshot of the latest raw input. Open `Local\EthernetIPWorkbench.bench.data` with read access and `Local\EthernetIPWorkbench.bench.lock` with synchronization and mutex release access. Replace `bench` with the configured name. Acquire the mutex, copy the 573-byte view, and release it promptly. If the wait reports an abandoned mutex, release it and discard that snapshot. Reopen the objects after a manual session ends and close old handles before restarting the scanner with the same name. Check timestamps for freshness if the scanner exits unexpectedly. `tools/test_integration.py` includes an independent Python reader.
+
+| Byte offset | Little-endian value |
+|---:|---|
+| 0 | 8 ASCII bytes `EIPWB001` |
+| 8 | `i64` stream start Unix microseconds |
+| 16, 24, 32, 40 | `u64` sample index, sample generation, active generation, elapsed microseconds |
+| 48, 52 | `u32` packet sequence, `u16` CIP sequence |
+| 54, 56 | `u16` input assembly, `u16` payload length |
+| 58 | 6 reserved bytes |
+| 64 | Up to 509 payload bytes |
+
+Integration queue drops, MQTT errors, and shared-memory lock misses are counted separately from UDP sequence gaps and CSV buffer overruns. Shared memory and MQTT are latest-value feeds. HTTP history provides bounded catch-up. Try `curl.exe http://127.0.0.1:8765/v1/latest` while the session is running.
+
 ### Run the headless bench sequence
 
 `qualify` uses an input-only profile and a verified decimal `vendor:type:product:serial`. It checks the identity in the same TCP session before every Forward_Open. It runs 15 seconds at 8 ms, followed by three 60-second captures at 1 ms. Each run sets both directional RPIs, records every valid packet, and uses a fresh connection. The source profile is preserved.

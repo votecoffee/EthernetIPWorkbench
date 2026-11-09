@@ -1,11 +1,13 @@
 use assembly_scanner::{
     capture::{Capture, FieldSummary, MAX_CAPTURE_SECONDS, Options, Slot},
     eds,
+    integration::{self, Integration},
     model::{ConnectionTimeout, Settings, parse_hex},
     preflight,
     scanner::{
-        CloseOutcome, Connection, CyclicIo, Identity, IdentityKey, IdentityPin, ReceiveTimeout,
-        Reconnect, Schedule, SendTiming, Spacing, StartupTiming, Status, read_identity,
+        CloseOutcome, Connection, CyclicIo, ExpectedIdentity as ScannerIdentity, Identity,
+        IdentityKey, IdentityPin, ReceiveTimeout, Reconnect, Schedule, SendTiming, Spacing,
+        StartupTiming, Status, read_identity,
     },
     settings_file::{self, Preferences},
 };
@@ -243,6 +245,7 @@ struct IdentityReport {
 
 #[derive(Serialize)]
 struct Report {
+    integration: Option<integration::Counters>,
     state: &'static str,
     adapter_ip: std::net::Ipv4Addr,
     local_ip: std::net::Ipv4Addr,
@@ -411,6 +414,7 @@ fn capture(
     seconds: u64,
     expected: ExpectedIdentity,
 ) -> Result<Report, String> {
+    let integration = Integration::start(&preferences.integration, settings)?;
     fs::create_dir(directory).map_err(|e| {
         format!(
             "Cannot create new capture directory {}: {e}",
@@ -441,21 +445,19 @@ fn capture(
             duration_reached = true;
             break;
         }
-        let connection = match pin {
-            Some(pin) => Connection::start_pinned_input(
-                settings.clone(),
-                slot.clone(),
-                attempts.len() as u64 + 1,
-                preferences.schedule,
-                pin,
-            ),
-            None => Connection::start_verified_input_with_schedule(
-                settings.clone(),
-                slot.clone(),
-                expected.key,
-                preferences.schedule,
-            ),
-        };
+        let identity = pin.map_or(
+            ScannerIdentity::Model(expected.key),
+            ScannerIdentity::Device,
+        );
+        let connection = Connection::start_with_publisher(
+            settings.clone(),
+            slot.clone(),
+            attempts.len() as u64 + 1,
+            preferences.schedule,
+            false,
+            Some(identity),
+            integration.as_ref().map(Integration::publisher),
+        );
         let connection = match connection {
             Ok(connection) => connection,
             Err(error) if !attempts.is_empty() => {
@@ -541,6 +543,7 @@ fn capture(
     let send_timing = last.map_or_else(SendTiming::default, |run| run.send_timing);
     let sum = |field: fn(&Attempt) -> u64| attempts.iter().map(field).sum();
     let report = Report {
+        integration: integration.as_ref().map(Integration::counters),
         state: status.state,
         adapter_ip: settings.device_ip,
         local_ip: settings.local_ip,

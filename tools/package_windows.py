@@ -21,6 +21,7 @@ ASSETS = (
     "tools/loopback_adapter.py", "tools/join_capture.py", "tools/test_cli.py", "tools/benchmark.py",
     "samples/opener-loopback.toml",
     "tools/test_recovery.py", "tools/test_interrupt.py", "tools/test_opener.py", "tools/fixtures/opener_loopback.c",
+    "tools/test_integration.py",
 )
 NOTICE_FILE = re.compile(
     r"(^|[-_.])(licen[cs]e|copying|copyright|notice|ofl|ufl|unlicense)([-_.]|$)", re.I
@@ -33,6 +34,7 @@ NOTICE_OVERRIDES = {
     "gl_generator@0.14.0": "gl-rs",
     "khronos_api@3.1.0": "gl-rs",
     "profiling@1.0.18": "profiling",
+    "rumqttc@0.25.1": "rumqtt",
     **{f"{name}@0.31.1": "egui" for name in (
         "ecolor", "eframe", "egui", "egui-winit", "egui_glow", "emath",
         "epaint", "epaint_default_fonts",

@@ -408,6 +408,23 @@ The headless CLI regression decoded a four-byte payload with a little-endian cou
 
 A second payload verified signed big-endian decoding with word reversal, a 32-bit float, the full unsigned 64-bit range, and NUL-terminated UTF-8 with a newline. The command decoded the sample with an unfinished connection profile and an empty CSV selection. It rejected malformed hex, short and oversized payloads, and a named field that extended beyond the assembly. All preview checks ran offline.
 
+## Read-only software integration
+
+The 8 ms Windows localhost check exercised the HTTP API, MQTT publisher and named shared memory simultaneously. HTTP and the memory mapping stayed open across scanner reconnect. An independent broker fixture dropped its first TCP connection and received fresh MQTT samples after reconnect. HTTP continued while a client held the shared-memory mutex. Shared memory continued while an HTTP client stalled mid-request. The CLI saved 468 CSV rows with zero capture or integration queue overruns. The headless GUI backend test also fetched a live API sample during capture.
+
+```powershell
+python tools/test_integration.py .\target\release\eipmaster-cli.exe .\.local\integration-check
+```
+
+One five-second headless pair requested and negotiated 1,000 µs in both directions. Both runs confirmed Forward_Close with zero receive sequence gaps, watchdog timeouts, or CSV overruns.
+
+| Software feeds | CSV rows | Receive p50 / p95 / p99 (µs) | Longest receive gap (µs) | Scanner skipped send slots |
+|---|---:|---:|---:|---:|
+| Disabled | 4,997 | 1,029 / 1,103 / 1,504 | 2,141 | 3 |
+| HTTP, MQTT and shared memory | 4,998 | 1,006 / 1,117 / 1,343 | 2,256 | 5 |
+
+The enabled run recorded zero integration queue drops. The client polled 221 HTTP batches and read shared memory 221 times. The MQTT fixture received 104 publications, including publications after its deliberate disconnect. The final API poll was 14 samples behind the completed connection. These figures measure one localhost pair. Physical-device timing and transport latency require separate measurement.
+
 ## Physical bench acceptance
 
 Physical-device measurements require a connected bench adapter and verified device settings. First verify the Identity Object and the intended profile, preferably input-only. Confirm output ownership and write permissions before using a profile that owns outputs, asserts Run or sends configuration bytes. Then run the Windows GUI and logger with the requested RPIs and record the Forward_Open actual intervals separately from socket spacing percentiles, longest gap, sequence gaps, timeouts, missed send slots and capture losses. Use a capture at the NIC or switch if wire-level timestamps are required.

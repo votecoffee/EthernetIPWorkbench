@@ -1,10 +1,12 @@
 use crate::{
     capture::{self, Capture},
     eds::{self, Profile},
+    integration::{Counters as IntegrationCounters, Integration, MqttOptions},
     model::{self, ByteSwap, CaptureField, CaptureMode, Kind, Selection, Settings},
     preflight,
     scanner::{
-        self, Connection, Identity, IdentityPin, Reconnect, Schedule, SendTiming, Spacing, Status,
+        self, Connection, ExpectedIdentity, Identity, IdentityPin, Reconnect, Schedule, SendTiming,
+        Spacing, Status,
     },
     settings_file::{self, NamedDevice, Preferences, Session, Workspace},
 };
@@ -126,6 +128,8 @@ struct Device {
     output_entries: Vec<String>,
     preview_hex: String,
     connection: Option<Connection>,
+    integration: Option<Integration>,
+    integration_counters: Option<IntegrationCounters>,
     active: Option<Settings>,
     status: Status,
     generation: u64,
@@ -163,6 +167,8 @@ impl Device {
             output_entries: Vec::new(),
             preview_hex: String::new(),
             connection: None,
+            integration: None,
+            integration_counters: None,
             active: None,
             status: Status::default(),
             generation: 0,
@@ -347,6 +353,7 @@ impl Device {
         }
     }
     fn reset_endpoint_status(&mut self) {
+        self.integration_counters = None;
         self.verified_identity = None;
         self.identity_task = None;
         self.active = None;
@@ -427,7 +434,18 @@ impl Device {
                         .into(),
                 );
             }
-            self.open_connection(s, pin, self.writes_confirmed)?;
+            s.validate()?;
+            if !self.writes_confirmed && !s.input_only_without_writes() {
+                return Err(
+                    "Confirm bench ownership, configuration and output permission first".into(),
+                );
+            }
+            self.integration = Integration::start(&self.preferences.integration, &s)?;
+            self.integration_counters = None;
+            if let Err(error) = self.open_connection(s, pin, self.writes_confirmed) {
+                self.integration = None;
+                return Err(error);
+            }
             self.reconnect = pin.filter(|_| auto_reconnect).map(Reconnect::new);
             Ok(())
         })();
@@ -445,24 +463,15 @@ impl Device {
     ) -> Result<(), String> {
         let generation = self.generation + 1;
         let schedule = self.preferences.schedule;
-        let connection = if let Some(pin) = pin {
-            Connection::start_pinned(
-                settings.clone(),
-                self.slot.clone(),
-                generation,
-                schedule,
-                permit_writes,
-                pin,
-            )
-        } else {
-            Connection::start(
-                settings.clone(),
-                self.slot.clone(),
-                generation,
-                schedule,
-                permit_writes,
-            )
-        }?;
+        let connection = Connection::start_with_publisher(
+            settings.clone(),
+            self.slot.clone(),
+            generation,
+            schedule,
+            permit_writes,
+            pin.map(ExpectedIdentity::Device),
+            self.integration.as_ref().map(Integration::publisher),
+        )?;
         self.generation = generation;
         if self.capturing {
             self.capture_run.track(generation);
@@ -566,6 +575,11 @@ impl Device {
                     self.error = Some(error);
                 }
             }
+        }
+        if !self.link_busy()
+            && let Some(integration) = self.integration.take()
+        {
+            self.integration_counters = Some(integration.counters());
         }
         if let Some(task) = &self.identity_task {
             match task.try_recv() {
@@ -1267,6 +1281,7 @@ impl Device {
             if !online && !self.capturing {
                 ui.collapsing("Preview input payload", |ui| self.show_input_preview(ui));
                 ui.collapsing("Offline profile check", |ui| self.show_preflight(ui));
+                ui.collapsing("Software integration", |ui| self.edit_integration(ui));
             }
         });
         if online || self.capturing {
@@ -1500,6 +1515,56 @@ impl Device {
                 });
         }
     }
+    fn edit_integration(&mut self, ui: &mut Ui) {
+        let settings = &mut self.preferences.integration;
+        ui.small("Read-only feeds start when this device connects.");
+        let mut http = settings.http_port.is_some();
+        if ui.checkbox(&mut http, "Loopback HTTP API").changed() {
+            settings.http_port = http.then_some(8765);
+        }
+        if let Some(port) = &mut settings.http_port {
+            ui.horizontal(|ui| {
+                ui.label("HTTP port");
+                ui.add(egui::DragValue::new(port).range(1..=u16::MAX));
+            });
+        }
+        let mut memory = settings.shared_memory.is_some();
+        if ui.checkbox(&mut memory, "Windows shared memory").changed() {
+            settings.shared_memory = memory.then(|| format!("device-{}", self.id));
+        }
+        if let Some(name) = &mut settings.shared_memory {
+            ui.text_edit_singleline(name);
+        }
+        let mut mqtt = settings.mqtt.is_some();
+        if ui.checkbox(&mut mqtt, "MQTT publish").changed() {
+            settings.mqtt = mqtt.then(|| MqttOptions {
+                broker: "127.0.0.1".into(),
+                port: 1883,
+                topic: format!("ethernetip/device-{}/samples", self.id),
+                period_ms: 100,
+            });
+        }
+        if let Some(mqtt) = &mut settings.mqtt {
+            ui.small("Use a trusted MQTT listener or a local broker with a secure bridge.");
+            ui.horizontal(|ui| {
+                ui.label("Broker");
+                ui.text_edit_singleline(&mut mqtt.broker);
+                ui.add(egui::DragValue::new(&mut mqtt.port).range(1..=u16::MAX));
+            });
+            ui.horizontal(|ui| {
+                ui.label("Topic");
+                ui.text_edit_singleline(&mut mqtt.topic);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Publish period (ms)");
+                ui.add(egui::DragValue::new(&mut mqtt.period_ms).range(1..=60_000));
+            });
+        }
+        if let Err(error) = settings.validate() {
+            ui.colored_label(AMBER, error);
+        }
+    }
+
     fn show_input_preview(&mut self, ui: &mut Ui) {
         ui.small("Paste assembly bytes in hex, with spaces between bytes. Exclude sequence and Run/Idle headers.");
         ui.add(
@@ -1692,6 +1757,27 @@ impl Device {
                     us as f64 / 1000.0,
                     timeout.multiplier_code
                 ));
+            }
+        }
+        if let Some(counters) = self
+            .integration
+            .as_ref()
+            .map(Integration::counters)
+            .or(self.integration_counters)
+        {
+            ui.small(format!(
+                "Integration samples {} · Queue drops {} · MQTT errors {} · Shared memory busy {}",
+                counters.received,
+                counters.queue_drops,
+                counters.mqtt_errors,
+                counters.shared_memory_busy
+            ));
+            if self.preferences.integration.mqtt.is_some() && self.integration.is_some() {
+                ui.small(if counters.mqtt_connected {
+                    "MQTT broker connected"
+                } else {
+                    "MQTT broker disconnected"
+                });
             }
         }
         let input_age = self.connection.as_ref().map_or_else(
@@ -2369,16 +2455,45 @@ mod tests {
     #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode different-api on localhost"]
     fn run_report_uses_the_final_loopback_connection() {
+        use std::{
+            io::{Read, Write},
+            net::{Ipv4Addr, TcpListener, TcpStream},
+        };
+
         let directory = temporary("loopback-run-report");
         let mut device = Device::new(1, None);
+        let reservation = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = reservation.local_addr().unwrap().port();
+        drop(reservation);
+        device.preferences.integration.http_port = Some(port);
         device.preferences.directory = directory.display().to_string();
         device.settings.timeout_multiplier_code = 4;
         device.start_capture();
         device.connect(&[]);
         poll_until(&mut device, |device| device.status.valid >= 50);
+        let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        write!(
+            client,
+            "GET /v1/latest HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n"
+        )
+        .unwrap();
+        let mut response = String::new();
+        client.read_to_string(&mut response).unwrap();
+        assert!(response.starts_with("HTTP/1.1 200 OK"));
+        let body: serde_json::Value =
+            serde_json::from_str(response.split_once("\r\n\r\n").unwrap().1).unwrap();
+        assert_eq!(body["active_generation"].as_u64(), Some(1));
+        assert_eq!(body["sample"]["generation"].as_u64(), Some(1));
+        assert!(body["sample"]["sample_index"].as_u64().unwrap() >= 50);
         device.disconnect();
         poll_until(&mut device, |device| !device.link_busy());
         device.stop_capture();
+        let integration = device.integration_counters.unwrap();
+        assert_eq!(integration.received, device.status.valid);
+        assert_eq!(integration.queue_drops, 0);
         let path = device.save_run_report().unwrap();
         let report: toml::Table = toml::from_str(&fs::read_to_string(path).unwrap()).unwrap();
         assert_eq!(
