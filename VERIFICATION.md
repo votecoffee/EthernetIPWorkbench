@@ -50,7 +50,7 @@ The previous build (`55fa1c0`) and reused-handle build ran three trials each, in
 | Previous | 86 | 123 | 0 / 2 | 35,532 | 0 | 0 |
 | Reused handle | 46 | 36 | 0 / 0 | 35,538 | 0 | 0 |
 
-All runs closed cleanly. The median per-run scanner send p99 changed from 1,535 to 1,464 µs. The candidate's longest send gap was worse in one trial, when the fixture also recorded a long send gap. This comparison qualifies the offline implementation only. [Physical bench acceptance](https://github.com/votecoffee/EIPMaster/issues/2) remains open.
+All runs closed cleanly. The median per-run scanner send p99 changed from 1,535 to 1,464 µs. The candidate's longest send gap was worse in one trial, when the fixture also recorded a long send gap. This comparison qualifies the offline implementation only. [Physical bench acceptance](https://github.com/votecoffee/EthernetIPWorkbench/issues/2) remains open.
 
 ## Offline functional checks
 

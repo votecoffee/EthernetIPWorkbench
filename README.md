@@ -1,8 +1,8 @@
-# EIPMaster _(assembly-scanner)_
+# EthernetIPWorkbench _(assembly-scanner)_
 
 Windows EtherNet/IP Class 1 scanner and CSV assembly logger.
 
-EIPMaster is the source repository for the Assembly Scanner desktop application. It opens fixed-size cyclic IPv4 unicast connections, displays device identity and live assembly data, stages typed output values, and records selected inputs to CSV. The GUI can run separate sessions for multiple adapters in one window. Each device session owns its TCP and UDP sockets, producer, receiver, output buffer and counters. The CSV writer runs independently.
+EthernetIPWorkbench is the source repository for the Assembly Scanner desktop application. It opens fixed-size cyclic IPv4 unicast connections, displays device identity and live assembly data, stages typed output values, and records selected inputs to CSV. The GUI can run separate sessions for multiple adapters in one window. Each device session owns its TCP and UDP sockets, producer, receiver, output buffer and counters. The CSV writer runs independently.
 
 ## Table of Contents
 
@@ -57,7 +57,7 @@ To keep a named setup, enter a TOML path in **Settings TOML** and select **Save*
 
 Choose **Add device**, give the setup a name, then enter its settings or load a named TOML profile. Use the **Devices** list to switch between setups while other connections and captures keep running. Each setup has its own identity, connection state, counters, staged bytes, write confirmation, and capture controls. Stop capture and disconnect the selected device before removing its setup.
 
-Use local UDP port 0 when the adapter supports an automatically assigned port. Two simultaneous connections cannot reserve the same fixed local IPv4 address and UDP port. If both adapters require the same fixed port, assign each connection a distinct supported local IPv4 bind address. A fixed port already in use outside EIPMaster can also cause a bind error.
+Use local UDP port 0 when the adapter supports an automatically assigned port. Two simultaneous connections cannot reserve the same fixed local IPv4 address and UDP port. If both adapters require the same fixed port, assign each connection a distinct supported local IPv4 bind address. A fixed port already in use outside Assembly Scanner can also cause a bind error.
 
 ### Select the cyclic producer scheduler
 
@@ -230,7 +230,7 @@ The [roadmap](ROADMAP.md) tracks the single-device preview, multiple adapters, a
 
 ## Contributing
 
-Use the [issue tracker](https://github.com/votecoffee/EIPMaster/issues) for reproducible bugs and feature requests. Include the Windows build, the requested and actual intervals, and sanitized logs or a loopback reproduction when reporting a connection issue.
+Use the [issue tracker](https://github.com/votecoffee/EthernetIPWorkbench/issues) for reproducible bugs and feature requests. Include the Windows build, the requested and actual intervals, and sanitized logs or a loopback reproduction when reporting a connection issue.
 
 ## License
 

@@ -1,4 +1,4 @@
-# EIPMaster Windows x64 preview
+# EthernetIPWorkbench Windows x64 preview
 
 Extract the entire ZIP into a new folder and open PowerShell there. Run the GUI from that folder so the sample paths resolve.
 
@@ -29,7 +29,7 @@ The simulator check uses a new output directory and an 8 ms RPI. It exercises in
 python tools/join_capture.py 'captures/capture-<UTC-prefix>' joined.csv
 ```
 
-Use the capture prefix shown by the GUI. Select **Add device** to set up another adapter and switch between sessions using the **Devices** list. [Verification notes](VERIFICATION.md) describe the timing measurements and [physical acceptance](https://github.com/votecoffee/EIPMaster/issues/2).
+Use the capture prefix shown by the GUI. Select **Add device** to set up another adapter and switch between sessions using the **Devices** list. [Verification notes](VERIFICATION.md) describe the timing measurements and [physical acceptance](https://github.com/votecoffee/EthernetIPWorkbench/issues/2).
 
 ## Verify the download
 
