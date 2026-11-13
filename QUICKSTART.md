@@ -20,10 +20,10 @@ The simulator check uses a new output directory and an 8 ms RPI. It exercises in
 
 ## Connect to an isolated bench adapter
 
-1. Enter the adapter and local NIC IPv4 addresses and select **Read identity**. Verify the target before opening I/O.
-2. Import the vendor EDS or load a saved TOML profile. Confirm the actual assembly sizes, connection points, Run/Idle settings and RPIs against the device. **Offline profile check** shows the effective settings and write implications.
+1. In **Device**, enter the adapter and local NIC IPv4 addresses and select **Read identity**. Verify the target before opening I/O.
+2. Import the vendor EDS in **Device**, or load a saved TOML through **Profiles…**. Confirm the actual assembly sizes, connection points, Run/Idle settings and RPIs against the device. **Offline profile check** shows the effective settings and write implications.
 3. Prefer a supported **Input-only heartbeat profile** for logging. Review the staged bytes and grant write authorization only when testing an approved output or configuration change.
-4. Select the input mappings and CSV fields, then start capture and connect. Use **Stop capture and flush** before joining rotated parts.
+4. Select fields in **Mappings**, arm capture in **Logging**, then use **Connect…** to review and open I/O. **Inputs** shows live values, and **Diagnostics** holds detailed timing. Use **Stop capture and flush** before joining rotated parts.
 
 ```powershell
 python tools/join_capture.py 'captures/capture-<UTC-prefix>' joined.csv

@@ -17,7 +17,8 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/integration/http.rs | Loopback read API and bounded history batches |
 | src/integration/mqtt.rs | Latest-sample publisher and broker reconnect |
 | src/integration/shared_memory.rs | Windows mapping/mutex and binary snapshot |
-| src/gui.rs and src/gui/run_report.rs | Device sessions, manual controls and final capture reports |
+| src/gui.rs and src/gui/run_report.rs | Device sessions, workflow controls and final capture reports |
+| src/gui/workspace.rs | Tabs, persistent actions, review/profile windows and headless layout checks |
 | src/bin/eipmaster-cli.rs | Headless commands and capture supervision |
 | src/bin/eipmaster-cli/qualification.rs | Four-run qualification sequence |
 | src/bin/eipmaster-cli/interrupt.rs | Windows console stop handling |
@@ -58,6 +59,8 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 | Independent OpENer interoperability | python tools/test_opener.py target/release/eipmaster-cli.exe .local/opener-upstream .local/opener-check-01 |
 
 The CLI check defaults to 8 ms. --rpi-us 1000 exercises the same cases at 1 ms. A timing failure must retain its receipt and unchanged watchdog configuration for diagnosis. Failed trials remain evidence alongside any later success.
+
+The workspace tests render egui in memory at 900×580 and 1240×860 and simulate pointer events without a native window. They check workflow isolation, visible connection controls, write-review content and capture-stop behavior.
 
 The ignored Rust GUI backend tests need the mode named in each test's ignore annotation. They exercise Device logic without opening a GUI. Start the loopback fixture using a process with CREATE_NO_WINDOW, wait for its Ready line, run the exact test filter with -- --ignored and clean up that fixture. tools/test_cli.py exposes with_adapter for this purpose. Use --bin assembly-scanner so unrelated tests are not selected.
 

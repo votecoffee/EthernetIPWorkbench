@@ -6,11 +6,17 @@ This guide is the starting point for a chat that needs to run the existing appli
 
 The Windows x64 programs are assembly-scanner.exe and eipmaster-cli.exe. A source build places them in target/release. A portable ZIP places them beside samples/ and tools/. Run the commands below from that root. For a portable bundle, replace .\target\release\eipmaster-cli.exe with .\eipmaster-cli.exe.
 
-GUI settings are automatically saved to %LOCALAPPDATA%\EIPMaster\last-session.toml. It contains the device list, named setups and selection. A named device profile is a separate TOML file saved and loaded through Settings TOML. The repository rename retained these runtime names for compatibility.
+GUI settings are automatically saved to %LOCALAPPDATA%\EIPMaster\last-session.toml. It contains the device list, named setups and selection. A named device profile is a separate TOML file saved and loaded through Profiles… → Settings TOML. The repository rename retained these runtime names for compatibility.
 
 Each named profile contains connection fields at the root, a [selection] table, optional [[input_fields]] and [[output_fields]], and optional [app] preferences. Configuration deserialization rejects unknown fields. A runtime bundle and a source checkout may be different revisions. Check BUILD-INFO.json in a bundle before relying on a recent feature.
 
 Keep device-specific profiles, EDS files, captures and plotting tools under ignored .local/. Confirm the ignore rule with git check-ignore when using the source checkout.
+
+## Follow the GUI workflow
+
+Start in Device to choose an EDS/manual connection and read identity. Connect… opens the connection review, then a successful connection shows Inputs. To log immediately, open Logging and arm CSV before connecting. Stop capture and flush is available above every tab.
+
+Use Mappings for field definitions and CSV column selection, Outputs for staged writes, Integration for software feeds and Diagnostics for packet timing and errors. Profiles… opens saved TOML setups. Manage devices… holds rename/remove actions. Raw input bytes and advanced settings expand within their relevant tabs.
 
 ## Start offline
 
@@ -23,7 +29,7 @@ Keep device-specific profiles, EDS files, captures and plotting tools under igno
 
 eds lists supported connection profiles and unresolved features. validate can compare a manual/saved profile to one EDS connection. Its origins distinguish EDS values, overrides, assembly-definition sizes and manual values. An assembly-definition size needs comparison with the device's configured payload. Check connection_valid and capture_config_valid. The validate exit code follows connection_valid, so a successful exit alone does not establish that CSV selection is valid.
 
-decode-input requires exactly input_size bytes of assembly payload with no sequence or Run/Idle headers. It lists every mapped field's source bytes, decoded text value and CSV inclusion. The GUI has the same check under Assembly mappings → Preview input payload. With no named input fields, the primary selection appears as value.
+decode-input requires exactly input_size bytes of assembly payload with no sequence or Run/Idle headers. It lists every mapped field's source bytes, decoded text value and CSV inclusion. The GUI has the same check under Mappings → Preview input payload. With no named input fields, the primary selection appears as value.
 
 ## Configure a device
 

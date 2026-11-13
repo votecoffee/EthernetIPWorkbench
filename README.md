@@ -48,11 +48,29 @@ Launch the executable from the repository root so the sample paths resolve. For 
 .\target\release\assembly-scanner.exe
 ```
 
+### Navigate the workbench
+
+Each device has one workspace with seven tabs. Connection state, Connect/Disconnect, Profiles and capture-stop controls are above the tabs. Switching devices restores that device's current tab.
+
+| Tab | Workflow |
+|---|---|
+| Device | Import an EDS, review network/assembly settings and read identity |
+| Inputs | Primary value, named live readbacks and optional raw bytes |
+| Outputs | Stage typed or raw output values, authorize and apply the buffer |
+| Logging | Capture directory, duration, selected-column summary and CSV controls |
+| Mappings | Define input/output types, endian/swap settings and CSV selection |
+| Integration | Configure HTTP, MQTT and shared memory |
+| Diagnostics | Actual intervals, socket timing, packet/loss counters and errors |
+
+**Connect…** opens a review window with the selected identity, staged output/configuration bytes and required authorizations. A successful connection selects Inputs. **Record CSV…** opens Logging, where capture can be armed before connecting. **Stop capture and flush** is also available above every tab.
+
+Use **Profiles…** to load/save a named TOML setup. Use **Manage devices…** to rename or remove a setup. Configuration and advanced timing, raw input bytes, and buffer/file rotation expand only when needed.
+
 ### Save and restore settings
 
 The Windows GUI automatically remembers the device list and selected device in `%LOCALAPPDATA%\EIPMaster\last-session.toml`. It saves edited settings while the window is open and on a normal close. Each setup includes device and NIC settings, imported EDS profiles and overrides, assembly mappings, staged bytes, and CSV and scheduler preferences. An older single-device session opens as **Device 1**. The app starts offline. Confirm the bench and any output or configuration writes again for each device before connecting.
 
-To keep a named setup, enter a TOML path in **Settings TOML** and select **Save**. Enter a new path to save a separate profile, or select **Replace profile** to update an existing file. Select **Load** to switch to a saved profile while disconnected and with capture stopped. Older profiles still load. The optional `[app]` table stores the capture directory, buffer capacity, rotation limits, scheduler, and automatic reconnect preference.
+To keep a named setup, open Profiles… and enter a TOML path in **Settings TOML** and select **Save**. Enter a new path to save a separate profile, or select **Replace profile** to update an existing file. Select **Load** to switch to a saved profile while disconnected and with capture stopped. Older profiles still load. The optional `[app]` table stores the capture directory, buffer capacity, rotation limits, scheduler, and automatic reconnect preference.
 
 ### Work with multiple adapters
 
@@ -80,7 +98,7 @@ Keep capture armed to keep the original capture start and sample indexes across 
 4. Set the Run/Idle option for each direction. Standard Forward_Open allows up to 509 bytes of assembly payload and optional Run/Idle header per direction after the two-byte Class 1 sequence. Enter the optional configuration instance and its hex bytes when required. A configuration payload is applied in Forward_Open. Review the exact bytes before reconnecting to apply changes.
 5. After setting up the profile, choose **Read identity** while disconnected and verify the returned device.
 6. Prefer a supported **Input-only heartbeat profile** for logging. An exclusive-owner connection can take control immediately and sends the staged bytes. An O→T Run/Idle header asserts Run from the first frame. Confirm ownership and the specific output or configuration bytes before checking the authorization box. On an authorized output connection, **Apply staged outputs** swaps the cyclic buffer.
-7. Under **Assembly mappings**, define named inputs and outputs. The right-hand **Input assembly** panel shows the live named values and the raw bytes. Save the mapping and connection settings in a named TOML profile.
+7. Open **Mappings** to define named inputs and outputs. The **Inputs** tab shows live named values and an expandable raw-byte view. Save the mapping and connection settings in a named TOML profile.
 
 A successful identity read pins the vendor, device type, product code, and serial number for the next manual connection. **Connect** checks the pin in the TCP session that will carry Forward_Open and stops before opening I/O if the identity differs. A fresh successful read updates the pin. A failed refresh retains the prior pin. Editing the adapter or NIC address or loading a profile clears it.
 
@@ -96,13 +114,13 @@ Each field uses a zero-based byte offset and a type. Use offset 6 for the fourth
 
 Numeric fields can use little or big endian. **Swap bytes within words** exchanges the two bytes of each 16-bit word. **Reverse word order** exchanges the order of the 16-bit words while preserving the byte order inside each word. Reading applies the swap before interpreting endianness. Writing reverses that process. **Utf8** uses a fixed byte length, reads up to the first NUL and pads shorter entries with zeros. Use the vendor's documented format for any length-prefixed string.
 
-For outputs, define **Named output mappings** and open **Stage typed output values**. Start with a full hex buffer or explicitly stage a zero-filled one. Enter a value and select **Stage**. The staged hex and typed readbacks show the same buffer. Connecting as owner sends that buffer immediately after connection. For an open output connection, authorize the staged bytes and select **Apply staged outputs**. Configuration data uses the separate hex field and takes effect on reconnect.
+For outputs, define **Named output mappings** in Mappings, then open **Outputs → Stage typed output values**. Start with a full hex buffer or explicitly stage a zero-filled one. Enter a value and select **Stage**. The staged hex and typed readbacks show the same buffer. Connecting as owner sends that buffer immediately after connection. For an open output connection, authorize the staged bytes and select **Apply staged outputs**. Configuration data uses the separate hex field and takes effect on reconnect.
 
 The EDS importer resolves supported connection profiles. Define the application-level value map from the adapter's documentation or load a saved TOML profile. The [mapped loopback profile](samples/mapped-loopback.toml) shows the mapping syntax and selection.
 
 ### Preview an input payload
 
-Open **Assembly mappings → Preview input payload** while offline. Paste the assembly payload as space-separated hex bytes. Use exactly the configured input size and exclude sequence and Run/Idle headers. For a previous CLI capture, copy the `last_input_hex` value from `capture.toml`. The preview shows each named input's byte offset, source bytes, decoded value, and whether it is included in CSV. With no named inputs, it shows the primary `value` field.
+Open **Mappings → Preview input payload** while offline. Paste the assembly payload as space-separated hex bytes. Use exactly the configured input size and exclude sequence and Run/Idle headers. For a previous CLI capture, copy the `last_input_hex` value from `capture.toml`. The preview shows each named input's byte offset, source bytes, decoded value, and whether it is included in CSV. With no named inputs, it shows the primary `value` field.
 
 The `decode-input` command runs the same check and prints TOML. Values are represented as text to preserve full-width integers and the displayed float and string values. The command loads the profile and decodes the supplied bytes offline.
 
@@ -141,7 +159,7 @@ The live panel separates requested RPIs, Forward_Open actual intervals and socke
 
 Capture stats separate intentionally skipped unchanged packets, sequence gaps, duplicates, late and invalid packets, sender deadline skips, local buffer overruns and disk errors. The device panel shows the terminal silence and threshold when valid input times out. A local overrun leaves a gap in the sample indexes. The queue reserves space up front for packet snapshots. Increasing its sample capacity increases memory use.
 
-Set **Stop after seconds (0 = manual)** under **CSV capture** to arm a timed recording of up to 3,600 seconds. The timer starts with the first valid input after arming and includes time spent reconnecting. The recorder accepts packets before the deadline, then the GUI flushes the queue. **Disconnect** is a separate control. The GUI saves the setting as `[app].gui_capture_seconds`. The CLI uses the duration in its command.
+Set **Stop after seconds (0 = manual)** in **Logging** to arm a timed recording of up to 3,600 seconds. The timer starts with the first valid input after arming and includes time spent reconnecting. The recorder accepts packets before the deadline, then the GUI flushes the queue. **Disconnect** is a separate control. The GUI saves the setting as `[app].gui_capture_seconds`. The CLI uses the duration in its command.
 
 For a timed GUI bench run, start CSV capture before connecting. When the timer stops the capture, disconnect and wait for the final connection state, then select **Save run report**. For a manual stop, select **Stop capture and flush** before saving. Timed reports record the requested duration and whether it was reached. They also count post-deadline packets that reached the recorder before it detached. The app creates a `-report.toml` file beside the CSV parts. It records the adapter identity, requested and actual intervals, spacing, transport errors, Forward_Close outcome, and CSV counts. Saving a report preserves any file already at that path.
 
@@ -193,7 +211,7 @@ To exercise a custom profile against a localhost fixture, pass its TOML file as 
 
 ### Connect other software
 
-Enable one or more read-only feeds under **Software integration** in the device setup. The same settings work in a saved TOML profile used by CLI `capture`. Use a distinct HTTP port, MQTT topic, and shared-memory name for each device. Feeds start with the scanner session and keep their sample indexes across automatic reconnects. They close when the session ends. The scanner copies accepted input into a bounded queue. HTTP, MQTT, shared memory, and CSV processing run off the cyclic receive thread.
+Enable one or more read-only feeds in the **Integration** tab. The same settings work in a saved TOML profile used by CLI `capture`. Use a distinct HTTP port, MQTT topic, and shared-memory name for each device. Feeds start with the scanner session and keep their sample indexes across automatic reconnects. They close when the session ends. The scanner copies accepted input into a bounded queue. HTTP, MQTT, shared memory, and CSV processing run off the cyclic receive thread.
 
 ```toml
 [app.integration]

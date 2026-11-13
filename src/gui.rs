@@ -21,6 +21,8 @@ use std::{
 };
 
 mod run_report;
+mod workspace;
+use workspace::Tab;
 
 const CYAN: Color32 = Color32::from_rgb(99, 226, 213);
 const AMBER: Color32 = Color32::from_rgb(247, 191, 101);
@@ -115,6 +117,9 @@ struct RememberedSession {
 struct Device {
     id: u64,
     name: String,
+    tab: Tab,
+    profile_dialog: bool,
+    connect_dialog: bool,
     settings: Settings,
     device: String,
     local: String,
@@ -154,6 +159,9 @@ impl Device {
         let mut device = Self {
             id,
             name: format!("Device {id}"),
+            tab: Tab::Device,
+            profile_dialog: false,
+            connect_dialog: false,
             settings: Settings::default(),
             device: "127.0.0.1".into(),
             local: "127.0.0.1".into(),
@@ -447,6 +455,7 @@ impl Device {
                 return Err(error);
             }
             self.reconnect = pin.filter(|_| auto_reconnect).map(Reconnect::new);
+            self.tab = Tab::Inputs;
             Ok(())
         })();
         self.bench_confirmed = false;
@@ -702,57 +711,13 @@ impl Drop for Device {
         self.stop_capture();
     }
 }
-impl Device {
-    fn show(&mut self, ctx: &egui::Context, reserved_ports: &[(Ipv4Addr, u16)]) {
-        let online = self.connection.is_some();
-        egui::TopBottomPanel::top("header").show(ctx, |ui| {
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                ui.add_space(10.0);
-                ui.label(
-                    RichText::new("ASSEMBLY SCANNER")
-                        .size(23.0)
-                        .strong()
-                        .color(CYAN),
-                );
-                ui.separator();
-                ui.label("EtherNet/IP  /  Class 1 cyclic I/O");
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(RichText::new(self.state_label()).strong().color(
-                        if self.status.network_error.is_some() || self.status.cip_error.is_some() {
-                            RED
-                        } else if online {
-                            CYAN
-                        } else {
-                            AMBER
-                        },
-                    ));
-                });
-            });
-            ui.add_space(8.0);
-        });
-        egui::SidePanel::left("setup")
-            .resizable(true)
-            .default_width(480.0)
-            .min_width(380.0)
-            .show(ctx, |ui| {
-                ui.push_id(self.id, |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| self.setup(ui, reserved_ports));
-                });
-            });
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.push_id(self.id, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| self.dashboard(ui));
-            });
-        });
-    }
-}
 
 struct App {
     devices: Vec<Device>,
     selected: usize,
     next_id: u64,
     remove_confirmed: bool,
+    manage_devices: bool,
     session: Option<RememberedSession>,
 }
 
@@ -763,6 +728,7 @@ impl App {
             selected: 0,
             next_id: 1,
             remove_confirmed: false,
+            manage_devices: false,
             session: None,
         };
         if !benchmarks.is_empty() {
@@ -854,38 +820,59 @@ impl App {
             if ui.button("Add device").clicked() {
                 self.add_device();
             }
-            let can_remove = self.devices.len() > 1 && !self.devices[self.selected].needs_repaint();
-            let device = &mut self.devices[self.selected];
-            ui.label("Name");
-            ui.add(egui::TextEdit::singleline(&mut device.name).id_salt(device.id).desired_width(140.0));
-            if ui
-                .add_enabled(can_remove, egui::Button::new("Remove device"))
-                .on_disabled_hover_text("Disconnect and stop capture before removing a device. Keep at least one device.")
-                .clicked()
-            {
-                self.remove_confirmed = true;
+            if ui.button("Manage devices…").clicked() {
+                self.manage_devices = true;
             }
-            self.remove_confirmed &= can_remove;
+            if let Some(session) = &self.session {
+                if let Some(error) = &session.error {
+                    ui.colored_label(AMBER, error);
+                } else {
+                    ui.small("Saved locally")
+                        .on_hover_text(session.path.display().to_string());
+                }
+            }
         });
-        if self.remove_confirmed {
-            ui.horizontal_wrapped(|ui| {
-                ui.label("Remove this setup from the saved device list?");
-                if ui.button("Remove setup").clicked() {
-                    self.devices.remove(self.selected);
-                    self.selected = self.selected.min(self.devices.len() - 1);
-                    self.remove_confirmed = false;
-                } else if ui.button("Cancel").clicked() {
-                    self.remove_confirmed = false;
+    }
+
+    fn manage_devices_dialog(&mut self, ctx: &egui::Context) {
+        if !self.manage_devices {
+            return;
+        }
+        let mut open = true;
+        egui::Window::new("Manage devices")
+            .open(&mut open)
+            .default_width(420.0)
+            .show(ctx, |ui| {
+                let can_remove = self.devices.len() > 1 && !self.devices[self.selected].needs_repaint();
+                let device = &mut self.devices[self.selected];
+                ui.label(format!("Selected adapter {}", device.device));
+                ui.horizontal(|ui| {
+                    ui.label("Display name");
+                    ui.add(egui::TextEdit::singleline(&mut device.name).id_salt(device.id));
+                });
+                if ui.add_enabled(can_remove, egui::Button::new("Remove device"))
+                    .on_disabled_hover_text("Disconnect and stop capture before removing a device. Keep at least one device.")
+                    .clicked()
+                {
+                    self.remove_confirmed = true;
+                }
+                self.remove_confirmed &= can_remove;
+                if self.remove_confirmed {
+                    ui.label("Remove this setup from the saved device list?");
+                    ui.horizontal(|ui| {
+                        if ui.button("Remove setup").clicked() {
+                            self.devices.remove(self.selected);
+                            self.selected = self.selected.min(self.devices.len() - 1);
+                            self.remove_confirmed = false;
+                        } else if ui.button("Cancel").clicked() {
+                            self.remove_confirmed = false;
+                        }
+                    });
                 }
             });
-        }
-        if let Some(session) = &self.session {
-            if let Some(error) = &session.error {
-                ui.colored_label(AMBER, error);
-            } else {
-                ui.small("Device setups are saved automatically")
-                    .on_hover_text(session.path.display().to_string());
-            }
+        self.manage_devices = open;
+        if !open {
+            self.remove_confirmed = false;
         }
     }
 
@@ -937,6 +924,7 @@ impl eframe::App for App {
         egui::TopBottomPanel::top("devices").show(ctx, |ui| self.device_list(ui));
         let reserved_ports = self.reserved_ports();
         self.devices[self.selected].show(ctx, &reserved_ports);
+        self.manage_devices_dialog(ctx);
         if self
             .session
             .as_ref()
@@ -953,12 +941,9 @@ impl eframe::App for App {
     }
 }
 
-fn title(ui: &mut Ui, number: &str, title: &str) {
+fn title(ui: &mut Ui, title: &str) {
     ui.add_space(6.0);
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(number).monospace().color(CYAN));
-        ui.heading(title);
-    });
+    ui.heading(title);
 }
 fn number<T: egui::emath::Numeric>(ui: &mut Ui, label: &str, value: &mut T) {
     ui.label(label);
@@ -1088,13 +1073,19 @@ fn edit_fields(
 }
 
 impl Device {
-    fn setup(&mut self, ui: &mut Ui, reserved_ports: &[(Ipv4Addr, u16)]) {
-        let online = self.link_busy();
-        title(ui, "01", "Device setup");
-        ui.add_enabled_ui(!online && !self.capturing, |ui| {
+    fn profile_controls(&mut self, ui: &mut Ui) {
+        ui.label("Load a named setup or save this device's settings.");
+        ui.add_enabled_ui(!self.link_busy() && !self.capturing, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.label("Settings TOML");
-                if ui.add(egui::TextEdit::singleline(&mut self.toml_path).desired_width(200.0).hint_text("Path to a TOML profile")).changed() {
+                if ui
+                    .add(
+                        egui::TextEdit::singleline(&mut self.toml_path)
+                            .desired_width(200.0)
+                            .hint_text("Path to a TOML profile"),
+                    )
+                    .changed()
+                {
                     self.replace_profile = None;
                 }
                 let named = !self.toml_path.trim().is_empty();
@@ -1115,6 +1106,16 @@ impl Device {
                     }
                 });
             }
+        });
+        if self.link_busy() || self.capturing {
+            ui.small("Disconnect and stop capture to load or save settings.");
+        }
+    }
+
+    fn setup(&mut self, ui: &mut Ui) {
+        title(ui, "Device setup");
+        ui.label("Choose an EDS connection or enter the assembly settings, then read identity before connecting.");
+        ui.add_enabled_ui(!self.link_busy() && !self.capturing, |ui| {
             ui.horizontal(|ui| {
                 ui.label("EDS file");
                 ui.text_edit_singleline(&mut self.eds_path);
@@ -1191,86 +1192,146 @@ impl Device {
                 ui.label("32-bit Run/Idle");
                 ui.checkbox(&mut s.input_run_idle, "");
                 ui.checkbox(&mut s.output_run_idle, ""); ui.end_row();
-                ui.label("CIP priority (0–3)");
-                ui.add(egui::DragValue::new(&mut s.input_priority).range(0..=3));
-                ui.add(egui::DragValue::new(&mut s.output_priority).range(0..=3)); ui.end_row();
             });
-            ui.horizontal_wrapped(|ui| {
-                ui.label("CIP timeout code (0–7)");
-                ui.add(
-                    egui::DragValue::new(&mut s.timeout_multiplier_code)
+            ui.collapsing("Configuration and advanced timing", |ui| {
+                egui::Grid::new("connection-priority").num_columns(3).show(ui, |ui| {
+                    ui.label("CIP priority (0–3)");
+                    ui.add(egui::DragValue::new(&mut s.input_priority).range(0..=3));
+                    ui.add(egui::DragValue::new(&mut s.output_priority).range(0..=3));
+                    ui.end_row();
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("CIP timeout code (0–7)");
+                    ui.add(egui::DragValue::new(&mut s.timeout_multiplier_code)
                         .range(0..=model::MAX_TIMEOUT_MULTIPLIER_CODE)
-                        .clamp_existing_to_range(false),
-                )
-                .on_hover_text("Sent in Forward_Open. The local receive watchdog uses the returned T->O interval.");
-                if let Some(factor) = s.connection_timeout(None).factor {
-                    ui.small(format!("×{factor}"));
-                } else {
-                    ui.colored_label(AMBER, "Enter a timeout code from 0 to 7");
+                        .clamp_existing_to_range(false));
+                    if let Some(factor) = s.connection_timeout(None).factor {
+                        ui.small(format!("×{factor}"));
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    let mut configured = s.config_instance.is_some();
+                    if ui.checkbox(&mut configured, "Configuration instance").changed() {
+                        s.config_instance = configured.then_some(1);
+                    }
+                    if let Some(instance) = &mut s.config_instance {
+                        ui.add(egui::DragValue::new(instance));
+                    }
+                    ui.label("Bytes");
+                    ui.add(egui::DragValue::new(&mut s.config_size));
+                });
+                ui.label("Configuration hex bytes (sent in Forward_Open)");
+                if ui.add(egui::TextEdit::multiline(&mut s.config_hex)
+                    .desired_rows(2).desired_width(f32::INFINITY).code_editor()).changed()
+                {
+                    self.writes_confirmed = false;
                 }
+                ui.label("Producer schedule");
+                ui.horizontal_wrapped(|ui| {
+                    ui.selectable_value(&mut self.preferences.schedule, Schedule::Deadline, "Deadline");
+                    #[cfg(windows)]
+                    ui.selectable_value(&mut self.preferences.schedule, Schedule::DeadlineAboveNormal, "Deadline (above normal)");
+                    ui.selectable_value(&mut self.preferences.schedule, Schedule::Tokio, "Tokio baseline");
+                });
             });
-            ui.horizontal(|ui| {
-                let mut cfg = s.config_instance.is_some();
-                if ui.checkbox(&mut cfg, "Configuration instance").changed() {
-                    s.config_instance = cfg.then_some(1);
-                }
-                if let Some(instance) = &mut s.config_instance {
-                    ui.add(egui::DragValue::new(instance));
-                }
-                ui.label("Bytes"); ui.add(egui::DragValue::new(&mut s.config_size));
-            });
-            ui.label("Configuration hex bytes (sent in Forward_Open)");
-            if ui.add(egui::TextEdit::multiline(&mut s.config_hex).desired_rows(1).desired_width(f32::INFINITY).code_editor()).changed()
-                || before != write_settings(s)
-            {
+            if before != write_settings(s) {
                 self.writes_confirmed = false;
             }
-            title(ui, "02", "Assembly mappings");
-            ui.collapsing("Primary input readback", |ui| {
-                edit_selection(ui, &mut s.selection);
-                if let Err(e) = s.selection.validate(s.input_size as usize) {
-                    ui.colored_label(RED, e);
-                }
-            });
-            ui.collapsing("Named inputs and CSV selection", |ui| {
-                let mut all = s.log_fields.is_none();
-                if ui.checkbox(&mut all, "Log all mapped inputs").changed() {
-                    s.log_fields = if all { None } else if s.capture_fields.is_empty() {
-                        Some(vec!["value".into()])
-                    } else {
-                        Some(s.capture_fields.iter().map(|field| field.name.clone()).collect())
-                    };
-                }
-                let had_fields = !s.capture_fields.is_empty();
-                if !had_fields {
-                    ui.small("With no named inputs, CSV uses the primary readback.");
-                    if let Some(names) = &mut s.log_fields {
-                        let mut included = names.iter().any(|name| name == "value");
-                        if ui.checkbox(&mut included, "Log primary value").changed() {
-                            *names = if included { vec!["value".into()] } else { Vec::new() };
+            ui.collapsing("Offline profile check", |ui| self.show_preflight(ui));
+        });
+        self.identity_view(ui);
+    }
+
+    fn mappings(&mut self, ui: &mut Ui) {
+        ui.label("Define the primary readback and named values. CSV checkboxes select which input values are logged.");
+        ui.add_enabled_ui(!self.link_busy() && !self.capturing, |ui| {
+            let s = &mut self.settings;
+            title(ui, "Assembly mappings");
+            egui::CollapsingHeader::new("Primary input readback")
+                .default_open(true)
+                .show(ui, |ui| {
+                    edit_selection(ui, &mut s.selection);
+                    if let Err(e) = s.selection.validate(s.input_size as usize) {
+                        ui.colored_label(RED, e);
+                    }
+                });
+            egui::CollapsingHeader::new("Named inputs and CSV selection")
+                .default_open(true)
+                .show(ui, |ui| {
+                    let mut all = s.log_fields.is_none();
+                    if ui.checkbox(&mut all, "Log all mapped inputs").changed() {
+                        s.log_fields = if all {
+                            None
+                        } else if s.capture_fields.is_empty() {
+                            Some(vec!["value".into()])
+                        } else {
+                            Some(
+                                s.capture_fields
+                                    .iter()
+                                    .map(|field| field.name.clone())
+                                    .collect(),
+                            )
+                        };
+                    }
+                    let had_fields = !s.capture_fields.is_empty();
+                    if !had_fields {
+                        ui.small("With no named inputs, CSV uses the primary readback.");
+                        if let Some(names) = &mut s.log_fields {
+                            let mut included = names.iter().any(|name| name == "value");
+                            if ui.checkbox(&mut included, "Log primary value").changed() {
+                                *names = if included {
+                                    vec!["value".into()]
+                                } else {
+                                    Vec::new()
+                                };
+                            }
                         }
                     }
-                }
-                edit_fields(ui, "input", &mut s.capture_fields, s.log_fields.as_mut(), s.input_size);
-                if had_fields == s.capture_fields.is_empty() {
-                    if let Some(names) = &mut s.log_fields {
-                        *names = if s.capture_fields.is_empty() { vec!["value".into()] }
-                            else { s.capture_fields.iter().map(|field| field.name.clone()).collect() };
+                    edit_fields(
+                        ui,
+                        "input",
+                        &mut s.capture_fields,
+                        s.log_fields.as_mut(),
+                        s.input_size,
+                    );
+                    if had_fields == s.capture_fields.is_empty() {
+                        if let Some(names) = &mut s.log_fields {
+                            *names = if s.capture_fields.is_empty() {
+                                vec!["value".into()]
+                            } else {
+                                s.capture_fields
+                                    .iter()
+                                    .map(|field| field.name.clone())
+                                    .collect()
+                            };
+                        }
                     }
-                }
-                ui.horizontal(|ui| {
-                    ui.label("CSV rows");
-                    ui.selectable_value(&mut s.capture_mode, CaptureMode::EveryPacket, "Every packet");
-                    ui.selectable_value(&mut s.capture_mode, CaptureMode::OnChange, "On change");
+                    ui.horizontal(|ui| {
+                        ui.label("CSV rows");
+                        ui.selectable_value(
+                            &mut s.capture_mode,
+                            CaptureMode::EveryPacket,
+                            "Every packet",
+                        );
+                        ui.selectable_value(
+                            &mut s.capture_mode,
+                            CaptureMode::OnChange,
+                            "On change",
+                        );
+                    });
+                    match s.csv_fields() {
+                        Ok(fields) => {
+                            let names = fields
+                                .iter()
+                                .map(|field| field.name.as_str())
+                                .collect::<Vec<_>>();
+                            ui.small(format!("CSV columns · {}", names.join(", ")));
+                        }
+                        Err(e) => {
+                            ui.colored_label(AMBER, e);
+                        }
+                    }
                 });
-                match s.csv_fields() {
-                    Ok(fields) => {
-                        let names = fields.iter().map(|field| field.name.as_str()).collect::<Vec<_>>();
-                        ui.small(format!("CSV columns · {}", names.join(", ")));
-                    }
-                    Err(e) => { ui.colored_label(AMBER, e); }
-                }
-            });
             if !s.input_only {
                 ui.collapsing("Named output mappings", |ui| {
                     if edit_fields(ui, "output", &mut s.output_fields, None, s.output_size) {
@@ -1278,18 +1339,20 @@ impl Device {
                     }
                 });
             }
-            if !online && !self.capturing {
-                ui.collapsing("Preview input payload", |ui| self.show_input_preview(ui));
-                ui.collapsing("Offline profile check", |ui| self.show_preflight(ui));
-                ui.collapsing("Software integration", |ui| self.edit_integration(ui));
-            }
+            ui.collapsing("Preview input payload", |ui| self.show_input_preview(ui));
         });
-        if online || self.capturing {
-            ui.small(
-                "Setup and value selection are held while connected, reconnecting, or capturing.",
-            );
+    }
+
+    fn outputs(&mut self, ui: &mut Ui) {
+        title(ui, "Stage and apply outputs");
+        if self.settings.input_only {
+            ui.label("This input-only profile sends a heartbeat with no output payload.");
+            if ui.button("Review device connection settings").clicked() {
+                self.tab = Tab::Device;
+            }
+            return;
         }
-        ui.separator();
+        ui.label("Stage a buffer, review its values, then authorize Apply staged outputs for an open owner connection.");
         ui.label("Staged output hex bytes");
         if ui
             .add_enabled(
@@ -1334,101 +1397,85 @@ impl Device {
             if !applied.is_empty() {
                 ui.label(format!("Transmitting buffer · {}", model::hex(&applied)));
             }
-            if ui.button("Disconnect").clicked() {
-                self.disconnect();
-            }
-        } else if let Some((attempt, due)) = self.reconnect_pending() {
+        }
+    }
+
+    fn connection_review(&mut self, ui: &mut Ui, reserved_ports: &[(Ipv4Addr, u16)]) {
+        ui.label(format!(
+            "Adapter {} · Local NIC {}",
+            self.device, self.local
+        ));
+        ui.label(format!(
+            "Input assembly {} · {} bytes · Requested {:.3} ms",
+            self.settings.input_instance,
+            self.settings.input_size,
+            self.settings.input_rpi_us as f64 / 1000.0
+        ));
+        if !self.settings.input_only {
+            ui.label(format!("Staged outputs · {}", self.settings.output_hex));
+        }
+        if self.settings.config_size != 0 {
+            ui.label(format!(
+                "Configuration bytes · {}",
+                self.settings.config_hex
+            ));
+        }
+        if !self.settings.input_only {
             ui.colored_label(
                 AMBER,
-                format!(
-                    "Reconnect {attempt} of 3 in {:.1} s",
-                    due.saturating_duration_since(Instant::now()).as_secs_f32()
-                ),
+                "Connecting requests output ownership and sends the staged output bytes.",
             );
-            if ui.button("Cancel reconnect").clicked() {
-                self.disconnect();
-                self.notice = Some("Automatic reconnect canceled".into());
+        }
+        if self.settings.config_size != 0 {
+            ui.colored_label(AMBER, "Connecting applies the staged configuration bytes.");
+        }
+        if self.settings.output_run_idle {
+            ui.colored_label(AMBER, "The scanner will assert Run in the O->T header.");
+        }
+        if !self
+            .addresses()
+            .is_ok_and(|(a, b)| a.is_loopback() && b.is_loopback())
+        {
+            ui.checkbox(
+                &mut self.bench_confirmed,
+                "I verified the adapter and isolated bench network",
+            );
+        }
+        if !self.settings.input_only
+            || self.settings.config_size != 0
+            || self.settings.output_run_idle
+        {
+            ui.checkbox(
+                &mut self.writes_confirmed,
+                "Ownership and these output/configuration writes are authorized",
+            );
+        }
+        if self.settings.input_only_without_writes() {
+            ui.checkbox(
+                &mut self.preferences.auto_reconnect,
+                "Reconnect automatically",
+            );
+            if self.preferences.auto_reconnect && self.verified_identity.is_none() {
+                ui.small("Use Read identity to verify this device before connecting.");
             }
-        } else {
-            if !self.settings.input_only {
-                ui.colored_label(
-                    AMBER,
-                    "Connecting requests output ownership and sends the staged output bytes.",
-                );
-            }
-            if self.settings.config_size != 0 {
-                ui.colored_label(AMBER, "Connecting applies the staged configuration bytes.");
-            }
-            if self.settings.output_run_idle {
-                ui.colored_label(AMBER, "The scanner will assert Run in the O->T header.");
-            }
-            if !self
-                .addresses()
-                .is_ok_and(|(a, b)| a.is_loopback() && b.is_loopback())
+        }
+        if let Some(pin) = self.verified_identity {
+            ui.small(format!(
+                "Connect checks the verified identity · Serial {:08X}",
+                pin.serial
+            ));
+        }
+        if self.identity_task.is_some() {
+            ui.small("Reading identity…");
+        }
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(self.identity_task.is_none(), egui::Button::new("Connect"))
+                .clicked()
             {
-                ui.checkbox(
-                    &mut self.bench_confirmed,
-                    "I verified the adapter and isolated bench network",
-                );
+                self.connect(reserved_ports);
             }
-            if !self.settings.input_only
-                || self.settings.config_size != 0
-                || self.settings.output_run_idle
-            {
-                ui.checkbox(
-                    &mut self.writes_confirmed,
-                    "Ownership and these output/configuration writes are authorized",
-                );
-            }
-            if self.settings.input_only_without_writes() {
-                ui.checkbox(
-                    &mut self.preferences.auto_reconnect,
-                    "Reconnect automatically",
-                );
-                if self.preferences.auto_reconnect && self.verified_identity.is_none() {
-                    ui.small("Use Read identity to verify this device before connecting.");
-                }
-            }
-            if let Some(pin) = self.verified_identity {
-                ui.small(format!(
-                    "Connect checks the verified identity · Serial {:08X}",
-                    pin.serial
-                ));
-            }
-            if self.identity_task.is_some() {
-                ui.small("Reading identity…");
-            }
-            ui.horizontal_wrapped(|ui| {
-                if ui
-                    .add_enabled(self.identity_task.is_none(), egui::Button::new("Connect"))
-                    .clicked()
-                {
-                    self.connect(reserved_ports);
-                }
-                ui.selectable_value(
-                    &mut self.preferences.schedule,
-                    Schedule::Deadline,
-                    "Deadline",
-                );
-                #[cfg(windows)]
-                ui.selectable_value(
-                    &mut self.preferences.schedule,
-                    Schedule::DeadlineAboveNormal,
-                    "Deadline (above normal)",
-                );
-                ui.selectable_value(
-                    &mut self.preferences.schedule,
-                    Schedule::Tokio,
-                    "Tokio baseline",
-                );
-            });
-        }
-        if let Some(e) = &self.error {
-            ui.colored_label(RED, e);
-        }
-        if let Some(n) = &self.notice {
-            ui.colored_label(CYAN, n);
-        }
+        });
     }
     fn select_profile(&mut self, i: Option<usize>) {
         self.selected = i;
@@ -1655,8 +1702,8 @@ impl Device {
             });
         });
     }
-    fn dashboard(&mut self, ui: &mut Ui) {
-        title(ui, "03", "Live device");
+    fn identity_view(&mut self, ui: &mut Ui) {
+        title(ui, "Device identity");
         if let Some(id) = &self.status.identity {
             ui.label(RichText::new(&id.name).size(20.0).strong());
             ui.label(format!(
@@ -1682,6 +1729,10 @@ impl Device {
         {
             self.begin_identity_read();
         }
+    }
+
+    fn diagnostics(&mut self, ui: &mut Ui) {
+        title(ui, "Connection diagnostics");
         if let Some(e) = &self.status.identity_error {
             ui.colored_label(AMBER, format!("Identity — {e}"));
         }
@@ -1875,8 +1926,10 @@ impl Device {
                 ));
             }
         }
-        ui.separator();
-        title(ui, "04", "Input assembly");
+    }
+
+    fn inputs(&mut self, ui: &mut Ui) {
+        title(ui, "Live inputs");
         if let Some(v) = &self.status.value {
             ui.label(
                 RichText::new(v.to_string())
@@ -1916,23 +1969,29 @@ impl Device {
                             });
                     });
             }
-            egui::ScrollArea::vertical()
-                .id_salt("raw-input")
-                .max_height(116.0)
-                .show(ui, |ui| {
-                    for (row, bytes) in self.status.input.chunks(16).enumerate() {
-                        ui.monospace(format!("{:04X}  {}", row * 16, model::hex(bytes)));
-                    }
-                });
+            ui.collapsing("Raw input bytes", |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("raw-input")
+                    .max_height(116.0)
+                    .show(ui, |ui| {
+                        for (row, bytes) in self.status.input.chunks(16).enumerate() {
+                            ui.monospace(format!("{:04X}  {}", row * 16, model::hex(bytes)));
+                        }
+                    });
+            });
         }
-        ui.separator();
-        title(ui, "05", "CSV capture");
+        if ui.button("Edit input mappings").clicked() {
+            self.tab = Tab::Mappings;
+        }
+    }
+
+    fn logging(&mut self, ui: &mut Ui) {
+        title(ui, "CSV logging");
         ui.add_enabled_ui(!self.capturing, |ui| {
             egui::Grid::new("capture").num_columns(2).show(ui, |ui| {
                 ui.label("Output directory");
                 ui.text_edit_singleline(&mut self.preferences.directory);
                 ui.end_row();
-                number(ui, "Buffer samples", &mut self.preferences.capacity);
                 ui.label("Stop after seconds (0 = manual)");
                 ui.add(
                     egui::DragValue::new(&mut self.preferences.gui_capture_seconds)
@@ -1940,17 +1999,43 @@ impl Device {
                         .clamp_existing_to_range(false),
                 );
                 ui.end_row();
-                number(
-                    ui,
-                    "Rotate after bytes (0 = off)",
-                    &mut self.preferences.rotate_bytes,
-                );
-                number(
-                    ui,
-                    "Rotate after seconds (0 = off)",
-                    &mut self.preferences.rotate_seconds,
-                );
             });
+            ui.collapsing("Buffer and file rotation", |ui| {
+                egui::Grid::new("capture-advanced")
+                    .num_columns(2)
+                    .show(ui, |ui| {
+                        number(ui, "Buffer samples", &mut self.preferences.capacity);
+                        number(
+                            ui,
+                            "Rotate after bytes (0 = off)",
+                            &mut self.preferences.rotate_bytes,
+                        );
+                        number(
+                            ui,
+                            "Rotate after seconds (0 = off)",
+                            &mut self.preferences.rotate_seconds,
+                        );
+                    });
+            });
+        });
+        ui.horizontal_wrapped(|ui| {
+            let fields = self.settings.csv_fields();
+            ui.label(fields.map_or_else(
+                |error| error,
+                |fields| {
+                    format!(
+                        "Logged values · {}",
+                        fields
+                            .iter()
+                            .map(|field| field.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                },
+            ));
+            if ui.button("Choose logged values").clicked() {
+                self.tab = Tab::Mappings;
+            }
         });
         if self.capturing {
             if ui.button("Stop capture and flush").clicked() {

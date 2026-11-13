@@ -431,6 +431,12 @@ The repository now routes future chats through AGENTS.md and the ethernetip-work
 
 The skill validator passed for the tracked skill and installed entry point. Installer checks covered repeat installation, custom directories with spaces, preservation of an unrelated skill and rejection of the canonical source as an install destination. Documentation checks resolved relative references and ran the documented offline help, EDS, preflight and payload-decoding recipes.
 
+## GUI workflow tabs
+
+The desktop workspace now groups Device, Inputs, Outputs, Logging, Mappings, Integration and Diagnostics into separate tabs. Headless egui tests checked 900×580 and 1240×860 layouts, isolation of page content and visible connection/profile/capture controls. Simulated pointer events opened Logging and the profile window, then stopped and flushed capture from Inputs. Rendering the owner connection review showed the staged output and configuration bytes and the ownership/Run warnings without opening a connection.
+
+The five existing GUI backend adapter checks passed for report saving with a live HTTP sample, reconnect history, timed recording, identity mismatch before writes and a separately authorized simulated owner connection. These checks ran without a native desktop window.
+
 ## Physical bench acceptance
 
 Physical-device measurements require a connected bench adapter and verified device settings. First verify the Identity Object and the intended profile, preferably input-only. Confirm output ownership and write permissions before using a profile that owns outputs, asserts Run or sends configuration bytes. Then run the Windows GUI and logger with the requested RPIs and record the Forward_Open actual intervals separately from socket spacing percentiles, longest gap, sequence gaps, timeouts, missed send slots and capture losses. Use a capture at the NIC or switch if wire-level timestamps are required.
