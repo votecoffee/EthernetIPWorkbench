@@ -76,6 +76,14 @@ For a changed dependency, check its actual Cargo archive notices. Missing licens
 
 Verify the ZIP hash, ZIP integrity, embedded commit and every manifest entry. Run the changed public entry point from a fresh extracted directory. Maintain VERIFICATION.md with the test conditions and meaningful timing/loss results. Source/documentation changes and simulator evidence have different implications from physical acceptance.
 
+## Local artifact housekeeping
+
+Keep reusable fixtures and license notices in the tracked tree. Preserve device settings, vendor material, raw captures and private plotting tools under .local/.
+
+Completed verification runs can be compacted under .local/research-archive. Preserve their original relative paths and a manifest of file lengths and SHA-256 hashes. Verify the archive and source hashes before removing the loose files. Restore individual runs beneath the repository root after checking for existing paths.
+
+Build intermediates under target and Python bytecode caches are reproducible. Check that no scanner or build process is using the selected directories before removing them. Retain the runnable release executables and a verified delivery ZIP when clearing intermediate build products. Keep the Cargo dependency cache outside the cleanup scope.
+
 ## Maintain future-chat discovery
 
 The canonical skill is [.agents/skills/ethernetip-workbench/SKILL.md](../.agents/skills/ethernetip-workbench/SKILL.md). Root AGENTS.md routes repository work to it.
