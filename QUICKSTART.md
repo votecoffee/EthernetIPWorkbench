@@ -31,6 +31,16 @@ python tools/join_capture.py 'captures/capture-<UTC-prefix>' joined.csv
 
 Use the capture prefix shown by the GUI. Select **Add device** to set up another adapter and switch between sessions using the **Devices** list. [Verification notes](VERIFICATION.md) describe the timing measurements and [physical acceptance](https://github.com/votecoffee/EthernetIPWorkbench/issues/2).
 
+## Configure and automate
+
+The [operations guide](docs/OPERATIONS.md) covers profile fields, CLI commands, mappings, CSV and integration consumers. The [development guide](docs/DEVELOPMENT.md) explains source and verification entry points. For Codex chats, use [AGENTS.md](AGENTS.md) or install the bundled skill.
+
+~~~powershell
+python tools/install_skill.py
+~~~
+
+Then use $ethernetip-workbench in a new chat.
+
 ## Verify the download
 
 Compare `Get-FileHash -Algorithm SHA256` for the downloaded ZIP with its `.zip.sha256` file. The extracted `SHA256SUMS.txt` records hashes for the individual files. `BUILD-INFO.json` identifies the source commit, toolchain, and locked dependency manifest. License information is in [LICENSE](LICENSE) and the [third-party notice index](third-party/INDEX.md).

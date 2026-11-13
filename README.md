@@ -8,6 +8,7 @@ EthernetIPWorkbench is the source repository for the Assembly Scanner desktop ap
 
 - [Install](#install)
 - [Usage](#usage)
+- [Documentation and Codex skill](#documentation-and-codex-skill)
 - [Verification](#verification)
 - [Roadmap](#roadmap)
 - [Maintainers](#maintainers)
@@ -239,6 +240,18 @@ $expected = Read-Host 'Verified decimal vendor:type:product:serial'
 Use `direct` or `switched` to record the path you connected and keep the results in separate new directories. Use `loopback` with two loopback addresses for a simulator. Only the loopback mode accepts an optional final duration for quick checks.
 
 The new directory contains the effective profiles, each run's CSV and capture report, and `qualification.toml`. The summary records the active run and saves each result as it completes. A short or rejected baseline stops the sequence, as does a baseline RPI mismatch. Loss observed during a completed baseline is recorded and the 1 ms trials continue. An identity or disk error, a rejected Forward_Close, or an unconfirmed close stops further trials. Exit code zero requires all four runs to finish cleanly, negotiate the requested intervals, and report zero packet anomalies or lost samples. Sender deadline skips and spacing are reported separately. A console interrupt stops the active run, prevents further trials, and saves an interrupted qualification receipt. These are headless results. [Physical GUI acceptance](VERIFICATION.md#physical-bench-acceptance) has its own test conditions.
+
+## Documentation and Codex skill
+
+Use the [operations guide](docs/OPERATIONS.md) for EDS/manual setup, profile keys, mapped values, headless capture, software consumers and troubleshooting. The [development guide](docs/DEVELOPMENT.md) maps behavior to source, tests and packaging.
+
+Future repository chats start from [AGENTS.md](AGENTS.md) and the tracked [ethernetip-workbench skill](.agents/skills/ethernetip-workbench/SKILL.md). To make that skill discoverable from other workspaces, install its local entry point.
+
+~~~powershell
+python tools/install_skill.py
+~~~
+
+New chats can use $ethernetip-workbench. The installer points to the current checkout or extracted bundle. Rerun it from the new location after moving the application. It also supports --destination for a custom skill directory.
 
 ## Verification
 

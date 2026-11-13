@@ -425,6 +425,12 @@ One five-second headless pair requested and negotiated 1,000 µs in both directi
 
 The enabled run recorded zero integration queue drops. The client polled 221 HTTP batches and read shared memory 221 times. The MQTT fixture received 104 publications, including publications after its deliberate disconnect. The final API poll was 14 samples behind the completed connection. These figures measure one localhost pair. Physical-device timing and transport latency require separate measurement.
 
+## Future-chat documentation and skill discovery
+
+The repository now routes future chats through AGENTS.md and the ethernetip-workbench skill to operational and development guides. The portable package includes these files and tools/install_skill.py. The installed local skill entry point points to the current source location.
+
+The skill validator passed for the tracked skill and installed entry point. Installer checks covered repeat installation, custom directories with spaces, preservation of an unrelated skill and rejection of the canonical source as an install destination. Documentation checks resolved relative references and ran the documented offline help, EDS, preflight and payload-decoding recipes.
+
 ## Physical bench acceptance
 
 Physical-device measurements require a connected bench adapter and verified device settings. First verify the Identity Object and the intended profile, preferably input-only. Confirm output ownership and write permissions before using a profile that owns outputs, asserts Run or sends configuration bytes. Then run the Windows GUI and logger with the requested RPIs and record the Forward_Open actual intervals separately from socket spacing percentiles, longest gap, sequence gaps, timeouts, missed send slots and capture losses. Use a capture at the NIC or switch if wire-level timestamps are required.

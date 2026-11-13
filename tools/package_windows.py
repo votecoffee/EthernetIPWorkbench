@@ -17,6 +17,8 @@ TARGET = "x86_64-pc-windows-msvc"
 BINARIES = {"assembly-scanner": 2, "eipmaster-cli": 3}
 ASSETS = (
     "LICENSE", "QUICKSTART.md", "README.md", "ROADMAP.md", "VERIFICATION.md",
+    "AGENTS.md", "docs/OPERATIONS.md", "docs/DEVELOPMENT.md",
+    ".agents/skills/ethernetip-workbench/SKILL.md", "tools/install_skill.py",
     "samples/loopback.eds", "samples/loopback.toml", "samples/mapped-loopback.toml",
     "tools/loopback_adapter.py", "tools/join_capture.py", "tools/test_cli.py", "tools/benchmark.py",
     "samples/opener-loopback.toml",
