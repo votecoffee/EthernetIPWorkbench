@@ -91,7 +91,7 @@ impl Device {
                 for issue in &p.unsupported { ui.colored_label(AMBER, issue); }
             }
             egui::Grid::new("network").num_columns(2).show(ui, |ui| {
-                ui.label("Adapter IPv4");
+                ui.label(if self.settings.io_route.trim().is_empty() { "Adapter IPv4" } else { "Bridge IPv4" });
                 let device_changed = ui.text_edit_singleline(&mut self.device).changed();
                 ui.end_row();
                 ui.label("Local NIC IPv4");
@@ -103,6 +103,17 @@ impl Device {
                     self.writes_confirmed = false;
                 }
                 number(ui, "Local UDP port (0 = automatic)", &mut self.settings.local_udp_port);
+            });
+            ui.collapsing("CIP routing", |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Cyclic I/O route");
+                    if ui.add(egui::TextEdit::singleline(&mut self.settings.io_route).hint_text("1/3")).changed() {
+                        self.reset_endpoint_status();
+                        self.bench_confirmed = false;
+                        self.writes_confirmed = false;
+                    }
+                });
+                ui.small("Leave blank for a direct connection. For a route, use the first bridge's IPv4 address and a unicast input-only profile.");
             });
             let s = &mut self.settings;
             let write_settings = |s: &Settings| (
@@ -254,10 +265,19 @@ impl Device {
     }
 
     pub(super) fn connection_review(&mut self, ui: &mut Ui, reserved_ports: &[(Ipv4Addr, u16)]) {
+        let route = self.settings.io_route.trim();
+        let endpoint = if route.is_empty() {
+            "Adapter"
+        } else {
+            "Bridge"
+        };
         ui.label(format!(
-            "Adapter {} · Local NIC {}",
+            "{endpoint} {} · Local NIC {}",
             self.device, self.local
         ));
+        if !route.is_empty() {
+            ui.label(format!("Cyclic I/O route · {route}"));
+        }
         ui.label(format!(
             "Input assembly {} · {} bytes · Requested {:.3} ms",
             self.settings.input_instance,
@@ -376,6 +396,7 @@ impl Device {
             settings.log_fields = self.settings.log_fields.take();
             settings.capture_mode = self.settings.capture_mode;
             settings.local_udp_port = self.settings.local_udp_port;
+            settings.io_route = std::mem::take(&mut self.settings.io_route);
             settings.timeout_multiplier_code = self.settings.timeout_multiplier_code;
             self.settings = settings;
         }
@@ -391,6 +412,12 @@ impl Device {
         };
         let profile = self.selected.map(|i| &self.profiles[i]);
         let report = preflight::inspect(&settings, &self.preferences, profile);
+        if !report.io_route.trim().is_empty() {
+            ui.label(format!(
+                "Bridge {} · Cyclic I/O route {}",
+                report.adapter_ip, report.io_route
+            ));
+        }
         if report.connection_valid {
             ui.colored_label(CYAN, "Connection settings valid");
         }

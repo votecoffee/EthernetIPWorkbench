@@ -1,4 +1,4 @@
-//! Port paths for unconnected, read-only CIP messaging.
+//! CIP port paths and Unconnected Send read replies.
 
 use super::{EipError, is_unicast, protocol};
 use serde::{Deserialize, Serialize};
@@ -88,7 +88,7 @@ impl fmt::Display for Route {
 }
 
 impl Route {
-    pub(super) fn wrap(&self, message: &[u8]) -> Vec<u8> {
+    pub(crate) fn port_segments(&self) -> Vec<u8> {
         let mut path = Vec::new();
         for hop in &self.0 {
             match hop.link {
@@ -103,6 +103,11 @@ impl Route {
                 }
             }
         }
+        path
+    }
+
+    pub(super) fn wrap(&self, message: &[u8]) -> Vec<u8> {
+        let path = self.port_segments();
         // Connection Manager instance 1. Eight 128 ms ticks leave time for
         // the routing rejection to arrive before the 2 s TCP reply deadline.
         let mut request = vec![UNCONNECTED_SEND, 2, 0x20, 6, 0x24, 1, 7, 8];

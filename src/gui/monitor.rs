@@ -19,6 +19,12 @@ impl Device {
             );
         }
         if let Some(active) = &self.active {
+            if !active.io_route.trim().is_empty() {
+                ui.label(format!(
+                    "Bridge {} · Cyclic I/O route {}",
+                    active.device_ip, active.io_route
+                ));
+            }
             egui::Grid::new("intervals")
                 .num_columns(3)
                 .striped(true)

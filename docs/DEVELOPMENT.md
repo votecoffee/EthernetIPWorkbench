@@ -32,6 +32,8 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 
 The explicit TCP session reads identity before opening I/O. The cyclic producer schedules from the returned O-to-T interval. The receiver validates the packet source, connection ID, payload length and sequence. It timestamps near receive and copies accepted data to the independent capture and export paths.
 
+For routed Class 1, `Settings::parsed_io_route` uses the same port segment encoder as Unconnected Send. The scanner reads the routed target identity and stops if the read fails. The first bridge receives standard or Large Forward_Open with the port segments before the key and assembly segments, and Forward_Close reuses that path. The UDP send and receive checks use the first bridge address. See the published originator source for connected CIP route placement and path-length encoding. [libplctag Forward_Open and Forward_Close source](https://github.com/libplctag/libplctag/blob/master/src/libplctag/protocols/ab/session.c)
+
 Use `Settings::input_lengths()` for the payload bounds used by the receiver, recorder and export feed. With a variable T→O profile, the mapping must validate at the local minimum, and the connection request encodes the maximum plus the configured headers. The recorder reserves buffers at the maximum and keeps each sample's actual length for decoding. Published raw payloads retain their actual length. The connection flags are verified by the fixture against the standard and large layouts. [OpENer connection parameter reference](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipconnectionobject.c)
 
 Use `Settings::output_lengths()` for O→T bounds. An owner connection with a variable-size payload negotiates the maximum plus configured headers. The producer reserves that space once, then encodes the Connected Data Item length and sends only the active bytes on each cycle. `Connection::apply_output` validates the replacement length before swapping it into the active buffer. [ODVA EDS connection parameter reference](https://www.odva.org/wp-content/uploads/2022/06/2015_ODVA_Conference_Wiberg-Schiffer_Optimizing-EDSs-for-EtherNetIP-IO-Connection-Target-Devices_FINAL_PPT.pdf#page=11)
@@ -71,7 +73,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 | Change | Headless check |
 |---|---|
 | Profiles, mapping, CLI and capture | python tools/test_cli.py target/release/eipmaster-cli.exe .local/cli-check-01 |
-| Discovery, direct and routed reads, saved requests, identity fallback, keyed large I/O | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
+| Discovery, direct and routed reads, saved requests, target identity, keyed and routed cyclic I/O | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
 | Variable-size T→O, EDS provenance, CSV and all three exports | python tools/test_variable_input.py target/release/eipmaster-cli.exe .local/variable-check-01 |
 | Multicast T→O, returned endpoints and failed setup cleanup | python tools/test_multicast.py target/release/eipmaster-cli.exe .local/multicast-check-01 |
 | Reconnect, concurrent capture and writer failure | python tools/test_recovery.py target/release/eipmaster-cli.exe .local/recovery-check-01 |

@@ -36,7 +36,7 @@ instance = 1
 attribute = 6
 ~~~
 
-The saved read uses the device or bridge address and NIC of the enclosing profile. Omit `route` for a direct read and `attribute` for Get_Attributes_All. Add this table to a named profile, or use Save / update read in Explore and then save the profile. Run `eipmaster-cli read-saved <settings.toml> "Serial number"` against that profile. The route applies only to this explicit read. The Identity button and cyclic connection controls use the configured adapter IP directly.
+The saved read uses the device or bridge address and NIC of the enclosing profile. Omit `route` for a direct read and `attribute` for Get_Attributes_All. Add this table to a named profile, or use Save / update read in Explore and then save the profile. Run `eipmaster-cli read-saved <settings.toml> "Serial number"` against that profile. This route belongs to the saved explicit read. Identity and the cyclic connection use the separate `io_route` setting.
 
 ## Start offline
 
@@ -57,7 +57,8 @@ Start from a generic sample and use the device's EDS and manual to establish eac
 
 | Setting | Interpretation |
 |---|---|
-| device_ip, local_ip | Adapter IPv4 and IPv4 assigned to the scanner NIC |
+| device_ip, local_ip | Adapter or first bridge IPv4 and IPv4 assigned to the scanner NIC |
+| io_route | Optional port/link pairs for routed Class 1 input |
 | local_udp_port | 0 requests an ephemeral port, otherwise bind the required local port |
 | input_instance, input_size | Adapter-to-scanner assembly and payload bytes |
 | output_instance, output_size | Scanner-to-adapter assembly or heartbeat connection point |
@@ -73,6 +74,14 @@ Start from a generic sample and use the device's EDS and manual to establish eac
 Sizes exclude the Class 1 sequence and optional Run/Idle header. Standard Forward_Open supports at most 509 payload plus Run/Idle bytes per direction here. The code accepts requested intervals from 1,000 to 10,000,000 microseconds.
 
 Set the root TOML key `large_forward_open = true` when the adapter supports service 0x5B. Large Forward_Open allows up to 1,400 payload plus Run/Idle bytes here. CSV, live views, HTTP and MQTT support the larger payloads. The existing EIPWB001 shared memory format keeps its 509-byte limit. The app rejects a larger input when shared memory is enabled.
+
+### Configure routed Class 1 input
+
+Use **Device → CIP routing** to set the documented port/link path from the first bridge to the input target. In TOML, set `device_ip` to the first bridge's IPv4 address and `io_route = "1/3"` for a target at backplane slot 3. Leave the path blank for a direct connection. Use the target's assemblies, RPIs, transfer format and electronic key. The EDS supplies assembly settings. The route describes the installed topology and is entered manually.
+
+This mode uses unicast input-only with zero output and configuration bytes and O→T Run/Idle disabled. The first bridge must support routed Class 1 and act as the scanner's UDP peer in both directions. Check those capabilities for the intended bridge and target before physical use.
+
+Read identity through the configured route before connecting. The CLI equivalent is `eipmaster-cli identity <bridge-ipv4> <local-ipv4> --route 1/3`. Use the returned target identity in the capture command. The target Identity Object is read again before each Forward_Open. Forward_Open and Forward_Close carry the same routed assembly path. Preflight and capture reports show `io_route`. In `cyclic_io`, the output destination and first input source identify the scanner-side bridge.
 
 ### Configure variable-size input
 
@@ -108,7 +117,7 @@ Start the controlling multicast connection first. CIP general status `0x01` with
 
 Configure the optional `[electronic_key]` table with decimal `vendor`, `device_type`, `product`, `major` and `minor` fields. The EDS importer handles a supported leading format 4 electronic key, UTF-16 with a BOM, and 16-bit Assembly class segments. Review the imported Large Forward_Open setting when the declared size exceeds the standard limit. Device payload and supported services still need checking against the adapter.
 
-In the GUI, import the EDS, choose a connection profile, review provenance and edit overrides. Use Manual settings when entering the connection directly. Read identity and verify vendor, device type, product code and serial before connecting. A successful identity read pins the next manual connection to that unit. Changing the addresses or loading a profile clears the pin.
+In the GUI, import the EDS, choose a connection profile, review provenance and edit overrides. Use Manual settings when entering the connection directly. Read identity and verify vendor, device type, product code and serial before connecting. A successful identity read pins the next manual connection to that unit. Changing the addresses or cyclic route, or loading a profile, clears the pin.
 
 For input-only logging the profile must have zero output and configuration sizes and O-to-T Run/Idle disabled. The adapter must support the selected heartbeat connection point. An input-only connection still sends periodic O-to-T heartbeats at the returned O-to-T interval.
 
@@ -213,6 +222,6 @@ For cyclic input, the local watchdog is the returned input interval times (4 << 
 
 ## Bench acceptance
 
-When the adapter is available and the connection is authorized, use qualify with the verified private profile, a new output directory, direct or switched, and the full expected identity. It performs a 15-second baseline at 8 ms and three 60-second trials at 1 ms. Each direction is requested separately and the receipt preserves the actual intervals and timing. A shorter override is accepted only for loopback.
+When the adapter is available and the connection is authorized, use qualify with the verified private profile, a new output directory, direct or switched, and the full expected identity. It performs a 15-second baseline at 8 ms and three 60-second trials at 1 ms. Each direction is requested separately and the receipt preserves the actual intervals and timing. With a routed profile, direct or switched describes the first Ethernet segment and the report also records the CIP route. A shorter override is accepted only for loopback.
 
 The sustained physical acceptance milestone additionally requires the GUI and logger active under recorded bench conditions. Use [VERIFICATION.md](../VERIFICATION.md) for existing evidence and [ROADMAP.md](../ROADMAP.md) for outstanding work. Older physical captures and successful simulator trials do not establish acceptance for a new build.

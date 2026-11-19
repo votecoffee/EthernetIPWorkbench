@@ -54,6 +54,8 @@ pub struct Report {
     pub adapter_ip: Ipv4Addr,
     pub local_ip: Ipv4Addr,
     pub local_udp_port: u16,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub io_route: String,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub input_multicast: bool,
     pub requests_output_ownership: bool,
@@ -119,6 +121,9 @@ pub fn inspect(
                 eds_size_is_layout,
             });
         };
+        if !settings.io_route.trim().is_empty() {
+            compare("Cyclic I/O route", settings.io_route.clone(), String::new());
+        }
         for (label, effective, from_eds) in [
             (
                 "O->T assembly",
@@ -253,6 +258,7 @@ pub fn inspect(
         adapter_ip: settings.device_ip,
         local_ip: settings.local_ip,
         local_udp_port: settings.local_udp_port,
+        io_route: settings.io_route.clone(),
         input_multicast: settings.input_multicast,
         requests_output_ownership: !settings.input_only,
         listen_only: settings.listen_only,

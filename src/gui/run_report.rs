@@ -37,6 +37,8 @@ struct ConnectionReport {
     network_error: Option<String>,
     adapter_ip: Ipv4Addr,
     local_ip: Ipv4Addr,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    io_route: String,
     input_assembly: u16,
     input_bytes: u16,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -128,6 +130,7 @@ impl Device {
             network_error: status.network_error.clone(),
             adapter_ip: active.device_ip,
             local_ip: active.local_ip,
+            io_route: active.io_route.clone(),
             input_assembly: active.input_instance,
             input_bytes: active.input_size,
             input_multicast: active.input_multicast,

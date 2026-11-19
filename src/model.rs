@@ -1,3 +1,4 @@
+use crate::explicit::Route;
 use serde::{Deserialize, Serialize};
 use std::{net::Ipv4Addr, ops::RangeInclusive};
 
@@ -41,6 +42,9 @@ pub struct Settings {
     pub device_ip: Ipv4Addr,
     pub local_ip: Ipv4Addr,
     pub local_udp_port: u16,
+    /// Optional CIP port/link path from device_ip, the first bridge.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub io_route: String,
     pub input_instance: u16,
     pub input_size: u16,
     /// Request T->O multicast. The adapter selects the group and port.
@@ -124,6 +128,7 @@ impl Default for Settings {
             device_ip: Ipv4Addr::LOCALHOST,
             local_ip: Ipv4Addr::LOCALHOST,
             local_udp_port: 0,
+            io_route: String::new(),
             input_instance: 101,
             input_size: 4,
             input_multicast: false,
@@ -218,6 +223,17 @@ impl Settings {
         !self.listen_only && self.input_only_without_writes()
     }
 
+    pub fn parsed_io_route(&self) -> Result<Option<Route>, String> {
+        let route = self.io_route.trim();
+        if route.is_empty() {
+            return Ok(None);
+        }
+        route
+            .parse()
+            .map(Some)
+            .map_err(|error| format!("Cyclic I/O route — {error}"))
+    }
+
     /// Allowed application byte counts, excluding all connected I/O headers.
     pub fn input_lengths(&self) -> Result<RangeInclusive<usize>, String> {
         let min = usize::from(self.input_min_size.unwrap_or(self.input_size));
@@ -262,6 +278,10 @@ impl Settings {
             || self.local_ip.is_broadcast()
         {
             return Err("Enter the scanner NIC's assigned IPv4 address".into());
+        }
+        let route = self.parsed_io_route()?;
+        if route.is_some() && (!self.input_only_without_writes() || self.input_multicast) {
+            return Err("Routed cyclic I/O requires a unicast input-only profile with zero write bytes and O->T Run/Idle disabled".into());
         }
         if self.input_instance == 0 || self.output_instance == 0 {
             return Err("Set both connection point instances".into());
@@ -316,7 +336,10 @@ impl Settings {
             return Err("Configuration bytes do not match the declared configuration size".into());
         }
         let segment_bytes = |value| if value <= 255 { 2 } else { 4 };
-        let path_bytes = 2
+        let path_bytes = route
+            .as_ref()
+            .map_or(0, |route| route.port_segments().len())
+            + 2
             + 10 * usize::from(self.electronic_key.is_some())
             + self.config_instance.map_or(0, segment_bytes)
             + segment_bytes(self.output_instance)

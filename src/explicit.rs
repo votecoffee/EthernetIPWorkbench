@@ -126,17 +126,11 @@ impl Reader {
     ) -> std::result::Result<Vec<u8>, RoutedReadError> {
         path.validate()
             .map_err(|error| RoutedReadError::Exchange(protocol(error)))?;
-        let message = read_message(path);
-        let result = (|| {
-            let reply = self
-                .0
-                .as_mut()
-                .ok_or(EipError::Closed)
-                .and_then(|session| session.unconnected(route.wrap(&message), None))
-                .map_err(RoutedReadError::Exchange)?;
-            let data = cip_data(&reply).map_err(RoutedReadError::Exchange)?;
-            RoutedReadError::from_reply(data, message[0])
-        })();
+        let result = self
+            .0
+            .as_mut()
+            .ok_or(RoutedReadError::Exchange(EipError::Closed))
+            .and_then(|session| session.read_routed(path, route));
         if matches!(&result, Err(RoutedReadError::Exchange(_))) {
             self.0 = None;
         }
@@ -297,6 +291,19 @@ impl Session {
         Ok(reply_body(cip_data(&reply)?, service)?.to_vec())
     }
 
+    fn read_routed(
+        &mut self,
+        path: ReadPath,
+        route: &Route,
+    ) -> std::result::Result<Vec<u8>, RoutedReadError> {
+        let message = read_message(path);
+        let reply = self
+            .unconnected(route.wrap(&message), None)
+            .map_err(RoutedReadError::Exchange)?;
+        let data = cip_data(&reply).map_err(RoutedReadError::Exchange)?;
+        RoutedReadError::from_reply(data, message[0])
+    }
+
     fn cip_path(
         &mut self,
         service: u8,
@@ -377,21 +384,34 @@ impl Drop for Session {
     }
 }
 pub fn read_identity(cfg: &Settings) -> std::result::Result<Identity, String> {
-    identity(&mut Session::open(cfg.device_ip, cfg.local_ip).map_err(|e| e.to_string())?)
-        .map_err(|e| e.to_string())
+    let route = cfg.parsed_io_route()?;
+    let mut session = Session::open(cfg.device_ip, cfg.local_ip).map_err(|e| e.to_string())?;
+    identity(&mut session, route.as_ref()).map_err(|e| e.to_string())
 }
-pub(crate) fn identity(session: &mut Session) -> Result<Identity> {
-    match session.cip(1, 1, &[], None) {
-        Ok((body, _)) => decode_identity(&body),
+pub(crate) fn identity(session: &mut Session, route: Option<&Route>) -> Result<Identity> {
+    let mut read = |attribute| {
+        let address = ReadPath {
+            class: 1,
+            instance: 1,
+            attribute,
+        };
+        match route {
+            None => session.read(address),
+            Some(route) => session
+                .read_routed(address, route)
+                .map_err(|error| match error {
+                    RoutedReadError::Target(error) => error,
+                    error => protocol(error.to_string()),
+                }),
+        }
+    };
+    match read(None) {
+        Ok(body) => decode_identity(&body),
         Err(EipError::Cip { status: 0x08, .. }) => {
             // Some adapters implement only Get_Attribute_Single.
             let mut body = Vec::new();
             for (id, size) in [(1, 2), (2, 2), (3, 2), (4, 2), (5, 2), (6, 4), (7, 0)] {
-                let bytes = session.read(ReadPath {
-                    class: 1,
-                    instance: 1,
-                    attribute: Some(id),
-                })?;
+                let bytes = read(Some(id))?;
                 if (id != 7 && bytes.len() != size)
                     || (id == 7
                         && bytes

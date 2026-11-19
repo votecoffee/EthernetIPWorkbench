@@ -1,6 +1,6 @@
 use crate::{
     capture::Slot,
-    explicit::{Session, identity},
+    explicit::{Route, Session, identity},
     integration::Publisher,
     model::{self, Settings, Value},
 };
@@ -445,8 +445,8 @@ fn segment(path: &mut Vec<u8>, code: u8, value: u16) {
         path.extend(value.to_le_bytes());
     }
 }
-fn path(cfg: &Settings) -> Vec<u8> {
-    let mut path = Vec::new();
+fn path(cfg: &Settings, route: Option<&Route>) -> Vec<u8> {
+    let mut path = route.map_or_else(Vec::new, Route::port_segments);
     if let Some(key) = cfg.electronic_key {
         path.extend([0x34, 4]);
         path.extend(key.vendor.to_le_bytes());
@@ -501,32 +501,29 @@ fn run(
     expected: Option<ExpectedIdentity>,
     shared: &mut Shared,
 ) -> Result<()> {
+    let route = cfg.parsed_io_route().map_err(protocol)?;
     let mut session = Session::open(cfg.device_ip, cfg.local_ip)?;
     {
-        let id = identity(&mut session);
+        let id = identity(&mut session, route.as_ref());
         let mut state = shared.status.lock().unwrap();
-        if let Some(expected) = expected {
-            match &id {
-                Ok(actual) => {
-                    if let Some(message) = expected.mismatch(actual) {
-                        state.identity = Some(actual.clone());
-                        state.identity_error = Some(message.clone());
-                        return Err(protocol(message));
-                    }
-                }
-                Err(error) => {
-                    state.identity_error = Some(error.to_string());
-                    return id.map(|_| ());
+        match id {
+            Ok(id) => {
+                let mismatch = expected.and_then(|expected| expected.mismatch(&id));
+                state.identity = Some(id);
+                if let Some(message) = mismatch {
+                    state.identity_error = Some(message.clone());
+                    return Err(protocol(message));
                 }
             }
-        }
-        match id {
-            Ok(id) => state.identity = Some(id),
-            Err(e @ EipError::Cip { .. }) => state.identity_error = Some(e.to_string()),
-            Err(e) => {
-                state.identity_error = Some(e.to_string());
-                drop(state);
-                session = Session::open(cfg.device_ip, cfg.local_ip)?;
+            Err(error) => {
+                state.identity_error = Some(error.to_string());
+                if expected.is_some() || route.is_some() {
+                    return Err(error);
+                }
+                if !matches!(error, EipError::Cip { .. }) {
+                    drop(state);
+                    session = Session::open(cfg.device_ip, cfg.local_ip)?;
+                }
             }
         }
     }
@@ -537,7 +534,7 @@ fn run(
 
     let mut ids = [0; 10];
     getrandom::fill(&mut ids).map_err(|e| protocol(e.to_string()))?;
-    let close_path = path(cfg);
+    let close_path = path(cfg, route.as_ref());
     let mut open_path = close_path.clone();
     let config = model::parse_hex(&cfg.config_hex).map_err(protocol)?;
     if !config.is_empty() {
@@ -630,7 +627,11 @@ fn run(
             Some((reply.o_to_t_actual_rpi_us, reply.t_to_o_actual_rpi_us));
         let peer = cpf::resolve_peer_udp(&envelope, OT_SOCKET, cfg.device_ip.into(), udp::IO_PORT);
         if peer.ip() != cfg.device_ip {
-            return Err(protocol("Adapter advertised an unexpected O->T address"));
+            return Err(protocol(format!(
+                "Advertised O->T address {} differs from the configured cyclic peer {}",
+                peer.ip(),
+                cfg.device_ip
+            )));
         }
         let destination = cfg
             .input_multicast

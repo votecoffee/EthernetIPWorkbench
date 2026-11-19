@@ -40,6 +40,8 @@ For multicast T→O profiles, verify the selected NIC, the returned group and re
 
 For listen-only, verify the adapter's distinct heartbeat connection point and an existing controlling multicast connection. Keep output and configuration payloads empty and O→T Run/Idle disabled. The listener uses manual reconnect.
 
+For routed Class 1 input, set `device_ip` to the first bridge and `io_route` to the documented port/link pairs. Use a unicast input-only profile and verify the target with Device → Read identity or CLI identity with --route. Confirm the first bridge can handle both scanner-side UDP directions. The saved Explore read routes are independent.
+
 For live work, use the session's authorization and an isolated bench. Confirm the exact ownership and output/configuration actions when they are not already authorized. Configuration travels in Forward_Open and an owner may start transmitting staged output immediately.
 
 Separate requested RPI, Forward_Open actual intervals, observed socket spacing and disk/export loss. Preserve captures and failure receipts. Do not infer that skipped producer slots are received sequence gaps. Keep .local/ private, and keep desktop interaction subject to an explicit request in the current chat.

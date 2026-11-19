@@ -35,7 +35,7 @@ Usage:
   eipmaster-cli eds <vendor.eds>
   eipmaster-cli validate <settings.toml> [<vendor.eds> <ConnectionN>]
   eipmaster-cli decode-input <settings.toml> \"<assembly hex bytes>\"
-  eipmaster-cli identity <adapter-ipv4> <local-ipv4>
+  eipmaster-cli identity <adapter-or-bridge-ipv4> <local-ipv4> [--route <port/link/...>]
   eipmaster-cli discover <local-ipv4> [<destination-ipv4>]
   eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
   eipmaster-cli read-saved <settings.toml> <name>
@@ -198,7 +198,14 @@ fn run(args: &[OsString]) -> Result<bool, String> {
             print!("{}", report_text(&settings.preview_input(&bytes)?)?);
             Ok(true)
         }
-        [command, adapter, local] if command == "identity" => {
+        [command, adapter, local, options @ ..] if command == "identity" => {
+            let io_route = match options {
+                [] => String::new(),
+                [option, route] if option == "--route" => {
+                    route.to_string_lossy().parse::<Route>()?.to_string()
+                }
+                _ => return Err(USAGE.into()),
+            };
             let settings = Settings {
                 device_ip: adapter
                     .to_string_lossy()
@@ -208,12 +215,14 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                     .to_string_lossy()
                     .parse()
                     .map_err(|_| "Invalid local IPv4 address")?,
+                io_route,
                 ..Settings::default()
             };
             settings.validate()?;
             let result = IdentityReport {
                 adapter_ip: settings.device_ip,
                 local_ip: settings.local_ip,
+                io_route: settings.io_route.clone(),
                 identity: read_identity(&settings)?,
             };
             print!(
@@ -356,6 +365,8 @@ struct EdsProfile {
 struct IdentityReport {
     adapter_ip: std::net::Ipv4Addr,
     local_ip: std::net::Ipv4Addr,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    io_route: String,
     identity: Identity,
 }
 
@@ -365,6 +376,8 @@ struct Report {
     state: &'static str,
     adapter_ip: std::net::Ipv4Addr,
     local_ip: std::net::Ipv4Addr,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    io_route: String,
     input_assembly: u16,
     input_size: u16,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -659,6 +672,7 @@ fn capture(
         state: status.state,
         adapter_ip: settings.device_ip,
         local_ip: settings.local_ip,
+        io_route: settings.io_route.clone(),
         input_assembly: settings.input_instance,
         input_size: settings.input_size,
         input_multicast: settings.input_multicast,

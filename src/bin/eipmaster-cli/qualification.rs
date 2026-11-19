@@ -25,6 +25,8 @@ struct Qualification {
     finished_utc: Option<String>,
     adapter_ip: Ipv4Addr,
     local_ip: Ipv4Addr,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    io_route: String,
     expected_identity: String,
     planned_runs: [&'static str; 4],
     baseline_seconds: u64,
@@ -169,6 +171,7 @@ pub(super) fn run(
         finished_utc: None,
         adapter_ip: settings.device_ip,
         local_ip: settings.local_ip,
+        io_route: settings.io_route.clone(),
         expected_identity: format!("{vendor}:{device_type}:{product}:{serial}"),
         planned_runs: RUNS,
         baseline_seconds,

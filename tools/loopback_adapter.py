@@ -126,7 +126,7 @@ def udp_loop(udp, source, endpoint, connection, api, mode, value_base, stop, rep
             drop = mode == "no-input" or (mode == "stall" and seq > 75) or (mode == "faults" and seq == 60)
             if not drop:
                 value = struct.pack("<I", value_base + seq // 16)
-                if mode == "large-keyed":
+                if mode in ("large-keyed", "routed-io-large"):
                     value += bytes(592) + struct.pack("<I", 0xA1B2C3D4)
                 if variable_max is not None:
                     length = (4, 7, variable_max)[(seq // 8) % 3]
@@ -170,7 +170,7 @@ def udp_loop(udp, source, endpoint, connection, api, mode, value_base, stop, rep
         report["output_length_transitions"] = length_transitions
 
 
-def routed_reply(cip, attrs, report):
+def routed_request(cip):
     assert cip[:6] == bytes.fromhex("52 02 20 06 24 01")
     priority_tick, ticks, length = struct.unpack_from("<BBH", cip, 6)
     assert 0 < (1 << (priority_tick & 0xF)) * ticks < 2000
@@ -183,6 +183,11 @@ def routed_reply(cip, attrs, report):
     words, reserved = cip[end:end + 2]
     route = cip[end + 2:]
     assert reserved == 0 and len(route) == words * 2
+    return route, message
+
+
+def routed_reply(cip, attrs, report):
+    route, message = routed_request(cip)
     report.update(route_hex=route.hex(), embedded_hex=message.hex())
     if route == b"\x01\x07":
         assert message == bytes.fromhex("0E 03 20 01 24 01 30 06")
@@ -200,6 +205,25 @@ def routed_reply(cip, attrs, report):
     return bytes.fromhex("8E 00 00 00") + attrs[6]
 
 
+def routed_identity_reply(cip, attrs, route, mode, report):
+    received_route, message = routed_request(cip)
+    assert received_route == route
+    requested = report.setdefault("routed_identity_attributes", [])
+    if message == bytes.fromhex("01 02 20 01 24 01"):
+        requested.append("all")
+        if mode == "routed-io-rejected-route":
+            return bytes.fromhex("D2 00 01 01 11 03")
+        if mode == "routed-io-large":
+            return bytes.fromhex("81 00 08 00")
+        return bytes.fromhex("81 00 00 00") + b"".join(attrs)
+    assert mode == "routed-io-large"
+    assert message[:7] == bytes.fromhex("0E 03 20 01 24 01 30") and len(message) == 8
+    attribute = message[7]
+    assert 1 <= attribute <= 7
+    requested.append(attribute)
+    return bytes.fromhex("8E 00 00 00") + attrs[attribute]
+
+
 def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     stop = threading.Event()
     io = None
@@ -213,10 +237,15 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     value_base = (adapter_index % 1000) * 100_000
     report.update(serial_number=serial_number, value_base=value_base)
     path = bytes.fromhex("20 04 24 01 2C 64 2C 65" if owner else "20 04 24 01 2C FE 2C 65")
-    if mode == "large-keyed":
+    keyed = mode in ("large-keyed", "routed-io-large")
+    if keyed:
         path = bytes.fromhex("34 04 01 00 0C 00 01 00 01 00") + path
-    name = b"Loopback Adapter"
-    attrs = [b"", struct.pack("<H", 1 if mode == "large-keyed" else 0),
+    route = b""
+    if mode.startswith("routed-io"):
+        route = b"\x01\x02\x12\x09127.0.0.3\x00\x01\x00" if keyed else b"\x01\x03"
+    path = route + path
+    name = b"Loopback Routed Target" if route else b"Loopback Adapter"
+    attrs = [b"", struct.pack("<H", 1 if keyed else 0),
              struct.pack("<H", 12), struct.pack("<H", 1), b"\x01\x00",
              struct.pack("<H", 0x0060), struct.pack("<I", serial_number),
              bytes([len(name)]) + name]
@@ -238,6 +267,12 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                 items = rr_items(request)
                 cip = items[0xB2]
                 service, words = cip[:2]
+                if route and service == 0x52:
+                    assert set(items) == {0, 0xB2} and not items[0]
+                    result = routed_identity_reply(cip, attrs, route, mode, report)
+                    response = rr_reply(result)
+                    tcp.sendall(struct.pack("<HHII8sI", cmd, len(response), SESSION, 0, ctx, 0) + response)
+                    continue
                 if mode == "routed":
                     assert set(items) == {0, 0xB2} and not items[0]
                     response = rr_reply(routed_reply(cip, attrs, report))
@@ -261,12 +296,16 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                 assert (words, cls, inst, instance) == (2, 0x20, 0x24, 1)
                 body = cip[6:]
                 if service == 1 and object_class == 1:
+                    assert not route, "Read the routed target identity before opening I/O"
                     response = rr_reply(bytes.fromhex("81 00 08 00") if mode == "explicit"
                                         else b"\x81\0\0\0" + b"".join(attrs))
                 elif service in (0x54, 0x5B) and object_class == 6:
                     assert io is None
+                    if route:
+                        report["open_path_hex"] = path.hex()
+                        assert report["routed_identity_attributes"] == (["all", *range(1, 8)] if keyed else ["all"])
                     _, to, serial, vendor, origin = struct.unpack_from("<IIHHI", body, 2)
-                    if mode in ("large-keyed", "large-variable-input", "large-variable-output"):
+                    if keyed or mode in ("large-variable-input", "large-variable-output"):
                         assert service == 0x5B
                         ot_rpi, ot_params, to_rpi, to_params, transport, path_words = struct.unpack_from(
                             "<IIIIBB", body, 22
@@ -275,6 +314,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                             "large-variable-input": 0x4600025E,
                             "large-variable-output": 0x4400000A,
                             "large-keyed": 0x4400025A,
+                            "routed-io-large": 0x4400025A,
                         }[mode]
                         expected_output = 0x4600025A if mode == "large-variable-output" else 0x44000002
                         assert ot_params == expected_output and to_params == expected_input
@@ -308,7 +348,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                         reply = struct.pack("<IIHHIIIBB", OT_ID, to, serial, vendor, origin,
                                             ot_api, to_api, 0, 0)
                         adapter_port = udp.getsockname()[1]
-                        extras = [(0x8000, sockaddr(adapter_ip, adapter_port))]
+                        output_ip = "127.0.0.3" if mode == "routed-io-unexpected-peer" else adapter_ip
+                        extras = [(0x8000, sockaddr(output_ip, adapter_port))]
                         group = None
                         if multicast:
                             # Supply a different T->O ID to model an existing producer.
@@ -328,7 +369,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                         }
                         if mode == "delayed-start":
                             time.sleep(0.05)
-                        if not multicast or mode == "multicast":
+                        if (not multicast or mode == "multicast") and mode != "routed-io-unexpected-peer":
                             if multicast:
                                 # The fixture never emits multicast beyond localhost.
                                 source.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
@@ -345,6 +386,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                     assert struct.unpack_from("<HHI", body, 2) == (serial, vendor, origin)
                     assert body[12:] == path
                     report["forward_close"] = True
+                    if route:
+                        report["close_path_hex"] = body[12:].hex()
                     stop.set()
                     if mode == "close-eof":
                         break
@@ -379,6 +422,7 @@ def main():
         "slow-input", "pause-different-api",
         "identity-then-owner",
         "explicit", "large-keyed", "routed", "variable-input", "large-variable-input",
+        "routed-io", "routed-io-large", "routed-io-rejected-route", "routed-io-unexpected-peer",
         "variable-output", "large-variable-output",
         "multicast", "multicast-missing", "multicast-unicast",
         "delayed-start", "split-udp",

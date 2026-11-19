@@ -1,4 +1,4 @@
-"""Check ListIdentity, explicit reads and keyed Large Forward_Open on loopback."""
+"""Check discovery, explicit reads, and direct and routed Class 1 I/O on loopback."""
 
 import argparse
 import csv
@@ -13,6 +13,83 @@ from loopback_adapter import sockaddr
 from test_cli import NO_WINDOW, PROFILE, with_adapter
 
 LOCAL = "127.0.0.1"
+
+
+def check_routed_input(exe, root, source):
+    bridge = "127.0.0.2"
+    bridge_args = ("--address", bridge)
+    serial = 0x12345679
+    standard = root / "routed-input.toml"
+    large = root / "routed-large-input.toml"
+    setup = source.replace('device_ip = "127.0.0.1"', f'device_ip = "{bridge}"').replace("= 1000", "= 8000")
+    standard.write_text('io_route = "1/3"\n' + setup, encoding="utf-8")
+    multi_hop = "1/2/2/127.0.0.3/1/0"
+    large.write_text(f'io_route = "{multi_hop}"\nlarge_forward_open = true\n'
+                     + setup.replace("input_size = 4", "input_size = 600").replace("offset = 0", "offset = 596")
+                     + "\n[electronic_key]\nvendor = 1\ndevice_type = 12\nproduct = 1\nmajor = 1\nminor = 0\n",
+                     encoding="utf-8")
+    identity, peer = with_adapter(root, "routed-identity", [exe, "identity", bridge, LOCAL, "--route", "1/3"],
+                                  "routed-io", fixture_args=bridge_args)
+    identity = tomllib.loads(identity.stdout)
+    assert identity["io_route"] == "1/3" and identity["identity"]["serial"] == serial
+    assert identity["identity"]["name"] == "Loopback Routed Target"
+    assert peer["routed_identity_attributes"] == ["all"] and "open_path_hex" not in peer
+
+    common_path = "200424012cfe2c65"
+    for mode, profile, route, expected_path, vendor in (
+        ("routed-io", standard, "1/3", "0103" + common_path, 0),
+        ("routed-io-large", large, multi_hop, (b"\x01\x02\x12\x09127.0.0.3\x00\x01\x00".hex()
+                                               + "340401000c0001000100" + common_path), 1),
+    ):
+        output = root / mode
+        result, peer = with_adapter(root, mode, [exe, "capture", profile, output, "1", f"{vendor}:12:1:{serial}"],
+                                    mode, fixture_args=bridge_args)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        capture = tomllib.loads(result.stdout)
+        assert capture["io_route"] == route and capture["identity"]["serial"] == serial
+        assert capture["duration_reached"] and capture["forward_close"] == {"outcome": "confirmed"}
+        assert capture["actual_ot_us"] == capture["actual_to_us"] == 8000
+        assert capture["sequence_gaps"] == capture["buffer_overruns"] == peer["ot_invalid"] == 0
+        assert capture["cyclic_io"]["output_destination"].startswith(bridge + ":")
+        assert capture["cyclic_io"]["first_input_source"].startswith(bridge + ":")
+        assert peer["open_path_hex"] == peer["close_path_hex"] == expected_path
+        csv_path, = output.glob("*.csv")
+        with csv_path.open(newline="", encoding="utf-8") as stream:
+            values = [int(row["value"]) for row in csv.DictReader(stream)]
+        assert len(values) == capture["written"] > 0
+        if vendor == 1:
+            assert set(values) == {0xA1B2C3D4}
+        else:
+            assert values[0] == peer["value_base"] and values[-1] > values[0]
+        print(f"{mode}: {len(values)} samples at 8 ms, matching open and close paths, no sequence gaps")
+
+    for case, mode, expected, message in (
+        ("routed-replacement", "routed-io", f"0:12:1:{serial + 1}", "Identity mismatch"),
+        ("routed-no-target", "routed-io-rejected-route", f"0:12:1:{serial}", "CIP router rejected"),
+        ("routed-unexpected-peer", "routed-io-unexpected-peer", f"0:12:1:{serial}", "configured cyclic peer"),
+    ):
+        failed, peer = with_adapter(root, case, [exe, "capture", standard, root / case, "1", expected],
+                                    mode, fixture_args=bridge_args)
+        assert failed.returncode == 1
+        report = tomllib.loads(failed.stdout)
+        assert report["sent"] == report["written"] == 0 and "cyclic_io" not in report
+        if mode == "routed-io-unexpected-peer":
+            assert report["forward_close"] == {"outcome": "confirmed"}
+            assert message in report["network_error"] and peer["forward_close"]
+        else:
+            assert message in report["identity_error"]
+            assert "open_path_hex" not in peer and not peer["forward_close"]
+
+    for name, invalid in (
+        ("invalid-route", standard.read_text(encoding="utf-8").replace("1/3", "1/")),
+        ("routed-multicast", "input_multicast = true\n" + standard.read_text(encoding="utf-8")),
+        ("routed-owner", standard.read_text(encoding="utf-8").replace("input_only = true", "input_only = false")),
+    ):
+        profile = root / f"{name}.toml"
+        profile.write_text(invalid, encoding="utf-8")
+        result = subprocess.run([exe, "validate", profile], capture_output=True, text=True, timeout=4,
+                                creationflags=NO_WINDOW)
+        assert result.returncode == 1 and not tomllib.loads(result.stdout)["connection_valid"]
 
 
 def discover(exe):
@@ -155,6 +232,7 @@ def main():
     assert len(rows) == result["written"] > 0
     assert all(int(row["value"]) == 0xA1B2C3D4 for row in rows)
     print(f"Discovery, direct and routed CIP reads, identity fallback and keyed Large Forward_Open passed ({len(rows)} CSV rows).")
+    check_routed_input(exe, root, source)
 
 
 if __name__ == "__main__":

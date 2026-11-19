@@ -667,6 +667,7 @@ fn named_profile_loads_preferences_and_requires_confirmation_to_replace() {
     let mut app = Device::new(1, None);
     app.toml_path = path.display().to_string();
     app.device = "127.0.0.2".into();
+    app.settings.io_route = "1/2/2/127.0.0.3/1/0".into();
     app.preferences.capacity = 200;
     app.preferences
         .cip_reads
@@ -695,6 +696,7 @@ fn named_profile_loads_preferences_and_requires_confirmation_to_replace() {
     app.load_profile();
     assert!(app.error.is_none());
     assert_eq!(app.device, "127.0.0.2");
+    assert_eq!(app.settings.io_route, "1/2/2/127.0.0.3/1/0");
     assert_eq!(app.preferences.capacity, 800);
     assert_eq!(app.preferences.rotate_bytes, 4_096);
     assert_eq!(app.preferences.cip_reads.len(), 1);
