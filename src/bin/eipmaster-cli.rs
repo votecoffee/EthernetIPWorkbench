@@ -6,9 +6,9 @@ use assembly_scanner::{
     model::{ConnectionTimeout, Settings, parse_hex},
     preflight,
     scanner::{
-        CloseOutcome, Connection, CyclicIo, ExpectedIdentity as ScannerIdentity, Identity,
-        IdentityKey, IdentityPin, ReceiveTimeout, Reconnect, Schedule, SendTiming, Spacing,
-        StartupTiming, Status, read_identity,
+        CloseOutcome, CyclicIo, Diagnostics, ExpectedIdentity as ScannerIdentity, Identity,
+        IdentityKey, IdentityPin, InputRunOptions, ReceiveTimeout, Schedule, SendTiming, Spacing,
+        StartupTiming, Status, read_identity, run_input,
     },
     settings_file::{self, Preferences},
 };
@@ -21,14 +21,15 @@ use std::{
     path::{Path, PathBuf},
     process::ExitCode,
     sync::atomic::Ordering::Relaxed,
-    thread,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 #[path = "eipmaster-cli/interrupt.rs"]
 mod interrupt;
 #[path = "eipmaster-cli/qualification.rs"]
 mod qualification;
+#[path = "eipmaster-cli/serve.rs"]
+mod serve;
 
 const USAGE: &str = "\
 Usage:
@@ -40,21 +41,23 @@ Usage:
   eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
   eipmaster-cli read-saved <settings.toml> <name>
   eipmaster-cli capture <settings.toml> <new-output-dir> <seconds> <vendor:type:product[:serial]>
+  eipmaster-cli serve <settings.toml> <vendor:type:product[:serial]> [<seconds>]
   eipmaster-cli qualify <settings.toml> <new-output-dir> <direct|switched|loopback> <vendor:type:product:serial> [<loopback-seconds>]
 
-Capture requires a read-only heartbeat profile (input-only or listen-only). The scheduler defaults to deadline.
+Capture and serve require a read-only heartbeat profile (input-only or listen-only). The scheduler defaults to deadline.
+Serve runs the enabled software feeds without CSV until a console stop or an optional wall-clock duration limit.
 [app].auto_reconnect opts in to input-only recovery. Listen-only sessions use manual reconnect.
 The expected Identity Object values are decimal and checked before Forward_Open.
 Capture seconds must be an integer from 1 to 3600.
 Qualification runs 15 seconds at 8 ms and three 60-second trials at 1 ms.
 Only loopback qualification accepts a duration override from 1 to 60 seconds.
-On Windows, Ctrl+C or Ctrl+Break stops capture and flushes the CSV.";
+On Windows, Ctrl+C or Ctrl+Break closes I/O and flushes pending capture samples.";
 
 fn main() -> ExitCode {
     let args = env::args_os().skip(1).collect::<Vec<_>>();
     if args
         .first()
-        .is_some_and(|arg| arg == "capture" || arg == "qualify")
+        .is_some_and(|arg| arg == "capture" || arg == "qualify" || arg == "serve")
         && let Err(error) = interrupt::install()
     {
         eprintln!("Console stop handler unavailable: {error}");
@@ -259,6 +262,11 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                 seconds,
             )
         }
+        [command, profile, expected, seconds @ ..] if command == "serve" => serve::run(
+            Path::new(profile),
+            parse_expected_identity(&expected.to_string_lossy())?,
+            seconds,
+        ),
         [] => {
             println!("{USAGE}");
             Ok(true)
@@ -319,6 +327,18 @@ fn print_read(
 struct ExpectedIdentity {
     key: IdentityKey,
     serial: Option<u32>,
+}
+
+impl From<ExpectedIdentity> for ScannerIdentity {
+    fn from(expected: ExpectedIdentity) -> Self {
+        match expected.serial {
+            Some(serial) => Self::Device(IdentityPin {
+                key: expected.key,
+                serial,
+            }),
+            None => Self::Model(expected.key),
+        }
+    }
 }
 
 fn parse_expected_identity(value: &str) -> Result<ExpectedIdentity, String> {
@@ -476,31 +496,11 @@ struct AttemptReport {
     send_timing: SendTiming,
 }
 
-#[derive(Default)]
-struct Attempt {
-    status: Status,
-    sent: u64,
-    skipped: u64,
-    send_spacing: Spacing,
-    send_timing: SendTiming,
-}
-
-impl Attempt {
-    fn finish(connection: Connection) -> Self {
-        let result = connection.finish();
-        Self {
-            status: result.status,
-            sent: result.sent,
-            skipped: result.skipped,
-            send_spacing: result.send_spacing,
-            send_timing: result.send_timing,
-        }
-    }
-
-    fn report(&self, generation: usize, settings: &Settings) -> AttemptReport {
-        let status = &self.status;
+impl AttemptReport {
+    fn from_diagnostics(generation: usize, settings: &Settings, diagnostics: &Diagnostics) -> Self {
+        let status = &diagnostics.status;
         let (actual_ot_us, actual_to_us) = status.actual.unzip();
-        AttemptReport {
+        Self {
             generation,
             state: status.state,
             actual_ot_us,
@@ -515,21 +515,28 @@ impl Attempt {
             cip_error: status.cip_error.clone(),
             network_error: status.network_error.clone(),
             cyclic_io: status.cyclic_io,
-            startup_timing: status.startup_timing(self.send_timing),
+            startup_timing: status.startup_timing(diagnostics.send_timing),
             receive_spacing: status.spacing,
-            send_spacing: self.send_spacing,
-            send_timing: self.send_timing,
+            send_spacing: diagnostics.send_spacing,
+            send_timing: diagnostics.send_timing,
         }
     }
 }
 
-fn load_capture_profile(profile: &Path) -> Result<(Settings, Preferences), String> {
+fn load_input_profile(profile: &Path, command: &str) -> Result<(Settings, Preferences), String> {
     let (settings, preferences) = settings_file::load_profile(profile)?;
     let preferences = preferences.unwrap_or_default();
     settings.validate()?;
     if !settings.input_only_without_writes() {
-        return Err("Capture requires an input-only or listen-only heartbeat with zero configuration bytes and O->T Run/Idle disabled".into());
+        return Err(format!(
+            "{command} requires an input-only or listen-only heartbeat with zero configuration bytes and O->T Run/Idle disabled"
+        ));
     }
+    Ok((settings, preferences))
+}
+
+fn load_capture_profile(profile: &Path) -> Result<(Settings, Preferences), String> {
+    let (settings, preferences) = load_input_profile(profile, "Capture")?;
     settings.csv_fields()?;
     Ok((settings, preferences))
 }
@@ -560,99 +567,27 @@ fn capture(
     };
     let mut capture = Capture::start(&slot, options, settings).map_err(|e| e.to_string())?;
     let sink = capture.sink.clone();
-    let mut attempts = Vec::new();
     let auto_reconnect = preferences.auto_reconnect && settings.supports_auto_reconnect();
-    let mut reconnect = None;
-    let mut pin = expected.serial.map(|serial| IdentityPin {
-        key: expected.key,
-        serial,
-    });
     let mut duration_reached = false;
-    'capture: while !interrupt::requested() {
-        if sink.deadline().is_some_and(|end| Instant::now() >= end) {
-            duration_reached = true;
-            break;
-        }
-        let identity = pin.map_or(
-            ScannerIdentity::Model(expected.key),
-            ScannerIdentity::Device,
-        );
-        let connection = Connection::start_with_publisher(
-            settings.clone(),
-            slot.clone(),
-            attempts.len() as u64 + 1,
-            preferences.schedule,
-            false,
-            Some(identity),
-            integration.as_ref().map(Integration::publisher),
-        );
-        let connection = match connection {
-            Ok(connection) => connection,
-            Err(error) if !attempts.is_empty() => {
-                attempts.push(Attempt {
-                    status: Status {
-                        state: "Error",
-                        network_error: Some(error),
-                        ..Status::default()
-                    },
-                    ..Attempt::default()
-                });
-                break;
-            }
-            Err(error) => {
-                capture.stop(&slot);
-                return Err(error);
-            }
-        };
-        while !connection.finished() {
+    let attempts = run_input(
+        settings,
+        InputRunOptions {
+            expected: expected.into(),
+            schedule: preferences.schedule,
+            auto_reconnect,
+        },
+        &slot,
+        integration.as_ref().map(Integration::publisher),
+        || {
             if interrupt::requested() || capture.finished() {
-                connection.stop();
-                break;
+                return true;
             }
-            if sink.deadline().is_some_and(|end| Instant::now() >= end) {
-                duration_reached = true;
-                connection.stop();
-                break;
-            }
-            thread::sleep(Duration::from_millis(10));
-        }
-
-        let attempt = Attempt::finish(connection);
-        if auto_reconnect && attempts.is_empty() && attempt.status.identity_error.is_none() {
-            reconnect = attempt
-                .status
-                .identity
-                .as_ref()
-                .map(|id| Reconnect::new(id.pin()));
-        }
-        let retryable = attempt.status.retryable;
-        attempts.push(attempt);
-        if duration_reached || interrupt::requested() || capture.finished() || !retryable {
-            break;
-        }
-        let Some(reconnect) = reconnect.as_mut() else {
-            break;
-        };
-        if !reconnect.schedule(Instant::now()) {
-            break;
-        }
-        loop {
-            if interrupt::requested() || capture.finished() {
-                break 'capture;
-            }
-            let now = Instant::now();
-            if sink.deadline().is_some_and(|end| now >= end) {
-                duration_reached = true;
-                break 'capture;
-            }
-            if let Some(next) = reconnect.take_ready(now) {
-                pin = Some(next);
-                break;
-            }
-            thread::sleep(Duration::from_millis(10));
-        }
-    }
+            duration_reached |= sink.deadline().is_some_and(|end| Instant::now() >= end);
+            duration_reached
+        },
+    );
     capture.stop(&slot);
+    let attempts = attempts?;
     let last = attempts.last();
     let canceled = Status {
         state: "Canceled",
@@ -666,7 +601,7 @@ fn capture(
         .map(|run| &run.status);
     let (actual_ot_us, actual_to_us) = status.actual.unzip();
     let send_timing = last.map_or_else(SendTiming::default, |run| run.send_timing);
-    let sum = |field: fn(&Attempt) -> u64| attempts.iter().map(field).sum();
+    let sum = |field: fn(&Diagnostics) -> u64| attempts.iter().map(field).sum();
     let report = Report {
         integration: integration.as_ref().map(Integration::counters),
         state: status.state,
@@ -724,7 +659,7 @@ fn capture(
             attempts
                 .iter()
                 .enumerate()
-                .map(|(index, run)| run.report(index + 1, settings))
+                .map(|(index, run)| AttemptReport::from_diagnostics(index + 1, settings, run))
                 .collect()
         } else {
             Vec::new()

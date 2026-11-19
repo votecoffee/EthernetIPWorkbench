@@ -203,6 +203,18 @@ Shared-memory readers acquire the lock, copy and promptly release it. Discard an
 
 The implemented interfaces export telemetry. For C#, HTTP/shared memory or CLI process supervision can consume the scanner today. A C ABI for embedding the scanner is prospective work.
 
+### Run feeds headlessly
+
+Save an input-only or listen-only profile with at least one enabled `[app.integration]` feed. Use the verified decimal identity of the target. For a software adapter configured with the sample loopback identity, run:
+
+~~~powershell
+.\eipmaster-cli.exe serve .\feed-profile.toml "0:12:1:305419896"
+~~~
+
+The command runs until Ctrl+C, Ctrl+Break, or a terminal connection failure. An optional final duration in whole seconds starts at session startup and includes time spent opening and reconnecting. Use `auto_reconnect = true` under `[app]` for bounded, serial-pinned retries on controlling input-only profiles. No CSV writer or capture directory is created. The software feeds keep their usual fields and sample indexes.
+
+Check HTTP `/v1/status` or the configured consumer while it runs. At shutdown, `serve` prints a TOML report with requested RPIs, per-generation actual intervals and spacing, Forward_Close outcomes, and final export counters. An orderly console interrupt exits with code 130. A timed run exits zero after receiving input on its final generation and confirming the close. Terminal connection and teardown errors exit nonzero.
+
 ## Interpret timing and failures
 
 | Observation | Read it with |

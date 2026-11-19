@@ -425,6 +425,12 @@ One five-second headless pair requested and negotiated 1,000 µs in both directi
 
 The enabled run recorded zero integration queue drops. The client polled 221 HTTP batches and read shared memory 221 times. The MQTT fixture received 104 publications, including publications after its deliberate disconnect. The final API poll was 14 samples behind the completed connection. These figures measure one localhost pair. Physical-device timing and transport latency require separate measurement.
 
+## Headless feeds without CSV
+
+The Windows localhost fixture exercised `serve` with HTTP, MQTT, and shared memory all enabled at an 8 ms requested and negotiated interval in both directions. The five-second run accepted 467 input packets across a forced I/O timeout and a serial-pinned reconnect. HTTP history and the shared-memory reader kept their sample indexes across generations. MQTT resumed after a deliberate broker disconnect. The report counted zero export queue drops and separated the broker error from shared-memory lock misses. Both I/O generations confirmed Forward_Close. No CSV file or capture directory was created.
+
+A separate HTTP-only run lasted 12 seconds and accepted 1,501 packets with zero sequence gaps or export queue drops. Observed receive p99 was 8.69 ms and the longest gap was 10.68 ms. The windowless Windows console test also stopped an untimed `serve` with Ctrl+Break, confirmed Forward_Close and returned exit code 130. The CSV capture, deadline, writer failure and qualification interrupt regression checks passed with the shared session runner.
+
 ## Future-chat documentation and skill discovery
 
 The repository now routes future chats through AGENTS.md and the ethernetip-workbench skill to operational and development guides. The portable package includes these files and tools/install_skill.py. The installed local skill entry point points to the current source location.

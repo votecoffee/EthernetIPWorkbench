@@ -12,6 +12,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/settings_file.rs | Named profiles, workspace migration, preferences and file replacement |
 | src/explicit.rs and src/discovery.rs | Registered TCP exchange, identity, CIP reads and UDP ListIdentity |
 | src/scanner.rs and src/scanner/ | Session lifecycle, Forward_Open/Close, cyclic workers and diagnostics |
+| src/scanner/supervision.rs | Blocking read-only runner with identity-pinned reconnects |
 | src/deadline_wait.rs | Windows deadline wait resource |
 | src/capture.rs and src/capture/field_summary.rs | Bounded sample queue, CSV writer, rotation and summaries |
 | src/integration.rs | Common export queue/history, sample indexes, lifecycle and counters |
@@ -23,6 +24,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/gui/app.rs, src/gui/setup.rs and src/gui/explore.rs | Device list, setup, discovery and explicit reader UI |
 | src/gui/{mapping,monitor,outputs,logging,software,run_report}.rs | Focused workflow views and capture reporting |
 | src/bin/eipmaster-cli.rs | Headless commands and capture supervision |
+| src/bin/eipmaster-cli/serve.rs | Headless telemetry service and final receipt |
 | src/bin/eipmaster-cli/qualification.rs | Four-run qualification sequence |
 | src/bin/eipmaster-cli/interrupt.rs | Windows console stop handling |
 | tools/join_capture.py | CSV joining and report verification |
@@ -46,7 +48,7 @@ The CSV queue is preallocated and bounded. Samples retain sequence, monotonic ti
 
 The integration receive path copies into a bounded queue and wakes its dispatcher. Serialization, network I/O and mapped-memory access occur in export workers. History retention, queue drops, MQTT publish errors and shared-memory contention have separate meanings. Preserve the versioned JSON and EIPWB001 binary contracts when updating consumers.
 
-Connection::start_with_publisher accepts an optional integration Publisher. Integration owners keep the service alive across automatic reconnect and then shut down workers. The GUI and CLI each supervise their own sessions.
+Connection::start_with_publisher accepts an optional integration Publisher. The blocking scanner::run_input runner drives both CLI capture and serve, collects the final diagnostics for each connection generation, and calls the caller's stop predicate while receiving or waiting to retry. The CLI owns the writer and feed lifetimes. The GUI uses the per-connection methods from its event loop.
 
 Keep automatic reconnect restricted to verified input-only profiles. The retry identity includes serial. Output staging and write authorization belong to the existing GUI/application controls. Preserve the requested/actual/observed interval distinction and the separate Forward_Close result.
 
@@ -78,6 +80,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 | Multicast T→O, returned endpoints and failed setup cleanup | python tools/test_multicast.py target/release/eipmaster-cli.exe .local/multicast-check-01 |
 | Reconnect, concurrent capture and writer failure | python tools/test_recovery.py target/release/eipmaster-cli.exe .local/recovery-check-01 |
 | HTTP, MQTT and shared memory | python tools/test_integration.py target/release/eipmaster-cli.exe .local/integration-check-01 |
+| Headless feeds without CSV, including reconnect | python tools/test_integration.py target/release/eipmaster-cli.exe .local/serve-check-01 --serve |
 | Qualification supervisor | python tools/test_cli.py target/release/eipmaster-cli.exe .local/qualify-check-01 --qualification |
 | Real console signals on supported Windows | python tools/test_interrupt.py target/release/eipmaster-cli.exe .local/interrupt-check-01 |
 | Independent OpENer interoperability | python tools/test_opener.py target/release/eipmaster-cli.exe .local/opener-upstream .local/opener-check-01 |

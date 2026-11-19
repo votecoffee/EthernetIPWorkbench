@@ -12,6 +12,7 @@ import tomllib
 
 from join_capture import parts_for, rows
 from test_cli import PROFILE
+from test_integration import free_port, get
 from test_recovery import adapter, fixture_report
 
 CTRL_C = 0
@@ -126,6 +127,44 @@ def interrupted_capture(kernel, exe, root, profile, case, command, event, fixtur
           flush=True)
 
 
+def interrupted_serve(kernel, exe, root, profile_text):
+    directory = root / "serve-break"
+    directory.mkdir()
+    port = free_port()
+    profile = directory / "feed.toml"
+    profile.write_text(profile_text + f"\n[app.integration]\nhttp_port = {port}\n", encoding="utf-8")
+    with ExitStack() as stack:
+        fixture = adapter(stack, directory, "serve", "127.0.0.1", "normal")
+        with subprocess.Popen([exe, "serve", profile, "0:12:1"], cwd=directory, stdin=subprocess.DEVNULL,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as proc:
+            try:
+                deadline = time.monotonic() + 4
+                while True:
+                    assert proc.poll() is None and time.monotonic() < deadline
+                    try:
+                        status, body = get(port, "/v1/latest")
+                        if status == 200 and body["sample"]:
+                            break
+                    except OSError:
+                        pass
+                    time.sleep(0.02)
+                send_interrupt(kernel, proc, CTRL_BREAK)
+                stdout, stderr = proc.communicate(timeout=8)
+                assert proc.returncode == 130, (proc.returncode, stdout, stderr)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait(timeout=5)
+        assert fixture_report(fixture)["forward_close"]
+    report = tomllib.loads(stdout)
+    assert report["mode"] == "serve" and report["interrupted"] and not report["duration_reached"]
+    assert "duration_seconds" not in report and report["state"] == "Closed"
+    assert report["attempts"][0]["forward_close"] == {"outcome": "confirmed"}
+    assert report["accepted"] == report["integration"]["received"] > 0
+    assert not (directory / "captures").exists() and not list(directory.rglob("*.csv"))
+    print("serve-break: exit 130, Forward_Close received, no CSV", flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
@@ -154,6 +193,7 @@ def main():
         interrupted_capture(kernel, exe, root, profile, "capture-break", "capture", CTRL_BREAK)
         interrupted_capture(kernel, exe, root, profile, "qualification-ctrl-c", "qualify", CTRL_C)
         interrupted_capture(kernel, exe, root, recover, "retry-stop", "capture", CTRL_C, "stall")
+        interrupted_serve(kernel, exe, root, text)
     return 0
 
 

@@ -26,7 +26,7 @@ Use the profile and installed EDS supplied for the task. Ask for device identity
 - Use Explore or CLI discover, read and read-saved for approved discovery and read-only CIP inspection. For routed explicit reads, use the first bridge address and a documented port/link path. Use named TOML profiles to preserve saved requests. Use the development guide to reuse the Rust library without the GUI.
 - Use CLI identity for an authorized bounded hardware identity read. capture requires an input-only or listen-only heartbeat profile and an expected decimal identity. Include serial to pin a unit. qualify automates the baseline and three target runs for controlling input-only profiles.
 - Use GUI profiles for manual operation and authorized output staging. Start a headless fixture for testing rather than opening the desktop application during unattended work.
-- Attach software consumers to the existing connection. HTTP offers bounded history. MQTT and shared memory offer latest samples. They do not provide remote output control. C# can consume those interfaces or supervise the CLI. A native C ABI is still a proposed extension.
+- Attach software consumers to the existing connection. CLI serve starts one identity-checked read-only session with the configured feeds and no CSV writer. HTTP offers bounded history. MQTT and shared memory offer latest samples. They do not provide remote output control. C# can consume those interfaces or supervise the CLI. A native C ABI is still a proposed extension.
 
 ## Preserve meaning and authorization
 

@@ -313,6 +313,22 @@ impl Integration {
     pub fn counters(&self) -> Counters {
         counters(&self.feed)
     }
+
+    /// Close the feeds and return the counters after all workers exit.
+    pub fn shutdown(mut self) -> Counters {
+        self.stop();
+        self.counters()
+    }
+
+    fn stop(&mut self) {
+        self.feed.stop.store(true, Relaxed);
+        for worker in &self.workers {
+            worker.thread().unpark();
+        }
+        for worker in self.workers.drain(..) {
+            let _ = worker.join();
+        }
+    }
 }
 
 fn counters(feed: &Feed) -> Counters {
@@ -327,13 +343,7 @@ fn counters(feed: &Feed) -> Counters {
 
 impl Drop for Integration {
     fn drop(&mut self) {
-        self.feed.stop.store(true, Relaxed);
-        for worker in &self.workers {
-            worker.thread().unpark();
-        }
-        for worker in self.workers.drain(..) {
-            let _ = worker.join();
-        }
+        self.stop();
     }
 }
 

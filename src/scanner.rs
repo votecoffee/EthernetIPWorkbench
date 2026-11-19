@@ -29,6 +29,7 @@ pub(crate) fn protocol(message: impl Into<String>) -> EipError {
 
 pub use crate::explicit::{Identity, IdentityKey, IdentityPin};
 
+#[derive(Clone, Copy, Debug)]
 pub enum ExpectedIdentity {
     Model(IdentityKey),
     Device(IdentityPin),
@@ -100,11 +101,13 @@ impl Reconnect {
 pub use crate::explicit::read_identity;
 mod cyclic;
 mod diagnostics;
+mod supervision;
 mod udp;
 use cyclic::{produce, receive};
 #[cfg(test)]
 use diagnostics::Histogram;
 pub use diagnostics::*;
+pub use supervision::{InputRunOptions, run_input};
 
 struct InputTimes {
     origin: Instant,

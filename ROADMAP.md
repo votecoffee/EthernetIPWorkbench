@@ -24,7 +24,7 @@ The offline timing and profile work can proceed while the bench device is unavai
 
 The milestone requires concurrent loopback coverage and compatibility with existing single-device profiles. [Multiple-adapter milestone](https://github.com/votecoffee/EthernetIPWorkbench/milestone/2)
 
-Read-only software integration now offers a loopback HTTP API, MQTT publishing, and a Windows shared-memory snapshot. Run a physical bench comparison to quantify latency and loss with these feeds enabled.
+Read-only software integration offers a loopback HTTP API, MQTT publishing, and a Windows shared-memory snapshot. Headless `serve` runs the feeds without CSV and keeps them open across a bounded input-only reconnect. Run a physical bench comparison to quantify latency and loss with these feeds enabled.
 
 ## 0.4 Adapter compatibility
 

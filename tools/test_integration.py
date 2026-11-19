@@ -148,6 +148,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
     parser.add_argument("directory", type=Path)
+    parser.add_argument("--serve", action="store_true", help="Exercise the feed-only CLI")
     args = parser.parse_args()
     root = args.directory.resolve()
     root.mkdir(parents=True)
@@ -155,6 +156,14 @@ def main():
     name = f"test-{uuid4().hex}"
     profile = root / "profile.toml"
     source = PROFILE.read_text(encoding="utf-8").replace("rpi_us = 1000", "rpi_us = 8000")
+    cli = args.exe.resolve()
+    if args.serve:
+        source = "log_fields = []\n" + source
+        disabled = root / "no-feeds.toml"
+        disabled.write_text(source, encoding="utf-8")
+        result = subprocess.run([cli, "serve", disabled, "0:12:1", "1"], capture_output=True,
+                                encoding="utf-8", timeout=5, creationflags=NO_WINDOW)
+        assert result.returncode == 1 and "requires at least one" in result.stderr
     with socket.socket() as broker:
         broker.bind(("127.0.0.1", 0))
         broker.listen()
@@ -175,7 +184,7 @@ period_ms = 25
         invalid.write_text(profile.read_text(encoding="utf-8").replace("period_ms = 25", "period_ms = 0"),
                            encoding="utf-8")
         rejected = subprocess.run(
-            [args.exe.resolve(), "validate", invalid], capture_output=True, encoding="utf-8",
+            [cli, "validate", invalid], capture_output=True, encoding="utf-8",
             timeout=5, creationflags=NO_WINDOW,
         )
         assert rejected.returncode == 1 and "MQTT publish period" in rejected.stdout
@@ -187,10 +196,11 @@ period_ms = 25
         capture = None
         try:
             assert fixture.stdout.readline().strip() == "Ready on loopback"
-            capture = subprocess.Popen(
-                [args.exe.resolve(), "capture", profile, root / "capture", "5", "0:12:1:305419896"],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8", creationflags=NO_WINDOW,
-            )
+            expected = "0:12:1:305419896"
+            command = ([cli, "serve", profile, expected, "5"] if args.serve else
+                       [cli, "capture", profile, root / "capture", "5", expected])
+            capture = subprocess.Popen(command, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                       encoding="utf-8", creationflags=NO_WINDOW)
             deadline = time.monotonic() + 2
             while True:
                 try:
@@ -253,15 +263,27 @@ period_ms = 25
                     process.wait(timeout=5)
 
     report = tomllib.loads(stdout)
-    check_capture_window(report, list(rows(parts_for(Path(report["csv_prefix"])))))
     stats = report["integration"]
     assert stats["received"] == report["accepted"]
-    assert stats["queue_drops"] == report["buffer_overruns"] == 0
+    assert stats["queue_drops"] == 0
+    if args.serve:
+        (root / "serve.toml").write_text(stdout, encoding="utf-8")
+        assert report["mode"] == "serve" and report["state"] == "Closed" and report["duration_reached"]
+        assert report["identity"]["serial"] == 305419896
+        assert report["requested_ot_us"] == report["requested_to_us"] == 8000
+        assert [run["generation"] for run in report["attempts"]] == [1, 2]
+        assert all(run["forward_close"]["outcome"] == "confirmed" for run in report["attempts"])
+        assert report["attempts"][0]["state"] == "Timed out" and report["attempts"][1]["state"] == "Closed"
+        assert not (root / "captures").exists() and not list(root.rglob("*.csv"))
+        print(f"Served {report['accepted']} valid packets without a CSV writer. Export counters {stats}.")
+    else:
+        check_capture_window(report, list(rows(parts_for(Path(report["csv_prefix"])))))
+        assert report["buffer_overruns"] == 0
+        print(f"CSV wrote {report['written']} rows. Export counters {stats}.")
     assert stats["shared_memory_busy"] > 0 and stats["mqtt_errors"] > 0
     assert {message["generation"] for message in received} == {1, 2}
     assert all(message["stream_start_utc_us"] == before["stream_start_utc_us"] for message in received)
     print(f"HTTP and shared memory verified across reconnect. MQTT published {len(received)} samples.")
-    print(f"CSV wrote {report['written']} rows. Export counters {stats}.")
 
 
 if __name__ == "__main__":

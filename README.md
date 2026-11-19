@@ -239,7 +239,7 @@ To exercise a custom profile against a localhost fixture, pass its TOML file as 
 
 ### Connect other software
 
-Enable one or more read-only feeds in the **Integration** tab. The same settings work in a saved TOML profile used by CLI `capture`. Use a distinct HTTP port, MQTT topic, and shared-memory name for each device. Feeds start with the scanner session and keep their sample indexes across automatic reconnects. They close when the session ends. The scanner copies accepted input into a bounded queue. HTTP, MQTT, shared memory, and CSV processing run off the cyclic receive thread.
+Enable one or more read-only feeds in the **Integration** tab. The same settings work in a saved TOML profile used by CLI `capture` or `serve`. Use `serve` to run the feeds headlessly without creating CSV files. Use a distinct HTTP port, MQTT topic, and shared-memory name for each device. Feeds start with the scanner session and keep their sample indexes across automatic reconnects. They close when the session ends. The scanner copies accepted input into a bounded queue. HTTP, MQTT, shared memory, and CSV processing run off the cyclic receive thread. [Headless feed setup](docs/OPERATIONS.md#run-feeds-headlessly)
 
 ```toml
 [app.integration]
