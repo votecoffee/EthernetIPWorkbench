@@ -445,6 +445,10 @@ At an 8 ms requested and negotiated RPI, a separate fixture accepted the keyed L
 
 The release tests covered the eighth tab at the existing headless window sizes, named profile persistence for saved requests, and the five GUI backend fixture cases. The library and CLI checked successfully with the GUI feature disabled. All tests here used localhost. Physical interoperability and broadcast discovery on a bench NIC remain open.
 
+## Routed explicit reads
+
+The localhost bridge fixture checked the Unconnected Send wrapper, the embedded read request, and the port/link route bytes. It exercised a single backplane slot and a three-hop path with a padded IPv4 link. The CLI decoded the returned target payload, preserved separate numeric router and target rejections, rejected an empty success reply, and rejected invalid routes before connecting. The saved-read test reopened a routed TOML request and the headless GUI profile test verified route persistence. The same fixture suite also passed the direct read, discovery, and keyed Class 1 capture checks. Physical bridge validation remains open.
+
 ## Physical bench acceptance
 
 Physical-device measurements require a connected bench adapter and verified device settings. First verify the Identity Object and the intended profile, preferably input-only. Confirm output ownership and write permissions before using a profile that owns outputs, asserts Run or sends configuration bytes. Then run the Windows GUI and logger with the requested RPIs and record the Forward_Open actual intervals separately from socket spacing percentiles, longest gap, sequence gaps, timeouts, missed send slots and capture losses. Use a capture at the NIC or switch if wire-level timestamps are required.

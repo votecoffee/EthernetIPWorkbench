@@ -30,6 +30,7 @@ Read-only software integration now offers a loopback HTTP API, MQTT publishing, 
 
 - [Verify a second documented adapter family](https://github.com/votecoffee/EthernetIPWorkbench/issues/7). The [OpENer software adapter check](VERIFICATION.md#opener-compatibility) covers the upstream EDS, identity, assembly decoding, and sustained unicast input-only capture. Physical device acceptance remains separate.
 - Discovery, the direct CIP read browser, saved read requests, Large Forward_Open and exact mode electronic keys have localhost coverage. Verify them against documented physical adapters.
-- Add routed paths, multicast, listen-only and variable-size I/O as separate compatibility work. Pair each extension with fixture coverage and device-level evidence.
+- Routed explicit reads support backplane and IPv4 links in Explore, CLI and the Rust API. Verify them through a physical bridge.
+- Add routed cyclic paths, multicast, listen-only and variable-size I/O as separate compatibility work. Pair each extension with fixture coverage and device-level evidence.
 
 Device profiles, vendor files, and raw captures belong in the ignored `.local/` directory. [Adapter-compatibility milestone](https://github.com/votecoffee/EthernetIPWorkbench/milestone/3)

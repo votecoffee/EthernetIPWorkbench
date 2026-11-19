@@ -142,6 +142,36 @@ def udp_loop(udp, source, endpoint, connection, api, mode, value_base, stop, rep
     })
 
 
+def routed_reply(cip, attrs, report):
+    assert cip[:6] == bytes.fromhex("52 02 20 06 24 01")
+    priority_tick, ticks, length = struct.unpack_from("<BBH", cip, 6)
+    assert 0 < (1 << (priority_tick & 0xF)) * ticks < 2000
+    end = 10 + length
+    message = cip[10:end]
+    assert len(message) == length
+    if length % 2:
+        assert cip[end] == 0
+        end += 1
+    words, reserved = cip[end:end + 2]
+    route = cip[end + 2:]
+    assert reserved == 0 and len(route) == words * 2
+    report.update(route_hex=route.hex(), embedded_hex=message.hex())
+    if route == b"\x01\x07":
+        assert message == bytes.fromhex("0E 03 20 01 24 01 30 06")
+        return bytes.fromhex("D2 00 01 01 11 03")
+    if route == b"\x01\x05":
+        assert message == bytes.fromhex("0E 03 20 01 24 01 30 06")
+        return bytes.fromhex("D2 00 00 00")
+    if route == b"\x01\x02\x12\x0B192.0.2.100\x00\x01\x00":
+        assert message == bytes.fromhex("01 02 20 01 24 01")
+        return bytes.fromhex("81 00 00 00") + b"".join(attrs)
+    assert route == b"\x01\x03"
+    if message == bytes.fromhex("0E 03 20 01 24 01 30 7F"):
+        return bytes.fromhex("8E 00 14 01 02 03")
+    assert message == bytes.fromhex("0E 03 20 01 24 01 30 06")
+    return bytes.fromhex("8E 00 00 00") + attrs[6]
+
+
 def serve(tcp, udp, source, mode, report, serial_delta=0):
     stop = threading.Event()
     io = None
@@ -179,6 +209,11 @@ def serve(tcp, udp, source, mode, report, serial_delta=0):
                 items = rr_items(request)
                 cip = items[0xB2]
                 service, words = cip[:2]
+                if mode == "routed":
+                    assert set(items) == {0, 0xB2} and not items[0]
+                    response = rr_reply(routed_reply(cip, attrs, report))
+                    tcp.sendall(struct.pack("<HHII8sI", cmd, len(response), SESSION, 0, ctx, 0) + response)
+                    continue
                 if mode == "explicit" and service == 0x0e:
                     assert len(cip) == 2 + words * 2
                     path_bytes = cip[2:]
@@ -285,7 +320,7 @@ def main():
         "stall-close-reject", "qualify-close-reject",
         "slow-input", "pause-different-api",
         "identity-then-owner",
-        "explicit", "large-keyed",
+        "explicit", "large-keyed", "routed",
         "delayed-start", "split-udp",
     ))
     parser.add_argument("--address", type=IPv4Address, default=IPv4Address(IP))

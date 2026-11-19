@@ -1,7 +1,7 @@
 use super::*;
 use assembly_scanner::{
     discovery,
-    explicit::{self, ReadPath, Reader, SavedRead},
+    explicit::{self, ReadPath, Reader, Route, SavedRead},
 };
 
 const PRESETS: [(&str, u32, u32); 9] = [
@@ -26,6 +26,7 @@ pub(super) struct Explorer {
     class: String,
     instance: String,
     attribute: String,
+    route: String,
     name: String,
     read_result: Option<(String, Option<String>, Vec<u8>)>,
     discovered: Option<(Ipv4Addr, discovery::Report)>,
@@ -40,6 +41,7 @@ impl Default for Explorer {
             class: "0x01".into(),
             instance: "1".into(),
             attribute: "7".into(),
+            route: String::new(),
             name: String::new(),
             read_result: None,
             discovered: None,
@@ -83,7 +85,7 @@ impl Explorer {
         self.work = None;
     }
 
-    fn path(&self) -> Result<ReadPath, String> {
+    fn request(&self) -> Result<(ReadPath, Option<Route>), String> {
         let path = ReadPath {
             class: explicit::parse_id(&self.class)?,
             instance: explicit::parse_id(&self.instance)?,
@@ -94,7 +96,12 @@ impl Explorer {
             },
         };
         path.validate()?;
-        Ok(path)
+        let route = if self.route.trim().is_empty() {
+            None
+        } else {
+            Some(self.route.parse()?)
+        };
+        Ok((path, route))
     }
 
     fn load(&mut self, path: ReadPath) {
@@ -184,7 +191,7 @@ impl Device {
         }
         ui.separator();
         ui.heading("CIP object and attribute reads");
-        ui.label(format!("Adapter · {}", self.device));
+        ui.label(format!("Adapter or bridge · {}", self.device));
         egui::ComboBox::from_id_salt("cip-presets")
             .selected_text("Common attributes")
             .show_ui(ui, |ui| {
@@ -208,6 +215,14 @@ impl Device {
                 }
             });
         ui.horizontal_wrapped(|ui| {
+            ui.label("CIP route (optional)");
+            ui.add(
+                egui::TextEdit::singleline(&mut explorer.route)
+                    .desired_width(220.0)
+                    .hint_text("1/3 for backplane slot 3"),
+            );
+        });
+        ui.horizontal_wrapped(|ui| {
             for (label, field) in [
                 ("Class", &mut explorer.class),
                 ("Instance", &mut explorer.instance),
@@ -223,23 +238,31 @@ impl Device {
                 .clicked()
             {
                 explorer.read_result = None;
-                match (self.device.parse::<Ipv4Addr>(), &local, explorer.path()) {
-                    (Ok(adapter), Ok(nic), Ok(path)) => {
+                match (self.device.parse::<Ipv4Addr>(), &local, explorer.request()) {
+                    (Ok(adapter), Ok(nic), Ok((path, route))) => {
                         let nic = *nic;
                         explorer.start(move || {
+                            let target = route.as_ref().map_or_else(
+                                || adapter.to_string(),
+                                |route| format!("{adapter} via {route}"),
+                            );
                             let address = format!(
-                                "{adapter} · class 0x{:X} · instance 0x{:X} · attribute {}",
+                                "{target} · class 0x{:X} · instance 0x{:X} · attribute {}",
                                 path.class,
                                 path.instance,
                                 path.attribute
                                     .map_or("all".into(), |id| format!("0x{id:X}"))
                             );
-                            Reader::connect(adapter, nic)
-                                .and_then(|mut reader| reader.read(path))
-                                .map(|bytes| {
-                                    Response::Read(address.clone(), path.describe(&bytes), bytes)
-                                })
-                                .map_err(|error| format!("{address} · {error}"))
+                            let mut reader = Reader::connect(adapter, nic)
+                                .map_err(|error| format!("{address} · {error}"))?;
+                            let bytes = match &route {
+                                Some(route) => reader
+                                    .read_routed(path, route)
+                                    .map_err(|error| error.to_string()),
+                                None => reader.read(path).map_err(|error| error.to_string()),
+                            }
+                            .map_err(|error| format!("{address} · {error}"))?;
+                            Ok(Response::Read(address, path.describe(&bytes), bytes))
                         });
                     }
                     (_, _, Err(error)) => explorer.notice = Some(error),
@@ -252,11 +275,11 @@ impl Device {
             ui.label("Save as");
             ui.add(egui::TextEdit::singleline(&mut explorer.name).desired_width(160.0));
             if ui.button("Save / update read").clicked() {
-                match explorer.path() {
-                    Ok(path) => {
+                match explorer.request() {
+                    Ok((path, route)) => {
                         let name = explorer.name.trim().to_owned();
                         let mut reads = self.preferences.cip_reads.clone();
-                        let read = SavedRead { name, path };
+                        let read = SavedRead { name, path, route };
                         if let Some(prior) = reads.iter_mut().find(|prior| prior.name == read.name)
                         {
                             *prior = read;
@@ -283,6 +306,10 @@ impl Device {
                         if ui.button(&read.name).clicked() {
                             explorer.name.clone_from(&read.name);
                             explorer.load(read.path);
+                            explorer.route = read
+                                .route
+                                .as_ref()
+                                .map_or_else(String::new, Route::to_string);
                         }
                         if ui.small_button("Remove").clicked() {
                             remove = Some(index);

@@ -100,6 +100,41 @@ def main():
     assert json.loads(read)["data_hex"] == "78 56 34 12" and not peer["forward_close"]
     assert json.loads(read)["decoded"] == "0x12345678"
 
+    route_cmd = [exe, "read", LOCAL, LOCAL, "1", "1"]
+    routed, peer = run("routed-single", *route_cmd[1:], "6", "--route", "1/3", mode="routed")
+    document = json.loads(routed)
+    assert document["decoded"] == "0x12345678" and document["reply_from"] == "target"
+    assert document["route"] == "1/3" and document["bridge"] == LOCAL
+    assert peer["route_hex"] == "0103" and not peer["forward_close"]
+    routed, peer = run("routed-multi-hop", *route_cmd[1:], "all", "--route",
+                       "1/2/2/192.0.2.100/1/0", mode="routed")
+    assert bytes.fromhex(json.loads(routed)["data_hex"])[15:] == b"Loopback Adapter"
+    assert bytes.fromhex(peer["route_hex"]) == b"\x01\x02\x12\x0B192.0.2.100\x00\x01\x00"
+    for case, route, attr, layer, status, extended in (
+        ("route-rejected", "1/7", "6", "router", 1, 0x0311),
+        ("routed-target-rejected", "1/3", "0x7f", "target", 0x14, 0x0302),
+    ):
+        result, _ = with_adapter(root, case, [*route_cmd, attr, "--route", route], "routed")
+        assert result.returncode == 1, (result.stdout, result.stderr)
+        error = json.loads(result.stdout)
+        assert error["reply_from"] == layer and error["general_status"] == status
+        assert error["extended_status"] == [extended]
+    malformed, _ = with_adapter(root, "route-no-target", [*route_cmd, "6", "--route", "1/5"], "routed")
+    assert malformed.returncode == 1 and "omitted the target service" in malformed.stderr
+    for route in ("1", "1/999", "1/3/", "15/1", "2/239.0.0.1", "1/1/" * 8 + "1/1"):
+        result = subprocess.run([*route_cmd, "6", "--route", route], capture_output=True,
+                                text=True, timeout=4, creationflags=NO_WINDOW)
+        assert result.returncode == 1 and any(
+            text in result.stderr for text in ("CIP route", "CIP links", "CIP port")
+        ), (route, result.stdout, result.stderr)
+
+    routed_profile = root / "routed.toml"
+    saved_source = saved.read_text(encoding="utf-8")
+    routed_profile.write_text(saved_source.replace("[app.cip_reads.path]", 'route = "1/3"\n[app.cip_reads.path]'),
+                              encoding="utf-8")
+    routed, _ = run("routed-saved", "read-saved", routed_profile, "Serial number", mode="routed")
+    assert json.loads(routed)["route"] == "1/3" and json.loads(routed)["decoded"] == "0x12345678"
+
     profile = root / "keyed-large.toml"
     profile.write_text(
         ("large_forward_open = true\n" + source).replace("input_size = 4", "input_size = 600")
@@ -119,7 +154,7 @@ def main():
         rows = list(csv.DictReader(stream))
     assert len(rows) == result["written"] > 0
     assert all(int(row["value"]) == 0xA1B2C3D4 for row in rows)
-    print(f"Discovery, CIP reads, identity fallback and keyed Large Forward_Open passed ({len(rows)} CSV rows).")
+    print(f"Discovery, direct and routed CIP reads, identity fallback and keyed Large Forward_Open passed ({len(rows)} CSV rows).")
 
 
 if __name__ == "__main__":

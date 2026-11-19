@@ -46,7 +46,7 @@ Depend on the `assembly-scanner` library with `default-features = false` to omit
 
 - Load a profile with `settings_file::load_profile`. Call `Settings::input_mapping` for validated named fields, then `field.selection.decode(payload)` for a typed value. `Settings::preview_input` adds raw bytes, display values and CSV inclusion for inspections.
 - Start a readback with `Connection::start_input(settings, ExpectedIdentity::Device(pin))`. It creates a session without a recorder or exporter. Use `Connection::diagnostics()` for current status and raw input, requested and negotiated intervals, and send/receive measurements. `shutdown()` requests stop and returns the final diagnostics after Forward_Close. Dropping a handle requests stop. Use `shutdown()` when teardown must finish before continuing.
-- Use `discovery::discover(local, destination)` for ListIdentity. Use `explicit::Reader::connect(adapter, local)` and `reader.read(ReadPath { class, instance, attribute })` for direct explicit reads. CIP errors retain numeric status and extended words.
+- Use `discovery::discover(local, destination)` for ListIdentity. Use `explicit::Reader::connect(adapter, local)` and `reader.read(ReadPath { class, instance, attribute })` for direct explicit reads. Connect to the first bridge and use `reader.read_routed(path, &route)` for a routed read. Parse `Route` from the same port/link string accepted by Explore and CLI. Router and target rejections retain numeric status and extended words in separate error variants. The target reply retains its service code, which the reader checks before decoding. [ODVA CIP routing overview](https://www.odva.org/wp-content/uploads/2020/06/PUB00123R1_Common-Industrial_Protocol_and_Family_of_CIP_Networks.pdf#page=28)
 
 ## Build and choose checks
 
@@ -63,7 +63,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 | Change | Headless check |
 |---|---|
 | Profiles, mapping, CLI and capture | python tools/test_cli.py target/release/eipmaster-cli.exe .local/cli-check-01 |
-| Discovery, saved reads, identity fallback, keyed large I/O | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
+| Discovery, direct and routed reads, saved requests, identity fallback, keyed large I/O | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
 | Reconnect, concurrent capture and writer failure | python tools/test_recovery.py target/release/eipmaster-cli.exe .local/recovery-check-01 |
 | HTTP, MQTT and shared memory | python tools/test_integration.py target/release/eipmaster-cli.exe .local/integration-check-01 |
 | Qualification supervisor | python tools/test_cli.py target/release/eipmaster-cli.exe .local/qualify-check-01 --qualification |

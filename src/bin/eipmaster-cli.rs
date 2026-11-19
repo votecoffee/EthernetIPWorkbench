@@ -1,7 +1,7 @@
 use assembly_scanner::{
     capture::{Capture, FieldSummary, MAX_CAPTURE_SECONDS, Options, Slot},
     discovery, eds,
-    explicit::{self, ReadPath, Reader},
+    explicit::{self, ReadPath, Reader, Route, RoutedReadError},
     integration::{self, Integration},
     model::{ConnectionTimeout, Settings, parse_hex},
     preflight,
@@ -37,7 +37,7 @@ Usage:
   eipmaster-cli decode-input <settings.toml> \"<assembly hex bytes>\"
   eipmaster-cli identity <adapter-ipv4> <local-ipv4>
   eipmaster-cli discover <local-ipv4> [<destination-ipv4>]
-  eipmaster-cli read <adapter-ipv4> <local-ipv4> <class> <instance> <attribute|all>
+  eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
   eipmaster-cli read-saved <settings.toml> <name>
   eipmaster-cli capture <settings.toml> <new-output-dir> <seconds> <vendor:type:product[:serial]>
   eipmaster-cli qualify <settings.toml> <new-output-dir> <direct|switched|loopback> <vendor:type:product:serial> [<loopback-seconds>]
@@ -95,7 +95,20 @@ fn run(args: &[OsString]) -> Result<bool, String> {
             );
             Ok(true)
         }
-        [command, adapter, local, class, instance, attribute] if command == "read" => {
+        [
+            command,
+            adapter,
+            local,
+            class,
+            instance,
+            attribute,
+            options @ ..,
+        ] if command == "read" => {
+            let route: Option<Route> = match options {
+                [] => None,
+                [option, route] if option == "--route" => Some(route.to_string_lossy().parse()?),
+                _ => return Err(USAGE.into()),
+            };
             let adapter = adapter
                 .to_string_lossy()
                 .parse()
@@ -113,7 +126,7 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                     Some(explicit::parse_id(&attribute.to_string_lossy())?)
                 },
             };
-            print_read(adapter, local, path)
+            print_read(adapter, local, path, route.as_ref())
         }
         [command, profile, name] if command == "read-saved" => {
             let (settings, app) = settings_file::load_profile(Path::new(profile))?;
@@ -122,7 +135,12 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                 .iter()
                 .find(|read| read.name == name.to_string_lossy())
                 .ok_or_else(|| format!("No saved CIP read named {:?}", name))?;
-            print_read(settings.device_ip, settings.local_ip, read.path)
+            print_read(
+                settings.device_ip,
+                settings.local_ip,
+                read.path,
+                read.route.as_ref(),
+            )
         }
         [command, path] if command == "eds" => {
             let result = EdsReport {
@@ -247,18 +265,39 @@ fn print_read(
     adapter: std::net::Ipv4Addr,
     local: std::net::Ipv4Addr,
     path: ReadPath,
+    route: Option<&Route>,
 ) -> Result<bool, String> {
     path.validate()?;
-    let result = Reader::connect(adapter, local).and_then(|mut reader| reader.read(path));
-    let report = match &result {
+    let mut reader = Reader::connect(adapter, local).map_err(|error| error.to_string())?;
+    let result = match route {
+        Some(route) => reader.read_routed(path, route),
+        None => reader.read(path).map_err(|error| match error {
+            error @ explicit::EipError::Cip { .. } => RoutedReadError::Target(error),
+            error => RoutedReadError::Exchange(error),
+        }),
+    };
+    let mut report = match &result {
         Ok(bytes) => {
             serde_json::json!({"path": path, "data_hex": assembly_scanner::model::hex(bytes), "bytes": bytes.len(), "decoded": path.describe(bytes)})
         }
-        Err(explicit::EipError::Cip { status, ext }) => {
+        Err(
+            RoutedReadError::Router(explicit::EipError::Cip { status, ext })
+            | RoutedReadError::Target(explicit::EipError::Cip { status, ext }),
+        ) => {
             serde_json::json!({"path": path, "general_status": status, "extended_status": ext})
         }
         Err(error) => return Err(error.to_string()),
     };
+    if let Some(route) = route {
+        report["bridge"] = serde_json::json!(adapter);
+        report["route"] = serde_json::json!(route);
+        report["reply_from"] =
+            serde_json::json!(if matches!(result, Err(RoutedReadError::Router(_))) {
+                "router"
+            } else {
+                "target"
+            });
+    }
     println!(
         "{}",
         serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?

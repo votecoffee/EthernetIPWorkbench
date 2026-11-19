@@ -596,6 +596,7 @@ fn named_profile_loads_preferences_and_requires_confirmation_to_replace() {
         .cip_reads
         .push(assembly_scanner::explicit::SavedRead {
             name: "Serial".into(),
+            route: Some("1/3".parse().unwrap()),
             path: assembly_scanner::explicit::ReadPath {
                 class: 1,
                 instance: 1,
@@ -623,6 +624,14 @@ fn named_profile_loads_preferences_and_requires_confirmation_to_replace() {
     assert_eq!(app.preferences.cip_reads.len(), 1);
     assert_eq!(app.preferences.cip_reads[0].name, "Serial");
     assert_eq!(app.preferences.cip_reads[0].path.attribute, Some(6));
+    assert_eq!(
+        app.preferences.cip_reads[0]
+            .route
+            .as_ref()
+            .unwrap()
+            .to_string(),
+        "1/3"
+    );
     fs::remove_file(path).unwrap();
     fs::remove_dir(directory).unwrap();
 }

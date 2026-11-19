@@ -22,18 +22,21 @@ Use Mappings for field definitions and CSV column selection, Outputs for staged 
 
 Set the NIC address in Device. In Explore, enter a unicast or broadcast destination and select Discover. The scan sends one ListIdentity request and waits up to 2.2 seconds. It deduplicates replies and shows the number of invalid datagrams. The CLI also includes each responder's advertised endpoint. Broadcast discovery depends on the NIC, local firewall and adapter. Use the responder's source IP and verify the Identity Object before connecting.
 
-Select a known attribute in the CIP browser or enter a documented class, instance and attribute. The browser uses Get_Attribute_Single or Get_Attributes_All over direct TCP. The manual paths support 8-, 16- and 32-bit IDs. Discovery and reads run independently of cyclic I/O and the CSV writer. The saved entry contains only a name and object path. It uses the device and NIC from the enclosing profile when executed.
+Select a known attribute in the CIP browser or enter a documented class, instance and attribute. The browser uses Get_Attribute_Single or Get_Attributes_All and supports 8-, 16- and 32-bit IDs. Discovery and reads run independently of cyclic I/O and the CSV writer.
+
+For a routed read, set the first bridge's IPv4 address in Device and enter its path in **CIP route (optional)**. A path is a sequence of decimal port/link pairs. Use up to eight hops, port numbers 1–14, and a link address in the form of a byte (0–255) or a unicast IPv4 address. For example, `1/2/2/192.0.2.100/1/0` crosses a backplane, an Ethernet link and a second backplane. Choose port and link values from your topology. The bridge must support CIP Unconnected Send. For a direct read, leave the route blank. The CLI takes the same syntax as `--route <port/link/...>` after the attribute. A routed report uses `reply_from = "router"` for a bridge rejection and `reply_from = "target"` for the destination reply, including a rejected attribute.
 
 ~~~toml
 [[app.cip_reads]]
 name = "Serial number"
+route = "1/3"
 [app.cip_reads.path]
 class = 1
 instance = 1
 attribute = 6
 ~~~
 
-Omit `attribute` for Get_Attributes_All. Add this table to a named profile, or use Save / update read in Explore and then save the profile. Run `eipmaster-cli read-saved <settings.toml> "Serial number"` against that profile.
+The saved read uses the device or bridge address and NIC of the enclosing profile. Omit `route` for a direct read and `attribute` for Get_Attributes_All. Add this table to a named profile, or use Save / update read in Explore and then save the profile. Run `eipmaster-cli read-saved <settings.toml> "Serial number"` against that profile. The route applies only to this explicit read. The Identity button and cyclic connection controls use the configured adapter IP directly.
 
 ## Start offline
 

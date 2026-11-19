@@ -71,15 +71,16 @@ Use **Profiles…** to load/save a named TOML setup. Use **Manage devices…** t
 
 Set the local NIC IPv4 address in **Device**, then open **Explore**. **Discover** sends one UDP ListIdentity request to the selected destination. Use the default broadcast or enter a known adapter address for a unicast probe. Select **Use adapter** to copy the responder's address into the current setup. Verify it with **Read identity** before opening cyclic I/O.
 
-For a direct explicit read, choose a common attribute or enter a class, instance and attribute as decimal or `0x` hex. Use instance zero for class attributes and enter `all` for Get_Attributes_All where the adapter implements it. The result shows raw bytes and decodes supported standard attributes. Save frequently used paths by name. Saved reads travel with the device's autosaved settings and exported TOML. Loading one fills the request form for review. **Read** runs it against the adapter shown on the page.
+For an explicit read, choose a common attribute or enter a class, instance and attribute as decimal or `0x` hex. Use instance zero for class attributes and enter `all` for Get_Attributes_All where the adapter implements it. For a routed read, set the first bridge's IP in **Device** and enter the port/link pairs in **Explore**, such as `1/3` for backplane slot 3. The result shows raw bytes and decodes supported standard attributes. Saved reads travel with the device's autosaved settings and exported TOML. Loading one fills the request form, including its route.
 
 ~~~powershell
 .\target\release\eipmaster-cli.exe discover 127.0.0.1 127.0.0.1
 .\target\release\eipmaster-cli.exe read 127.0.0.1 127.0.0.1 0x01 1 6
+.\target\release\eipmaster-cli.exe read 192.0.2.10 192.0.2.11 0x01 1 6 --route 1/3
 .\target\release\eipmaster-cli.exe read-saved .local\device.toml "Serial number"
 ~~~
 
-The commands return JSON. A CIP rejection returns its general and extended status words and a nonzero exit code. [Saved request format](docs/OPERATIONS.md#discover-and-read).
+The commands return JSON. A CIP rejection returns its general and extended status words and a nonzero exit code. Routed reports identify whether the reply came from the router or the target. [Saved request format](docs/OPERATIONS.md#discover-and-read).
 
 ### Save and restore settings
 
@@ -121,7 +122,7 @@ Open **Offline profile check** to review the effective assemblies, requested int
 
 For adapters requiring the large request format, enable **Use Large Forward_Open** under **Configuration and advanced timing**. It allows up to 1,400 assembly plus Run/Idle bytes per direction. Standard Forward_Open remains the default for saved profiles that omit this setting. The same section supports CIP electronic key format 4 with the compatibility bit clear. The adapter applies its key matching rules. The application identity pin additionally checks the unit serial number.
 
-The cyclic protocol scope is fixed-size Class 1 unicast with direct assembly paths. Routing, multicast, listen-only and variable-size I/O remain on the [roadmap](ROADMAP.md#04-adapter-compatibility). Keep device-specific presets, vendor files and raw captures in the Git-ignored `.local/` folder. The tracked [sample EDS](samples/loopback.eds) and [sample TOML](samples/loopback.toml) target the localhost fixture.
+The cyclic protocol scope is fixed-size Class 1 unicast with direct assembly paths. Routed cyclic I/O, multicast, listen-only and variable-size I/O remain on the [roadmap](ROADMAP.md#04-adapter-compatibility). Keep device-specific presets, vendor files and raw captures in the Git-ignored `.local/` folder. The tracked [sample EDS](samples/loopback.eds) and [sample TOML](samples/loopback.toml) target the localhost fixture.
 
 Set **CIP timeout code** in the GUI or `timeout_multiplier_code` in the TOML profile. Codes 0 through 7 represent factors of 4 through 512 in powers of two. Profiles that omit the setting use code 3 (32 times the interval). The app sends the code in Forward_Open and uses the returned input interval times that factor for its local receive watchdog. Before the first valid input, the scanner waits for the larger of two seconds and two returned input intervals. Preflight shows the watchdog calculated from the requested interval. Capture reports also show the local watchdog calculated from the interval the adapter returned.
 

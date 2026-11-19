@@ -1,4 +1,4 @@
-//! Direct EtherNet/IP explicit messaging and read-only CIP requests.
+//! EtherNet/IP explicit messaging and read-only CIP requests.
 use crate::{
     model::Settings,
     scanner::{le16, le32, protocol},
@@ -17,6 +17,8 @@ use std::{
     net::{Ipv4Addr, SocketAddr, TcpStream},
     time::{Duration, Instant},
 };
+mod route;
+pub use route::{Route, RoutedReadError};
 const TO_SOCKET: u16 = 0x8001;
 pub(crate) const PORT: u16 = 44818;
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -68,6 +70,8 @@ impl ReadPath {
 pub struct SavedRead {
     pub name: String,
     pub path: ReadPath,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route: Option<Route>,
 }
 
 pub fn validate_saved_reads(reads: &[SavedRead]) -> std::result::Result<(), String> {
@@ -89,7 +93,7 @@ pub fn validate_saved_reads(reads: &[SavedRead]) -> std::result::Result<(), Stri
     Ok(())
 }
 
-/// Registered explicit TCP session. Only direct CIP read operations are exposed.
+/// Registered explicit TCP session for direct or routed CIP reads.
 pub struct Reader(Option<Session>);
 
 impl Reader {
@@ -108,6 +112,32 @@ impl Reader {
         path.validate().map_err(protocol)?;
         let result = self.0.as_mut().ok_or(EipError::Closed)?.read(path);
         if matches!(&result, Err(error) if !matches!(error, EipError::Cip { .. })) {
+            self.0 = None;
+        }
+        result
+    }
+
+    /// Read through the bridge connected to this session. The route begins at
+    /// that bridge and its target reply is distinct from a routing rejection.
+    pub fn read_routed(
+        &mut self,
+        path: ReadPath,
+        route: &Route,
+    ) -> std::result::Result<Vec<u8>, RoutedReadError> {
+        path.validate()
+            .map_err(|error| RoutedReadError::Exchange(protocol(error)))?;
+        let message = read_message(path);
+        let result = (|| {
+            let reply = self
+                .0
+                .as_mut()
+                .ok_or(EipError::Closed)
+                .and_then(|session| session.unconnected(route.wrap(&message), None))
+                .map_err(RoutedReadError::Exchange)?;
+            let data = cip_data(&reply).map_err(RoutedReadError::Exchange)?;
+            RoutedReadError::from_reply(data, message[0])
+        })();
+        if matches!(&result, Err(RoutedReadError::Exchange(_))) {
             self.0 = None;
         }
         result
@@ -261,17 +291,10 @@ impl Session {
     }
 
     fn read(&mut self, address: ReadPath) -> Result<Vec<u8>> {
-        let mut path = Vec::with_capacity(18);
-        logical_segment(&mut path, 0x20, address.class);
-        logical_segment(&mut path, 0x24, address.instance);
-        let service = if let Some(attribute) = address.attribute {
-            logical_segment(&mut path, 0x30, attribute);
-            0x0e
-        } else {
-            0x01
-        };
-        self.cip_path(service, &path, &[], None)
-            .map(|(body, _)| body)
+        let request = read_message(address);
+        let service = request[0];
+        let reply = self.unconnected(request, None)?;
+        Ok(reply_body(cip_data(&reply)?, service)?.to_vec())
     }
 
     fn cip_path(
@@ -284,6 +307,12 @@ impl Session {
         let mut request = vec![service, (path.len() / 2) as u8];
         request.extend_from_slice(path);
         request.extend_from_slice(body);
+        let reply = self.unconnected(request, endpoint)?;
+        let body = reply_body(cip_data(&reply)?, service)?.to_vec();
+        Ok((body, reply))
+    }
+
+    fn unconnected(&mut self, request: Vec<u8>, endpoint: Option<SocketAddr>) -> Result<Envelope> {
         let mut items = vec![
             Item::null_address(),
             Item::new(item_type::UNCONNECTED_DATA, request),
@@ -292,22 +321,48 @@ impl Session {
             items.push(Item::new(TO_SOCKET, cpf::encode_sockaddr_in_v4(addr)?));
         }
         let (_, reply) = self.exchange(Command::SendRRData, &cpf::encode_envelope(0, 5, &items))?;
-        let envelope = Envelope::parse(&reply)?;
-        let item = envelope
-            .find(item_type::UNCONNECTED_DATA)
-            .ok_or_else(|| protocol("No CIP reply item"))?;
-        let header = ReplyHeader::parse(&item.data)?;
-        if item.data[0] != (service | 0x80) {
-            return Err(protocol("Unexpected CIP reply service"));
-        }
-        if header.general_status != 0 {
-            return Err(EipError::Cip {
-                status: header.general_status,
-                ext: header.extended_status,
-            });
-        }
-        Ok((item.data[header.body_offset..].to_vec(), envelope))
+        Envelope::parse(&reply)
     }
+}
+
+fn read_message(address: ReadPath) -> Vec<u8> {
+    let mut request = Vec::with_capacity(20);
+    request.extend([
+        if address.attribute.is_some() {
+            0x0e
+        } else {
+            0x01
+        },
+        0,
+    ]);
+    logical_segment(&mut request, 0x20, address.class);
+    logical_segment(&mut request, 0x24, address.instance);
+    if let Some(attribute) = address.attribute {
+        logical_segment(&mut request, 0x30, attribute);
+    }
+    request[1] = ((request.len() - 2) / 2) as u8;
+    request
+}
+
+fn cip_data(envelope: &Envelope) -> Result<&[u8]> {
+    envelope
+        .find(item_type::UNCONNECTED_DATA)
+        .map(|item| item.data.as_slice())
+        .ok_or_else(|| protocol("No CIP reply item"))
+}
+
+fn reply_body(data: &[u8], service: u8) -> Result<&[u8]> {
+    let header = ReplyHeader::parse(data)?;
+    if data[0] != (service | 0x80) {
+        return Err(protocol("Unexpected CIP reply service"));
+    }
+    if header.general_status != 0 {
+        return Err(EipError::Cip {
+            status: header.general_status,
+            ext: header.extended_status,
+        });
+    }
+    Ok(&data[header.body_offset..])
 }
 impl Drop for Session {
     fn drop(&mut self) {
