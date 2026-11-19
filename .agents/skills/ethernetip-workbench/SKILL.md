@@ -30,6 +30,7 @@ Use the profile and installed EDS supplied for the task. Ask for device identity
 - Use HTTP GET /v1/connection for live state, requested and negotiated intervals, packet timing and the preceding generation's timeout and close result.
 - Retry HTTP 503 or a closed request with backoff while the feed is running. Keep the last successful history cursor across reader retries.
 - Start a C# integration from the [.NET 8 feed reader](../../../examples/dotnet/README.md). It shows live generation and age checks for HTTP and shared memory, and a cursor for retained HTTP history.
+- Use the [.NET 8 MQTT reader](../../../examples/dotnet-mqtt/README.md) for exact-topic subscription, estimated freshness and broker reconnect.
 
 ## Preserve meaning and authorization
 

@@ -2,6 +2,8 @@
 
 This .NET 8 console example reads an existing EtherNet/IP Workbench input stream through loopback HTTP or Windows shared memory. Build with the .NET 8 SDK or a later SDK with the .NET 8 targeting pack. It uses the .NET base class library.
 
+For a broker-based client use the [C# MQTT feed reader](../dotnet-mqtt/README.md).
+
 ## Configure the scanner
 
 In the GUI enable HTTP or shared memory under **Integration** and open the verified input session. To run headlessly use an input-only profile with the same settings in its TOML file.

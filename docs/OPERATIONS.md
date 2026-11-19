@@ -204,6 +204,8 @@ Shared-memory readers acquire the lock, copy and promptly release it. Discard an
 
 For C#, use the .NET 8 example to read the latest sample over HTTP or Windows shared memory, or to catch up on retained HTTP history. CLI process supervision can also start and stop a scanner session. A C ABI for embedding the scanner is prospective work. [C# feed reader](../examples/dotnet/README.md)
 
+Use the separate .NET 8 example to subscribe to MQTT with a locked MQTTnet dependency. [C# MQTT feed reader](../examples/dotnet-mqtt/README.md)
+
 ### Inspect a live Class 1 connection
 
 ~~~powershell

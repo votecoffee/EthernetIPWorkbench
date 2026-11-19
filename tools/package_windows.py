@@ -27,6 +27,9 @@ ASSETS = (
     "tools/test_multicast.py", "tools/test_dotnet_consumer.py",
     "examples/dotnet/README.md", "examples/dotnet/FeedReader.csproj",
     "examples/dotnet/Program.cs", "examples/dotnet/SharedMemoryReader.cs",
+    "examples/dotnet/FeedSample.cs", "tools/test_dotnet_mqtt.py",
+    "examples/dotnet-mqtt/README.md", "examples/dotnet-mqtt/MqttFeedReader.csproj",
+    "examples/dotnet-mqtt/Program.cs", "examples/dotnet-mqtt/packages.lock.json",
 )
 NOTICE_FILE = re.compile(
     r"(^|[-_.])(licen[cs]e|copying|copyright|notice|ofl|ufl|unlicense)([-_.]|$)", re.I

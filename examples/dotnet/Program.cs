@@ -5,17 +5,6 @@ using System.Text.Json;
 
 namespace FeedReader;
 
-internal sealed record Sample(
-    long StreamStartUtcUs,
-    ulong SampleIndex,
-    ulong Generation,
-    ulong ElapsedUs,
-    uint PacketSequence,
-    ushort CipSequence,
-    ushort InputAssembly,
-    string PayloadHex,
-    Dictionary<string, string?>? Values);
-
 internal interface IFeedResponse
 {
     int SchemaVersion { get; }
@@ -36,11 +25,6 @@ internal sealed record HistoryBatch(
 
 internal static class Program
 {
-    private static readonly JsonSerializerOptions Json = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-    };
-
     public static async Task<int> Main(string[] args)
     {
         if (args.Length is < 2 or > 4 || args[0] is not ("http" or "memory" or "history") ||
@@ -100,8 +84,7 @@ internal static class Program
         using var http = transport == "http" ? OpenHttp(target) : null;
         var memory = http is null ? new SharedMemoryReader(target) : null;
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(20));
-        long? stream = null;
-        ulong previousIndex = 0;
+        var cursor = new LatestSampleCursor();
         var emitted = 0;
         Console.Error.WriteLine($"Waiting for {transport} input.");
         do
@@ -111,18 +94,9 @@ internal static class Program
             var sample = snapshot?.Sample;
             if (sample is null || snapshot!.ActiveGeneration == 0 ||
                 sample.Generation != snapshot.ActiveGeneration || snapshot.SampleAgeUs is not ulong ageUs ||
-                ageUs > maxAgeUs || sample.SampleIndex == 0)
+                ageUs > maxAgeUs || !cursor.TryAdvance(sample, out var skipped))
                 continue;
 
-            if (stream != sample.StreamStartUtcUs)
-            {
-                stream = sample.StreamStartUtcUs;
-                previousIndex = 0;
-            }
-            if (sample.SampleIndex <= previousIndex)
-                continue;
-
-            var skipped = previousIndex == 0 ? 0 : sample.SampleIndex - previousIndex - 1;
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 transport,
@@ -130,8 +104,7 @@ internal static class Program
                 snapshot.SampleAgeUs,
                 SkippedExportIndexes = skipped,
                 sample
-            }, Json));
-            previousIndex = sample.SampleIndex;
+            }, FeedJson.Options));
             if (sampleLimit is int limit && ++emitted == limit)
                 return 0;
         } while (await timer.WaitForNextTickAsync(cancellation));
@@ -186,7 +159,7 @@ internal static class Program
                     SkippedExportIndexes = skipped,
                     IndexesBeforeRetainedHistory = beforeHistory,
                     sample
-                }, Json));
+                }, FeedJson.Options));
                 cursor = sample.SampleIndex;
                 if (sampleLimit is int limit && ++emitted == limit)
                     return 0;
@@ -216,7 +189,7 @@ internal static class Program
             if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
                 return null;
             response.EnsureSuccessStatusCode();
-            var data = await response.Content.ReadFromJsonAsync<T>(Json, cancellation);
+            var data = await response.Content.ReadFromJsonAsync<T>(FeedJson.Options, cancellation);
             if (data?.SchemaVersion != 1)
                 throw new InvalidDataException("Expected EtherNet/IP Workbench HTTP schema version 1.");
             return data;

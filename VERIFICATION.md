@@ -453,6 +453,10 @@ At an 8 ms requested and negotiated interval, the Windows localhost test read 18
 
 A scripted HTTP test returned a full 64-sample page, a busy response, a moved retention boundary, and a new stream identity. The reader retried the same cursor after HTTP 503, reported indexes below the oldest retained sample separately from an in-window index gap, and requested index zero after the stream changed. It also emitted retained samples while the active generation was zero.
 
+## C# MQTT subscriber
+
+The .NET 8 MQTTnet subscriber connected to an independent localhost MQTT 3.1.1 broker fixture at QoS 0. The fixture forced the subscriber socket closed after three forwarded publishes. The subscriber reconnected and resubscribed. With `serve` running at 8 ms requested and negotiated in both directions, all 50 emitted samples matched the scanner's retained HTTP history across two Class 1 generations. The reader excluded injected retained, stale and unsupported-schema messages. The scanner recorded zero sequence gaps, export queue drops or MQTT publisher errors.
+
 ## Future-chat documentation and skill discovery
 
 The repository now routes future chats through AGENTS.md and the ethernetip-workbench skill to operational and development guides. The portable package includes these files and tools/install_skill.py. The installed local skill entry point points to the current source location.

@@ -77,9 +77,6 @@ internal sealed class SharedMemoryReader
         if (length > MaxPayloadBytes || startUs <= 0 || elapsedUs > (ulong)(long.MaxValue - startUs))
             throw new InvalidDataException("Invalid EIPWB001 payload size or timestamp.");
 
-        var sampleUs = startUs + (long)elapsedUs;
-        var nowUs = (DateTime.UtcNow.Ticks - DateTime.UnixEpoch.Ticks) / TimeSpan.TicksPerMicrosecond;
-        ulong? ageUs = nowUs >= sampleUs ? (ulong)(nowUs - sampleUs) : null;
         var sample = new Sample(
             startUs,
             index,
@@ -90,6 +87,6 @@ internal sealed class SharedMemoryReader
             BinaryPrimitives.ReadUInt16LittleEndian(bytes[54..]),
             Convert.ToHexString(bytes.Slice(HeaderBytes, length)),
             null);
-        return new Snapshot(active, ageUs, sample);
+        return new Snapshot(active, sample.EstimateAgeUs(), sample);
     }
 }

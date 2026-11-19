@@ -20,6 +20,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/integration/mqtt.rs | Latest-sample publisher and broker reconnect |
 | src/integration/shared_memory.rs | Windows mapping/mutex and binary snapshot |
 | examples/dotnet/ | .NET 8 HTTP and shared-memory consumer example |
+| examples/dotnet-mqtt/ | .NET 8 MQTT subscriber example and dependency lock |
 | src/gui.rs and src/gui/device.rs | GUI entry point and per-device lifecycle |
 | src/gui/workspace.rs | Tabs, persistent actions, review/profile windows and headless layout checks |
 | src/gui/app.rs, src/gui/setup.rs and src/gui/explore.rs | Device list, setup, discovery and explicit reader UI |
@@ -87,6 +88,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 | HTTP, MQTT and shared memory | python tools/test_integration.py target/release/eipmaster-cli.exe .local/integration-check-01 |
 | Headless feeds without CSV, including reconnect | python tools/test_integration.py target/release/eipmaster-cli.exe .local/serve-check-01 --serve |
 | C# HTTP latest and history, retention boundaries, and shared-memory consumer | Build the example and run tools/test_dotnet_consumer.py per the [example verification recipe](../examples/dotnet/README.md#verify-on-windows) |
+| C# MQTT subscriber and broker reconnect | Restore in locked mode and run tools/test_dotnet_mqtt.py per the [example verification recipe](../examples/dotnet-mqtt/README.md#verify-on-localhost) |
 | Qualification supervisor | python tools/test_cli.py target/release/eipmaster-cli.exe .local/qualify-check-01 --qualification |
 | Real console signals on supported Windows | python tools/test_interrupt.py target/release/eipmaster-cli.exe .local/interrupt-check-01 |
 | Independent OpENer interoperability | python tools/test_opener.py target/release/eipmaster-cli.exe .local/opener-upstream .local/opener-check-01 |

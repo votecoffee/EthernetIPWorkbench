@@ -4,3 +4,5 @@
 __pycache__/
 /examples/dotnet/bin/
 /examples/dotnet/obj/
+/examples/dotnet-mqtt/bin/
+/examples/dotnet-mqtt/obj/

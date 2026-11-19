@@ -279,6 +279,8 @@ Integration queue drops, MQTT errors, and shared-memory lock misses are counted 
 
 The .NET 8 C# example emits JSON lines from HTTP latest values, retained HTTP history, or Windows shared memory. The history mode advances by sample index and reports gaps at the retention boundary. The Windows bundle includes its source and localhost verification script. [C# feed reader](examples/dotnet/README.md)
 
+The C# MQTT example subscribes to the feed's exact topic, checks sample freshness, and resubscribes when the broker connection drops. [C# MQTT feed reader](examples/dotnet-mqtt/README.md)
+
 ### Run the headless bench sequence
 
 `qualify` uses an input-only profile and a verified decimal `vendor:type:product:serial`. It checks the identity in the same TCP session before every Forward_Open. It runs 15 seconds at 8 ms, followed by three 60-second captures at 1 ms. Each run sets both directional RPIs, records every valid packet, and uses a fresh connection. The source profile is preserved.
