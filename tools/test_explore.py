@@ -151,6 +151,23 @@ def main():
     eds_profile, = tomllib.loads(imported.stdout)["profiles"]
     assert eds_profile["supported"] and eds_profile["fields"]["Electronic key"] == "1:12:1 1.0"
     assert eds_profile["fields"]["Large Forward_Open"] == "Required by imported connection size"
+    assert "input_layout" not in eds_profile
+
+    typed_eds = root / "typed-input.eds"
+    typed_eds.write_text(
+        PROFILE.with_suffix(".eds").read_text(encoding="utf-8")
+        .replace("[Assembly]", 'Param2 = 0,,,0,0xC3,2,"Net weight";\n[Assembly]')
+        .replace("32,;", "16,,16,Param2;"),
+        encoding="utf-8",
+    )
+    imported = subprocess.run([exe, "eds", typed_eds], capture_output=True, text=True,
+                              timeout=5, creationflags=NO_WINDOW, check=True)
+    typed_profile, = tomllib.loads(imported.stdout)["profiles"]
+    layout = typed_profile["input_layout"]
+    assert layout["format"] == "Assem101" and layout["skipped_members"] == 0
+    assert layout["fields"] == [{
+        "name": "Net_weight", "selection": {"offset": 2, "kind": "I16", "big_endian": False},
+    }]
 
     def run(case, *command, mode="explicit"):
         result, peer = with_adapter(root, case, [exe, *command], mode)

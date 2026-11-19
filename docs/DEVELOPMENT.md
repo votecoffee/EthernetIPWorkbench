@@ -8,6 +8,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 |---|---|
 | src/model.rs and src/model/mapping.rs | Settings, mapping validation, typed endian/swap decoding and output staging |
 | src/eds.rs | Supported EDS connection profiles and provenance |
+| src/eds/assembly.rs | Optional raw input mapping candidates from explicit EDS assembly members |
 | src/preflight.rs | Effective configuration, EDS comparisons and offline validation |
 | src/settings_file.rs | Named profiles, workspace migration, preferences and file replacement |
 | src/explicit.rs and src/discovery.rs | Registered TCP exchange, identity, CIP reads and UDP ListIdentity |
@@ -81,7 +82,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 | Change | Headless check |
 |---|---|
 | Profiles, mapping, CLI and capture | python tools/test_cli.py target/release/eipmaster-cli.exe .local/cli-check-01 |
-| Discovery, direct and routed reads, saved requests, target identity, keyed and routed cyclic I/O | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
+| EDS input suggestions, discovery, direct and routed reads, saved requests, target identity, keyed and routed cyclic I/O | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
 | Variable-size T→O, EDS provenance, CSV and all three exports | python tools/test_variable_input.py target/release/eipmaster-cli.exe .local/variable-check-01 |
 | Multicast T→O, returned endpoints and failed setup cleanup | python tools/test_multicast.py target/release/eipmaster-cli.exe .local/multicast-check-01 |
 | Reconnect, concurrent capture and writer failure | python tools/test_recovery.py target/release/eipmaster-cli.exe .local/recovery-check-01 |

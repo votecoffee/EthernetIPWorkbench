@@ -30,6 +30,8 @@ The C# examples demonstrate HTTP and shared-memory latest values, retained HTTP 
 
 ## 0.4 Adapter compatibility
 
+- Suggest input mappings from explicit, fixed-width layouts in EDS connection profiles. The GUI can add reviewed suggestions without changing CSV selection. The CLI reports the raw mappings for reuse in saved settings.
+
 - [Verify a second documented adapter family](https://github.com/votecoffee/EthernetIPWorkbench/issues/7). The [OpENer software adapter check](VERIFICATION.md#opener-compatibility) covers the upstream EDS, identity, assembly decoding, and sustained unicast input-only capture. Physical device acceptance remains separate.
 - Discovery, the direct CIP read browser, saved read requests, Large Forward_Open and exact mode electronic keys have localhost coverage. Verify them against documented physical adapters.
 - Routed explicit reads support backplane and IPv4 links in Explore, CLI and the Rust API. Verify them through a physical bridge.

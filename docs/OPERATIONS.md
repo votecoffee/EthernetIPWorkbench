@@ -119,6 +119,10 @@ Configure the optional `[electronic_key]` table with decimal `vendor`, `device_t
 
 In the GUI, import the EDS, choose a connection profile, review provenance and edit overrides. Use Manual settings when entering the connection directly. Read identity and verify vendor, device type, product code and serial before connecting. A successful identity read pins the next manual connection to that unit. Changing the addresses or cyclic route, or loading a profile, clears the pin.
 
+For a connection that names a plain `AssemN` input format with an explicit payload width, **Mappings → EDS input mapping suggestions** previews supported byte-aligned numeric members referenced by `ParamN`. Padding and unsupported members with known widths still count toward later offsets. Strings, packed bits and vendor-specific formats require manual mappings. Adding suggestions preserves existing field definitions and CSV columns. If a primary readback was the only mapped value, it is retained as `value`. Use the CSV checkboxes to include new fields.
+
+The offline CLI `eds` report includes `input_layout` when it can resolve the layout. Each field has the same `name` and `selection` keys as a profile's `[[input_fields]]`. Review and copy the desired entries into a profile, then use `decode-input` with a known payload to check the values. The suggestions use raw little-endian values. Confirm engineering units and any needed endian or swap overrides against the device manual.
+
 For input-only logging the profile must have zero output and configuration sizes and O-to-T Run/Idle disabled. The adapter must support the selected heartbeat connection point. An input-only connection still sends periodic O-to-T heartbeats at the returned O-to-T interval.
 
 An owner connection can take output control and send the staged buffer immediately. Confirm device, ownership and specific output/configuration bytes against the current task authorization. Named output fields stage typed values into output_hex. Apply staged outputs changes the active cyclic buffer. Configuration bytes take effect during a new Forward_Open.

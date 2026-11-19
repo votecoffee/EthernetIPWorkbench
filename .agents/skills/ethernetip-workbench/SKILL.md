@@ -20,6 +20,8 @@ Find the actual checkout or bundle and the executable to run. Check Git state an
 
 Use the profile and installed EDS supplied for the task. Ask for device identity, NIC address, payload sizes or missing mappings only when the available files and context do not resolve them. An EDS assembly definition describes layout, which may exceed the payload currently configured on the hardware.
 
+Review **Mappings → EDS input mapping suggestions** or the CLI `eds` report's `input_layout` for raw typed members. Verify the proposed offsets, byte order and scaling with the device documentation. Adding suggestions in the GUI preserves the CSV columns until the operator selects the new fields.
+
 ## Choose the entry point
 
 - Run CLI eds, validate or decode-input for offline work. validate returns connection validity and capture validity separately. Inspect both.

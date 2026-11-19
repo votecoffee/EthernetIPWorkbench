@@ -161,6 +161,7 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                             supported: p.unsupported.is_empty(),
                             unsupported: p.unsupported,
                             assembly_definition_sizes,
+                            input_layout: p.input_layout,
                             fields: p.fields,
                         }
                     })
@@ -378,6 +379,8 @@ struct EdsProfile {
     supported: bool,
     unsupported: Vec<String>,
     assembly_definition_sizes: Vec<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input_layout: Option<eds::InputLayout>,
     fields: std::collections::BTreeMap<String, String>,
 }
 

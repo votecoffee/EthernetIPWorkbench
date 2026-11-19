@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
+mod assembly;
+pub use assembly::InputLayout;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Profile {
@@ -11,6 +14,8 @@ pub struct Profile {
     pub fields: BTreeMap<String, String>,
     pub settings: Settings,
     pub unsupported: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_layout: Option<InputLayout>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     assembly_definition_sizes: Vec<String>,
 }
@@ -229,6 +234,7 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
                 name,
                 fields: BTreeMap::new(),
                 unsupported: Vec::new(),
+                input_layout: None,
                 assembly_definition_sizes: Vec::new(),
                 settings: Settings {
                     input_instance: 0,
@@ -397,6 +403,17 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
             }
             if !origin.contains_key("O->T size") {
                 issues.push("Unresolved O->T size; verify it in manual mode".into());
+            }
+            if origin.contains_key("T->O assembly") && origin.contains_key("T->O size") {
+                let format = get(7).to_ascii_lowercase();
+                if format
+                    .strip_prefix("assem")
+                    .is_some_and(|n| n.parse::<u32>().is_ok())
+                    && let Some(definition) = entries.get(&("assembly".into(), format))
+                {
+                    p.input_layout =
+                        assembly::input_layout(get(7), definition, s.input_size, parameter);
+                }
             }
             if variable_output {
                 s.output_min_size = Some(s.output_size);

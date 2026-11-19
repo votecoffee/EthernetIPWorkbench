@@ -125,6 +125,7 @@ impl Device {
     pub(super) fn mappings(&mut self, ui: &mut Ui) {
         ui.label("Define the primary readback and named values. CSV checkboxes select which input values are logged.");
         ui.add_enabled_ui(!self.link_busy() && !self.capturing, |ui| {
+            let profile = self.selected.and_then(|i| self.profiles.get(i));
             let s = &mut self.settings;
             let minimum = s.input_min_size.unwrap_or(s.input_size);
             title(ui, "Assembly mappings");
@@ -141,6 +142,14 @@ impl Device {
                         ui.colored_label(RED, e);
                     }
                 });
+            if let Some(profile) = profile
+                && profile.settings.input_instance == s.input_instance
+                && let Some(layout) = &profile.input_layout
+            {
+                egui::CollapsingHeader::new("EDS input mapping suggestions").show(ui, |ui| {
+                    suggest_mappings(ui, layout, s, minimum);
+                });
+            }
             egui::CollapsingHeader::new("Named inputs and CSV selection")
                 .default_open(true)
                 .show(ui, |ui| {
@@ -227,6 +236,111 @@ impl Device {
             }
             ui.collapsing("Preview input payload", |ui| self.show_input_preview(ui));
         });
+    }
+}
+
+fn suggest_mappings(ui: &mut Ui, layout: &eds::InputLayout, settings: &mut Settings, minimum: u16) {
+    ui.small(format!(
+        "{} · Raw CIP values. Review names, scaling, and byte order against the device manual.",
+        layout.format
+    ));
+    if layout.skipped_members > 0 {
+        ui.small(format!(
+            "{} typed members need manual mapping.",
+            layout.skipped_members
+        ));
+    }
+    let primary = primary_mapping(settings, minimum);
+    let available = model::MAX_MAPPED_FIELDS
+        .saturating_sub(settings.capture_fields.len() + usize::from(primary.is_some()));
+    let candidates: Vec<_> = layout
+        .fields
+        .iter()
+        .filter(|field| {
+            field.selection.validate(usize::from(minimum)).is_ok()
+                && !settings
+                    .capture_fields
+                    .iter()
+                    .any(|current| current.name.eq_ignore_ascii_case(&field.name))
+        })
+        .take(available)
+        .cloned()
+        .collect();
+    if candidates.is_empty() {
+        ui.small("No additional suggestions fit the current input mapping.");
+        return;
+    }
+    egui::ScrollArea::vertical()
+        .max_height(160.0)
+        .show(ui, |ui| {
+            for field in &candidates {
+                ui.label(format!(
+                    "{} · byte {} · {:?}",
+                    field.name, field.selection.offset, field.selection.kind
+                ));
+            }
+        });
+    if ui
+        .button(format!("Add {} named inputs", candidates.len()))
+        .clicked()
+    {
+        append_suggestions(settings, primary, candidates);
+    }
+}
+
+fn primary_mapping(settings: &Settings, minimum: u16) -> Option<CaptureField> {
+    (settings.capture_fields.is_empty()
+        && settings.selection.validate(usize::from(minimum)).is_ok())
+    .then(|| CaptureField {
+        name: "value".into(),
+        selection: settings.selection,
+    })
+}
+
+fn append_suggestions(
+    settings: &mut Settings,
+    primary: Option<CaptureField>,
+    candidates: Vec<CaptureField>,
+) {
+    if settings.capture_fields.is_empty() && primary.is_none() {
+        // A primary readback that does not fit could not previously be logged.
+        settings.log_fields = Some(Vec::new());
+    }
+    settings.capture_fields.extend(primary);
+    // Preserve the previous CSV schema until the operator selects more columns.
+    settings.log_fields.get_or_insert_with(|| {
+        settings
+            .capture_fields
+            .iter()
+            .map(|field| field.name.clone())
+            .collect()
+    });
+    settings.capture_fields.extend(candidates);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn appending_eds_suggestions_preserves_the_current_csv_columns() {
+        let mut settings = Settings {
+            input_size: 8,
+            ..Settings::default()
+        };
+        let primary = primary_mapping(&settings, 8);
+        let logged = settings.csv_fields().unwrap();
+        let candidate = CaptureField {
+            name: "Net_weight".into(),
+            selection: Selection {
+                offset: 4,
+                kind: Kind::I16,
+                ..Selection::default()
+            },
+        };
+        append_suggestions(&mut settings, primary, vec![candidate.clone()]);
+        assert_eq!(settings.csv_fields().unwrap(), logged);
+        assert_eq!(settings.input_mapping().unwrap()[1], candidate);
     }
 }
 

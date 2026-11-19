@@ -144,7 +144,7 @@ Numeric fields can use little or big endian. **Swap bytes within words** exchang
 
 For outputs, define **Named output mappings** in Mappings, then open **Outputs → Stage typed output values**. Start with a full hex buffer or explicitly stage a zero-filled one. Enter a value and select **Stage**. The staged hex and typed readbacks show the same buffer. Connecting as owner sends that buffer immediately after connection. For an open output connection, authorize the staged bytes and select **Apply staged outputs**. Configuration data uses the separate hex field and takes effect on reconnect.
 
-The EDS importer resolves supported connection profiles. Define the application-level value map from the adapter's documentation or load a saved TOML profile. The [mapped loopback profile](samples/mapped-loopback.toml) shows the mapping syntax and selection.
+If the selected EDS profile declares a supported input layout, expand **Mappings → EDS input mapping suggestions** to review and add named inputs. The suggestions cover byte-aligned integer, bit-string and floating-point members with matching declared widths. They decode raw little-endian CIP values. Review names, engineering scaling and byte order against the device documentation. Select the new values explicitly for CSV logging. Define any remaining fields manually or load a saved TOML profile. The [mapped loopback profile](samples/mapped-loopback.toml) shows the mapping syntax and selection.
 
 ### Preview an input payload
 
@@ -197,7 +197,7 @@ The GUI report's `[[attempts]]` entries cover the full lifetime of each connecti
 
 ### CLI
 
-The console executable uses the same EDS importer, scanner and CSV writer as the GUI. `eds` lists imported profiles, resolved settings, assembly definition widths, and unsupported features offline. `validate` checks a TOML profile offline and optionally compares it to one EDS connection profile. It reports connection validity and capture configuration separately. `decode-input` previews mapped values from a supplied payload. `identity` binds to the local IPv4 address and reads the adapter's CIP Identity Object. `capture` checks the expected decimal vendor, device type and product code in the same session before Forward_Open. Use a verified input-only TOML profile with zero output and configuration bytes. The new capture directory's parent must already exist.
+The console executable uses the same EDS importer, scanner and CSV writer as the GUI. `eds` lists imported profiles, resolved settings, assembly definition widths, supported input mapping suggestions, and unsupported features offline. `validate` checks a TOML profile offline and optionally compares it to one EDS connection profile. It reports connection validity and capture configuration separately. `decode-input` previews mapped values from a supplied payload. `identity` binds to the local IPv4 address and reads the adapter's CIP Identity Object. `capture` checks the expected decimal vendor, device type and product code in the same session before Forward_Open. Use a verified input-only TOML profile with zero output and configuration bytes. The new capture directory's parent must already exist.
 
 ```powershell
 .\target\release\eipmaster-cli.exe eds samples\loopback.eds

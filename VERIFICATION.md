@@ -408,6 +408,12 @@ The headless CLI regression decoded a four-byte payload with a little-endian cou
 
 A second payload verified signed big-endian decoding with word reversal, a 32-bit float, the full unsigned 64-bit range, and NUL-terminated UTF-8 with a newline. The command decoded the sample with an unfinished connection profile and an empty CSV selection. It rejected malformed hex, short and oversized payloads, and a named field that extended beyond the assembly. All preview checks ran offline.
 
+## EDS input mapping suggestions
+
+The Windows CLI resolved all 32 byte members in the pinned OpENer sample EDS's input-only Connection2. Each suggestion had a distinct name and a U8 selection at its declared offset from 0 through 31. Copying the suggestions into a profile and passing the byte sequence 0 through 31 to `decode-input` returned all 32 expected values. [Upstream OpENer sample EDS](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/data/opener_sample_app.eds)
+
+Offline tests covered a signed integer after padding, a floating-point field after a skipped string, duplicate names, invalid member widths, malformed layouts, and mismatched connection sizes. A GUI mapping test verified that adding a suggestion preserves the previous CSV selection. These tests exercised the importer and decoder without an attached adapter.
+
 ## Read-only software integration
 
 The 8 ms Windows localhost check exercised the HTTP API, MQTT publisher and named shared memory simultaneously. HTTP and the memory mapping stayed open across scanner reconnect. An independent broker fixture dropped its first TCP connection and received fresh MQTT samples after reconnect. HTTP continued while a client held the shared-memory mutex. Shared memory continued while an HTTP client stalled mid-request. The CLI saved 468 CSV rows with zero capture or integration queue overruns. The headless GUI backend test also fetched a live API sample during capture.
