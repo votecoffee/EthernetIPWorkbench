@@ -285,7 +285,7 @@ impl Device {
                     );
                 }
             }
-            let auto_reconnect = self.preferences.auto_reconnect && s.input_only_without_writes();
+            let auto_reconnect = self.preferences.auto_reconnect && s.supports_auto_reconnect();
             let pin = self.verified_identity;
             if auto_reconnect && pin.is_none() {
                 return Err(

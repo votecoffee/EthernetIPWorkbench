@@ -149,7 +149,7 @@ pub struct Connection {
     writable_size: Option<usize>,
 }
 impl Connection {
-    /// Start an identity-checked input-only session without a recorder or publisher.
+    /// Start an identity-checked input-only or listen-only session without a recorder or publisher.
     pub fn start_input(
         settings: Settings,
         expected: ExpectedIdentity,
@@ -317,8 +317,13 @@ impl Connection {
                     status.retryable = matches!(error, EipError::Io(_));
                     match error {
                         EipError::Cip { status: code, ext } => {
+                            let context = if settings.listen_only && code == 1 && ext.first() == Some(&0x0119) {
+                                " · The adapter has no controlling connection for this input assembly"
+                            } else {
+                                ""
+                            };
                             status.cip_error = Some(format!(
-                                "CIP general 0x{code:02X}, extended [{}]",
+                                "CIP general 0x{code:02X}, extended [{}]{context}",
                                 ext.iter()
                                     .map(|x| format!("0x{x:04X}"))
                                     .collect::<Vec<_>>()

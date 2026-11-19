@@ -57,6 +57,8 @@ pub struct Report {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub input_multicast: bool,
     pub requests_output_ownership: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub listen_only: bool,
     pub asserts_run: bool,
     pub configuration_assembly: Option<u16>,
     pub configuration_bytes: u16,
@@ -163,16 +165,21 @@ pub fn inspect(
                 settings.input_run_idle,
                 imported.input_run_idle,
             ),
-            ("Ownership", settings.input_only, imported.input_only),
         ] {
-            let describe = |value| match (label, value) {
-                ("Ownership", true) => "Input-only",
-                ("Ownership", false) => "Exclusive owner",
-                (_, true) => "32-bit Run/Idle",
-                (_, false) => "No Run/Idle",
+            let describe = |value| {
+                if value {
+                    "32-bit Run/Idle"
+                } else {
+                    "No Run/Idle"
+                }
             };
             compare(label, describe(effective).into(), describe(from_eds).into());
         }
+        compare(
+            "Ownership",
+            settings.role().label().into(),
+            imported.role().label().into(),
+        );
         let config =
             |instance: Option<u16>| instance.map_or_else(|| "None".into(), |n| n.to_string());
         compare(
@@ -236,6 +243,7 @@ pub fn inspect(
         local_udp_port: settings.local_udp_port,
         input_multicast: settings.input_multicast,
         requests_output_ownership: !settings.input_only,
+        listen_only: settings.listen_only,
         asserts_run: settings.output_run_idle,
         configuration_assembly: settings.config_instance,
         configuration_bytes: settings.config_size,

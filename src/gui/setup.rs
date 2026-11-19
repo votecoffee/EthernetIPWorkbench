@@ -51,7 +51,13 @@ impl Device {
                     match eds::load(Path::new(&self.eds_path)) {
                         Ok(profiles) => {
                             self.profiles = profiles;
-                            self.select_profile(Some(self.profiles.iter().position(|p| p.settings.input_only && p.unsupported.is_empty()).unwrap_or(0)));
+                            let supported_input = self.profiles.iter().position(|p| {
+                                p.settings.role() == model::ConnectionRole::InputOnly && p.unsupported.is_empty()
+                            });
+                            let supported_listener = || self.profiles.iter().position(|p| {
+                                p.settings.listen_only && p.unsupported.is_empty()
+                            });
+                            self.select_profile(Some(supported_input.or_else(supported_listener).unwrap_or(0)));
                             self.error = None;
                         }
                         Err(e) => self.error = Some(e),
@@ -100,7 +106,7 @@ impl Device {
             });
             let s = &mut self.settings;
             let write_settings = |s: &Settings| (
-                s.input_only, s.output_instance, s.output_size, s.output_run_idle,
+                s.role(), s.output_instance, s.output_size, s.output_run_idle,
                 s.config_instance, s.config_size, s.timeout_multiplier_code,
                 s.large_forward_open, s.electronic_key,
                 s.input_size, s.input_min_size,
@@ -108,7 +114,26 @@ impl Device {
             );
             let before = write_settings(s);
             ui.separator();
-            ui.checkbox(&mut s.input_only, "Input-only heartbeat profile");
+            let prior_role = s.role();
+            let mut role = prior_role;
+            egui::ComboBox::from_label("Connection role")
+                .selected_text(role.label())
+                .show_ui(ui, |ui| {
+                    for choice in [model::ConnectionRole::InputOnly, model::ConnectionRole::ListenOnly,
+                        model::ConnectionRole::ExclusiveOwner] {
+                        ui.selectable_value(&mut role, choice, choice.label());
+                    }
+                });
+            if role != prior_role {
+                s.set_role(role);
+                if matches!(role, model::ConnectionRole::ListenOnly) || matches!(prior_role, model::ConnectionRole::ListenOnly) {
+                    // An adapter distinguishes the roles by their connection points.
+                    s.output_instance = 0;
+                }
+            }
+            if s.listen_only {
+                ui.small("Use the adapter's listen-only heartbeat connection point. A controlling multicast connection must already be running.");
+            }
             egui::Grid::new("assembly").num_columns(3).striped(true).show(ui, |ui| {
                 ui.label(""); ui.strong("T->O input"); ui.strong("O->T output"); ui.end_row();
                 ui.label("Connection point");
@@ -229,6 +254,13 @@ impl Device {
         if self.settings.input_multicast {
             ui.label("Multicast T->O · the adapter selects the group and port");
         }
+        if self.settings.listen_only {
+            ui.label(format!(
+                "Listen-only · Heartbeat assembly {}",
+                self.settings.output_instance
+            ));
+            ui.small("The adapter must already be producing this multicast input for a controlling connection.");
+        }
         if self.settings.large_forward_open {
             ui.label("Large Forward_Open");
         }
@@ -277,7 +309,7 @@ impl Device {
                 "Ownership and these output/configuration writes are authorized",
             );
         }
-        if self.settings.input_only_without_writes() {
+        if self.settings.supports_auto_reconnect() {
             ui.checkbox(
                 &mut self.preferences.auto_reconnect,
                 "Reconnect automatically",

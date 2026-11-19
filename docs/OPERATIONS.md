@@ -65,7 +65,8 @@ Start from a generic sample and use the device's EDS and manual to establish eac
 | output_hex | Full staged output payload |
 | input_rpi_us, output_rpi_us | Separate requested intervals in microseconds |
 | input_run_idle, output_run_idle | Whether each direction carries the four-byte header |
-| input_only | Selects the intended input-only profile and its validation |
+| input_only | Selects a read-only profile, including listen-only when requested |
+| listen_only | Uses the adapter's listen-only heartbeat path to consume an existing multicast stream |
 | timeout_multiplier_code | CIP code 0–7, default 3 for older profiles |
 
 Sizes exclude the Class 1 sequence and optional Run/Idle header. Standard Forward_Open supports at most 509 payload plus Run/Idle bytes per direction here. The code accepts requested intervals from 1,000 to 10,000,000 microseconds.
@@ -87,6 +88,14 @@ Enable **Multicast input (T->O)** in Device or set `input_multicast = true` in T
 Forward_Open returns the T→O group, UDP port and connection ID. The scanner joins that group on the configured NIC and checks the adapter's source IP and returned ID. Use **Diagnostics** or the capture report's `cyclic_io` table to see the multicast destination and local receive endpoint. The requested local UDP port still binds the O→T socket. For multicast it also supplies the port hint, which defaults to 2222 when the field is zero. The returned receive port takes precedence.
 
 Windows uses one owning socket per local address and port. The scanner shares its own socket within a session when the returned input port matches its output socket. A port already occupied by another session or application causes an error and a Forward_Close attempt. If the connection opens but inputs time out, verify the returned group, selected NIC and multicast forwarding on the bench network.
+
+### Configure a listen-only connection
+
+Start from the adapter's listen-only EDS profile or select **Connection role → Listen-only** in Device. Enter that profile's documented O→T heartbeat connection point and T→O input point. The role is determined by the connection path the adapter receives. Switching into or out of Listen-only in the GUI clears the old O→T instance so you can enter the correct one.
+
+For TOML set `listen_only = true`, `input_only = true`, and `input_multicast = true`. Use zero output bytes, zero configuration bytes and O→T Run/Idle disabled. Retain the documented configuration assembly instance in the path if the adapter requires one. Apply the RPIs and input layout required by the controlling connection. The listener sends an empty heartbeat and records the adapter's existing multicast stream without requesting output ownership.
+
+Start the controlling multicast connection first. CIP general status `0x01` with extended status `0x0119` means the target found no controlling connection for the input assembly. Use normal GUI logging or CLI `capture`. Listen-only uses manual reconnect. CLI `qualify` changes the requested rates and requires a controlling input-only profile. If the controller or another process owns the local multicast receive address and port, use a separate supported host or NIC for the listener.
 
 Configure the optional `[electronic_key]` table with decimal `vendor`, `device_type`, `product`, `major` and `minor` fields. The EDS importer handles a supported leading format 4 electronic key, UTF-16 with a BOM, and 16-bit Assembly class segments. Review the imported Large Forward_Open setting when the declared size exceeds the standard limit. Device payload and supported services still need checking against the adapter.
 

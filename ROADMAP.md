@@ -33,6 +33,7 @@ Read-only software integration now offers a loopback HTTP API, MQTT publishing, 
 - Routed explicit reads support backplane and IPv4 links in Explore, CLI and the Rust API. Verify them through a physical bridge.
 - Variable-size T→O supports standard and Large Forward_Open, offline decoding, CSV and all three export feeds. Verify it on a physical adapter that produces variable-size assemblies.
 - Multicast T→O uses the adapter's group, port and connection ID with unicast O→T. Verify group membership and capture through a physical bench switch.
-- Add routed cyclic paths, listen-only and variable-size output as separate compatibility work. Pair each extension with fixture coverage and device-level evidence.
+- Listen-only profiles use the documented heartbeat assembly and read an existing multicast producer without taking output ownership. Verify against a physical adapter with a controlling multicast connection.
+- Add routed cyclic paths and variable-size output as separate compatibility work. Pair each extension with fixture coverage and device-level evidence.
 
 Device profiles, vendor files, and raw captures belong in the ignored `.local/` directory. [Adapter-compatibility milestone](https://github.com/votecoffee/EthernetIPWorkbench/milestone/3)

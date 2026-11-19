@@ -459,6 +459,12 @@ The Windows loopback fixture verified T→O multicast with unicast O→T at an 8
 
 The pinned OpENer adapter selected `239.192.1.32:2222` on Windows loopback at a requested and negotiated 30 ms in both directions. A three-second capture saved 101 rows with zero sequence gaps or buffer overruns and a confirmed Forward_Close. Physical switch and adapter verification remain open.
 
+## Listen-only Class 1 input
+
+The pinned OpENer adapter rejected a standalone listener with CIP status `0x01` and additional status `0x0119`. With a controlling input-only session active, it accepted the listen-only assembly path and returned the controller's multicast group and T-to-O connection ID. The upstream fixture then stopped servicing its shared UDP socket on Windows. The optional listen-only test adapts the fixture copy to retain that socket across connection opens and closes and handle `WSAEWOULDBLOCK` as a transient result.
+
+With the adapted fixture and an independent heartbeat producer, two successive three-second listener runs at 30 ms captured 101 and 100 samples with zero sequence gaps or buffer overruns. Each listener used the same producer group and T-to-O ID, received its own O-to-T ID, and confirmed Forward_Close. The controller remained active between runs and closed separately afterward. The CLI also rejected listener settings that requested ownership, unicast input, Run/Idle, or output or configuration bytes. Physical listen-only interoperability remains open.
+
 ## Physical bench acceptance
 
 Physical-device measurements require a connected bench adapter and verified device settings. First verify the Identity Object and the intended profile, preferably input-only. Confirm output ownership and write permissions before using a profile that owns outputs, asserts Run or sends configuration bytes. Then run the Windows GUI and logger with the requested RPIs and record the Forward_Open actual intervals separately from socket spacing percentiles, longest gap, sequence gaps, timeouts, missed send slots and capture losses. Use a capture at the NIC or switch if wire-level timestamps are required.

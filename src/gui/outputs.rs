@@ -4,7 +4,10 @@ impl Device {
     pub(super) fn outputs(&mut self, ui: &mut Ui) {
         title(ui, "Stage and apply outputs");
         if self.settings.input_only {
-            ui.label("This input-only profile sends a heartbeat with no output payload.");
+            ui.label(format!(
+                "{} sends a heartbeat with no output payload.",
+                self.settings.role().label()
+            ));
             if ui.button("Review device connection settings").clicked() {
                 self.tab = Tab::Device;
             }

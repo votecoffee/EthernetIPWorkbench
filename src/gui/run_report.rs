@@ -47,6 +47,8 @@ struct ConnectionReport {
     output_bytes: u16,
     configuration_bytes: u16,
     input_only: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    listen_only: bool,
     input_run_idle: bool,
     output_run_idle: bool,
     schedule: Schedule,
@@ -132,6 +134,7 @@ impl Device {
             output_bytes: active.output_size,
             configuration_bytes: active.config_size,
             input_only: active.input_only,
+            listen_only: active.listen_only,
             input_run_idle: active.input_run_idle,
             output_run_idle: active.output_run_idle,
             schedule: self.preferences.schedule,

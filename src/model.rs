@@ -57,6 +57,10 @@ pub struct Settings {
     pub config_hex: String,
     pub output_hex: String,
     pub input_only: bool,
+    /// Use the adapter's listen-only heartbeat connection point.
+    /// This role requires input_only, multicast input and zero write payloads.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub listen_only: bool,
     pub output_run_idle: bool,
     pub input_run_idle: bool,
     pub output_priority: u8,
@@ -82,6 +86,23 @@ pub struct Settings {
     pub log_fields: Option<Vec<String>>,
     #[serde(default)]
     pub capture_mode: CaptureMode,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConnectionRole {
+    InputOnly,
+    ListenOnly,
+    ExclusiveOwner,
+}
+
+impl ConnectionRole {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::InputOnly => "Input-only",
+            Self::ListenOnly => "Listen-only",
+            Self::ExclusiveOwner => "Exclusive owner",
+        }
+    }
 }
 
 /// CIP electronic key format 4, with an exact major and minor revision.
@@ -111,6 +132,7 @@ impl Default for Settings {
             config_hex: String::new(),
             output_hex: String::new(),
             input_only: true,
+            listen_only: false,
             output_run_idle: false,
             input_run_idle: false,
             output_priority: 1,
@@ -164,6 +186,28 @@ impl Settings {
 
     pub fn input_only_without_writes(&self) -> bool {
         self.input_only && self.output_size == 0 && self.config_size == 0 && !self.output_run_idle
+    }
+
+    pub fn role(&self) -> ConnectionRole {
+        if self.listen_only {
+            ConnectionRole::ListenOnly
+        } else if self.input_only {
+            ConnectionRole::InputOnly
+        } else {
+            ConnectionRole::ExclusiveOwner
+        }
+    }
+
+    pub fn set_role(&mut self, role: ConnectionRole) {
+        self.input_only = role != ConnectionRole::ExclusiveOwner;
+        self.listen_only = role == ConnectionRole::ListenOnly;
+        if self.listen_only {
+            self.input_multicast = true;
+        }
+    }
+
+    pub fn supports_auto_reconnect(&self) -> bool {
+        !self.listen_only && self.input_only_without_writes()
     }
 
     /// Allowed application byte counts, excluding all connected I/O headers.
@@ -224,6 +268,9 @@ impl Settings {
             || !(1000..=10_000_000).contains(&self.output_rpi_us)
         {
             return Err("Both RPIs must be between 1,000 and 10,000,000 µs".into());
+        }
+        if self.listen_only && !(self.input_only_without_writes() && self.input_multicast) {
+            return Err("Listen-only requires input_only and multicast input, zero output and configuration bytes, and O->T Run/Idle disabled".into());
         }
         if self.input_only && self.output_size != 0 {
             return Err(

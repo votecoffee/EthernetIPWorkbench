@@ -123,6 +123,12 @@ pub(super) fn run(
         _ => return Err("A shorter duration is available only for loopback qualification".into()),
     };
     let (mut settings, mut preferences) = load_capture_profile(profile)?;
+    if settings.listen_only {
+        return Err(
+            "Qualification requires a controlling input-only profile; use capture for listen-only"
+                .into(),
+        );
+    }
     let loopback = link_path == LinkPath::Loopback;
     if settings.device_ip.is_loopback() != loopback || settings.local_ip.is_loopback() != loopback {
         return Err("Loopback qualification requires loopback adapter and NIC addresses. Direct and switched runs require non-loopback addresses.".into());

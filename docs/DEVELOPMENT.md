@@ -36,6 +36,8 @@ Use `Settings::input_lengths()` for the payload bounds used by the receiver, rec
 
 Multicast T→O requests distribution type 1 and a T→O Sockaddr Info item with an unspecified group. Use the adapter's returned group, port and connection ID. Validate the T→O item before joining. Keep O→T on the selected NIC and preserve Forward_Close cleanup if the reply is unusable or the receiver cannot bind. Windows multicast binds are exclusive to avoid interfering with another session's unicast traffic. [OpENer multicast connection source](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipioconnection.c) · [Winsock bind ownership](https://learn.microsoft.com/en-us/windows/win32/winsock/using-so-reuseaddr-and-so-exclusiveaddruse)
 
+The listen-only role validates a read-only heartbeat and multicast T→O. Its Forward_Open uses the adapter's listen-only application path. The wire service and packet processing are the same as the other Class 1 roles. Use the target's existing T→O connection ID and a separate O→T connection ID. Keep automatic recovery restricted to controlling input-only profiles. [OpENer listen-only application path matching](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/appcontype.c)
+
 The CSV queue is preallocated and bounded. Samples retain sequence, monotonic timing, index and generation. Normal stop drains the queue. Preserve existing files if rotation or report creation encounters a collision. A disk failure is scoped to its capture and must remain visible.
 
 The integration receive path copies into a bounded queue and wakes its dispatcher. Serialization, network I/O and mapped-memory access occur in export workers. History retention, queue drops, MQTT publish errors and shared-memory contention have separate meanings. Preserve the versioned JSON and EIPWB001 binary contracts when updating consumers.
@@ -80,6 +82,7 @@ The CLI check defaults to 8 ms. --rpi-us 1000 exercises the same cases at 1 ms. 
 
 Add `--explore --seconds 3` to the OpENer check for a short interoperability run covering discovery, a direct CIP read and keyed Large Forward_Open after the standard connection.
 Use `--multicast --seconds 3` to also verify OpENer's adapter-selected multicast group and CSV capture.
+Use `--listen-only --seconds 3` to check rejection without a controller and two sequential listener captures on the same producer. This test adapts the pinned Windows loopback build so the fixture keeps its shared UDP socket across connection opens and closes and handles `WSAEWOULDBLOCK` as a retryable receive result.
 
 The workspace tests render egui in memory at 900×580 and 1240×860 and simulate pointer events without a native window. They check workflow isolation, visible connection controls, write-review content and capture-stop behavior.
 

@@ -1,4 +1,4 @@
-use crate::model::{ElectronicKey, MAX_ASSEMBLY_BYTES, Settings, hex};
+use crate::model::{ConnectionRole, ElectronicKey, MAX_ASSEMBLY_BYTES, Settings, hex};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
@@ -250,12 +250,16 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
                 issues.push("Profile must support cyclic Class 1".into());
             }
             if trigger & 0x0200_0000 != 0 {
-                s.input_only = true;
-                origin.insert("Ownership".into(), "Input-only".into());
+                s.set_role(ConnectionRole::InputOnly);
+            } else if trigger & 0x0100_0000 != 0 {
+                s.set_role(ConnectionRole::ListenOnly);
             } else if trigger & 0x0400_0000 != 0 {
-                origin.insert("Ownership".into(), "Exclusive owner".into());
+                s.set_role(ConnectionRole::ExclusiveOwner);
             } else {
-                issues.push("Profile lacks input-only or exclusive-owner support".into());
+                issues.push("Profile lacks input-only, listen-only or exclusive-owner support".into());
+            }
+            if trigger & 0x0700_0000 != 0 {
+                origin.insert("Ownership".into(), s.role().label().into());
             }
 
             let mask = number(get(1)).unwrap_or(0);
@@ -269,7 +273,12 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
             }
             if mask & 0x0060_0000 == 0x0020_0000 {
                 s.input_multicast = true;
+            }
+            if s.input_multicast {
                 origin.insert("T->O distribution".into(), "Multicast".into());
+            }
+            if s.listen_only && mask & 0x0020_0000 == 0 {
+                issues.push("Listen-only requires a multicast T->O connection".into());
             }
             for (shift, direction, header, priority) in [
                 (0, "O->T", &mut s.output_run_idle, &mut s.output_priority),

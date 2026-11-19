@@ -126,7 +126,9 @@ For adapters that produce variable-size T→O data, enable **Variable-size input
 
 For a multicast producer, enable **Multicast input (T->O)** in **Device**. The scanner joins the group returned by the adapter on the selected NIC. O→T output or heartbeat stays unicast. [Multicast settings](docs/OPERATIONS.md#configure-multicast-input)
 
-The cyclic protocol scope is Class 1 with direct assembly paths and fixed-size unicast output. Routed cyclic I/O, listen-only and variable-size output remain on the [roadmap](ROADMAP.md#04-adapter-compatibility). Keep device-specific presets, vendor files and raw captures in the Git-ignored `.local/` folder. The tracked [sample EDS](samples/loopback.eds) and [sample TOML](samples/loopback.toml) target the localhost fixture.
+Choose **Listen-only** as the connection role to record an existing controlling connection's multicast input. Use the adapter's documented listen-only heartbeat assembly, or import the matching EDS profile. The listener sends an empty unicast heartbeat and takes no output ownership. [Listen-only settings](docs/OPERATIONS.md#configure-a-listen-only-connection)
+
+The cyclic protocol scope is Class 1 with direct assembly paths and fixed-size unicast output. Routed cyclic I/O and variable-size output remain on the [roadmap](ROADMAP.md#04-adapter-compatibility). Keep device-specific presets, vendor files and raw captures in the Git-ignored `.local/` folder. The tracked [sample EDS](samples/loopback.eds) and [sample TOML](samples/loopback.toml) target the localhost fixture.
 
 Set **CIP timeout code** in the GUI or `timeout_multiplier_code` in the TOML profile. Codes 0 through 7 represent factors of 4 through 512 in powers of two. Profiles that omit the setting use code 3 (32 times the interval). The app sends the code in Forward_Open and uses the returned input interval times that factor for its local receive watchdog. Before the first valid input, the scanner waits for the larger of two seconds and two returned input intervals. Preflight shows the watchdog calculated from the requested interval. Capture reports also show the local watchdog calculated from the interval the adapter returned.
 

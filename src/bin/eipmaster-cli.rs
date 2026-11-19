@@ -42,7 +42,8 @@ Usage:
   eipmaster-cli capture <settings.toml> <new-output-dir> <seconds> <vendor:type:product[:serial]>
   eipmaster-cli qualify <settings.toml> <new-output-dir> <direct|switched|loopback> <vendor:type:product:serial> [<loopback-seconds>]
 
-Capture requires an input-only profile. The scheduler defaults to deadline. [app].auto_reconnect opts in to input-only recovery.
+Capture requires a read-only heartbeat profile (input-only or listen-only). The scheduler defaults to deadline.
+[app].auto_reconnect opts in to input-only recovery. Listen-only sessions use manual reconnect.
 The expected Identity Object values are decimal and checked before Forward_Open.
 Capture seconds must be an integer from 1 to 3600.
 Qualification runs 15 seconds at 8 ms and three 60-second trials at 1 ms.
@@ -368,6 +369,8 @@ struct Report {
     input_size: u16,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     input_multicast: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    listen_only: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     input_min_size: Option<u16>,
     duration_seconds: u64,
@@ -512,7 +515,7 @@ fn load_capture_profile(profile: &Path) -> Result<(Settings, Preferences), Strin
     let preferences = preferences.unwrap_or_default();
     settings.validate()?;
     if !settings.input_only_without_writes() {
-        return Err("Capture requires an input-only heartbeat with zero configuration bytes and O->T Run/Idle disabled".into());
+        return Err("Capture requires an input-only or listen-only heartbeat with zero configuration bytes and O->T Run/Idle disabled".into());
     }
     settings.csv_fields()?;
     Ok((settings, preferences))
@@ -545,6 +548,7 @@ fn capture(
     let mut capture = Capture::start(&slot, options, settings).map_err(|e| e.to_string())?;
     let sink = capture.sink.clone();
     let mut attempts = Vec::new();
+    let auto_reconnect = preferences.auto_reconnect && settings.supports_auto_reconnect();
     let mut reconnect = None;
     let mut pin = expected.serial.map(|serial| IdentityPin {
         key: expected.key,
@@ -601,10 +605,7 @@ fn capture(
         }
 
         let attempt = Attempt::finish(connection);
-        if preferences.auto_reconnect
-            && attempts.is_empty()
-            && attempt.status.identity_error.is_none()
-        {
+        if auto_reconnect && attempts.is_empty() && attempt.status.identity_error.is_none() {
             reconnect = attempt
                 .status
                 .identity
@@ -661,6 +662,7 @@ fn capture(
         input_assembly: settings.input_instance,
         input_size: settings.input_size,
         input_multicast: settings.input_multicast,
+        listen_only: settings.listen_only,
         input_min_size: settings.input_min_size,
         duration_seconds: seconds,
         duration_reached,
@@ -704,7 +706,7 @@ fn capture(
         receive_spacing: status.spacing,
         send_spacing: last.map_or_else(Spacing::default, |run| run.send_spacing),
         send_timing,
-        attempts: if preferences.auto_reconnect {
+        attempts: if auto_reconnect {
             attempts
                 .iter()
                 .enumerate()
