@@ -447,6 +447,12 @@ A separate HTTP-only run lasted 12 seconds and accepted 1,501 packets with zero 
 
 The .NET 8 sample built in Release with zero warnings. The Windows localhost test started both readers before `serve`, then forced an I/O timeout and a reconnect at 8 ms. Each reader emitted 60 fresh samples spanning two connection generations. Every emitted sample matched the scanner's retained HTTP history by stream timestamp, monotonic elapsed time, packet sequences and payload bytes. The HTTP reader preserved the configured field names and the decoder's count as a string. Both scanner generations confirmed Forward_Close, with zero sequence gaps and export queue drops.
 
+## C# HTTP history
+
+At an 8 ms requested and negotiated interval, the Windows localhost test read 180 consecutive export indexes across a forced Class 1 reconnect. It compared all 180 history records and 120 latest-value records with the scanner's retained packets. Both scanner generations confirmed Forward_Close and the run recorded zero sequence gaps and export queue drops.
+
+A scripted HTTP test returned a full 64-sample page, a busy response, a moved retention boundary, and a new stream identity. The reader retried the same cursor after HTTP 503, reported indexes below the oldest retained sample separately from an in-window index gap, and requested index zero after the stream changed. It also emitted retained samples while the active generation was zero.
+
 ## Future-chat documentation and skill discovery
 
 The repository now routes future chats through AGENTS.md and the ethernetip-workbench skill to operational and development guides. The portable package includes these files and tools/install_skill.py. The installed local skill entry point points to the current source location.

@@ -30,11 +30,21 @@ dotnet run --project examples\dotnet\FeedReader.csproj -c Release -- memory dotn
 
 The last argument in each command requests 20 samples. Omit it to read until Ctrl+C. An optional positive age limit in milliseconds can follow the count. It defaults to 500 ms. The reader emits one JSON object per new, fresh sample from the active generation. Redirect stdout to a JSON Lines file to keep the values. It resets its index when the stream start timestamp changes. `skipped_export_indexes` counts indexes between consecutive outputs of this reader in the same stream.
 
-HTTP uses `GET /v1/latest` with schema version 1 and the server's reported age. It preserves all mapped values as strings. Use `/v1/samples` for bounded history and `/v1/connection` for connection diagnostics. [HTTP consumer contract](../../docs/OPERATIONS.md#connect-other-software)
+The `http` mode uses `GET /v1/latest` with schema version 1 and the server's reported age. It preserves all mapped values as strings. Use `/v1/connection` for connection diagnostics. [HTTP consumer contract](../../docs/OPERATIONS.md#connect-other-software)
 
 On Windows the memory reader opens the named mapping read-only. Each poll acquires the mutex without waiting, copies the 573-byte view, and releases the mutex before decoding. It disposes both named handles after the poll so the publisher can reuse the name on restart. It estimates age from the stream's UTC start plus elapsed microseconds and emits the raw payload. [Shared-memory layout](../../README.md#connect-other-software) · [.NET mapping API](https://learn.microsoft.com/en-us/dotnet/api/system.io.memorymappedfiles.memorymappedfile.openexisting?view=net-8.0) · [.NET mutex API](https://learn.microsoft.com/en-us/dotnet/api/system.threading.mutex.openexisting?view=net-8.0)
 
-Both paths poll every 20 ms. For a complete packet series, use the scanner's Every packet CSV capture. [Capture and verify CSV](../../docs/OPERATIONS.md#capture-and-verify-csv)
+Both latest-value modes poll every 20 ms.
+
+## Read retained HTTP history
+
+~~~powershell
+dotnet run --project examples\dotnet\FeedReader.csproj -c Release -- history 8765 180
+~~~
+
+This mode reads `GET /v1/samples?after=N` in index order. It starts with the oldest retained sample and advances the cursor as it emits each record. It requests the next batch immediately while catching up and waits 20 ms between polls at the end of the history. The cursor survives transient request failures and Class 1 reconnects within the same stream. A new stream start timestamp resets the cursor and starts a fresh read.
+
+The 1,024-sample history can include earlier generations. Each output carries the sample's generation, the currently active generation and `oldest_sample_index`. `skipped_export_indexes` includes gaps since the previous cursor in the same stream. `indexes_before_retained_history` is the portion of that gap below the oldest index still available. The counters describe the export stream. For a complete packet series and packet loss accounting, use the scanner's Every packet CSV capture. [Capture and verify CSV](../../docs/OPERATIONS.md#capture-and-verify-csv)
 
 ## Verify on Windows
 
@@ -43,4 +53,4 @@ dotnet build examples\dotnet\FeedReader.csproj -c Release
 python tools\test_dotnet_consumer.py .\eipmaster-cli.exe examples\dotnet\bin\Release\net8.0\FeedReader.dll .\dotnet-reader-check
 ~~~
 
-The test starts its own localhost fixture and two readers. It checks both generations of a reconnect, HTTP typed values, raw payload agreement, age and the final close results. Choose a fresh results directory outside the repository or under its ignored `.local` folder.
+The test starts its own localhost fixture and three readers. It checks both generations of a reconnect, consecutive history indexes, typed values, raw payload agreement, age and the final close results. A scripted HTTP fixture checks the cursor after a busy response, retention gaps and a new publisher stream. Choose a fresh results directory outside the repository or under its ignored `.local` folder.

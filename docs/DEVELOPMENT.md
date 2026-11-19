@@ -86,7 +86,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 | Reconnect, concurrent capture and writer failure | python tools/test_recovery.py target/release/eipmaster-cli.exe .local/recovery-check-01 |
 | HTTP, MQTT and shared memory | python tools/test_integration.py target/release/eipmaster-cli.exe .local/integration-check-01 |
 | Headless feeds without CSV, including reconnect | python tools/test_integration.py target/release/eipmaster-cli.exe .local/serve-check-01 --serve |
-| C# HTTP and shared-memory consumer | Build the example and run tools/test_dotnet_consumer.py per the [example verification recipe](../examples/dotnet/README.md#verify-on-windows) |
+| C# HTTP latest and history, retention boundaries, and shared-memory consumer | Build the example and run tools/test_dotnet_consumer.py per the [example verification recipe](../examples/dotnet/README.md#verify-on-windows) |
 | Qualification supervisor | python tools/test_cli.py target/release/eipmaster-cli.exe .local/qualify-check-01 --qualification |
 | Real console signals on supported Windows | python tools/test_interrupt.py target/release/eipmaster-cli.exe .local/interrupt-check-01 |
 | Independent OpENer interoperability | python tools/test_opener.py target/release/eipmaster-cli.exe .local/opener-upstream .local/opener-check-01 |

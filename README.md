@@ -277,7 +277,7 @@ The HTTP feed serves up to four readers concurrently and keeps a bounded queue f
 
 Integration queue drops, MQTT errors, and shared-memory lock misses are counted separately from UDP sequence gaps and CSV buffer overruns. Shared memory and MQTT are latest-value feeds. HTTP history provides bounded catch-up. Try `curl.exe http://127.0.0.1:8765/v1/latest` while the session is running.
 
-The .NET 8 C# example reads over HTTP or Windows shared memory and emits fresh samples as JSON lines. The Windows bundle includes its source and localhost verification script. [C# feed reader](examples/dotnet/README.md)
+The .NET 8 C# example emits JSON lines from HTTP latest values, retained HTTP history, or Windows shared memory. The history mode advances by sample index and reports gaps at the retention boundary. The Windows bundle includes its source and localhost verification script. [C# feed reader](examples/dotnet/README.md)
 
 ### Run the headless bench sequence
 

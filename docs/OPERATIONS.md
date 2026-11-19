@@ -202,7 +202,7 @@ Reset an HTTP cursor when stream_start_utc_us changes. Compare sample indexes an
 
 Shared-memory readers acquire the lock, copy and promptly release it. Discard an abandoned-mutex snapshot after releasing ownership. Close client handles before restarting a manual session with the same object names. A stale mapping may survive in a client process after the scanner exits.
 
-For C#, use the .NET 8 example to read HTTP or Windows shared memory. CLI process supervision can also start and stop a scanner session. A C ABI for embedding the scanner is prospective work. [C# feed reader](../examples/dotnet/README.md)
+For C#, use the .NET 8 example to read the latest sample over HTTP or Windows shared memory, or to catch up on retained HTTP history. CLI process supervision can also start and stop a scanner session. A C ABI for embedding the scanner is prospective work. [C# feed reader](../examples/dotnet/README.md)
 
 ### Inspect a live Class 1 connection
 

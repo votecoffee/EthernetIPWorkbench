@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -15,10 +16,23 @@ internal sealed record Sample(
     string PayloadHex,
     Dictionary<string, string?>? Values);
 
-internal sealed record Snapshot(ulong ActiveGeneration, ulong? SampleAgeUs, Sample? Sample)
+internal interface IFeedResponse
+{
+    int SchemaVersion { get; }
+}
+
+internal sealed record Snapshot(ulong ActiveGeneration, ulong? SampleAgeUs, Sample? Sample) : IFeedResponse
 {
     public int SchemaVersion { get; init; }
 }
+
+internal sealed record HistoryBatch(
+    int SchemaVersion,
+    long StreamStartUtcUs,
+    ulong ActiveGeneration,
+    ulong? OldestSampleIndex,
+    ulong? LatestSampleIndex,
+    Sample[] Samples) : IFeedResponse;
 
 internal static class Program
 {
@@ -29,9 +43,11 @@ internal static class Program
 
     public static async Task<int> Main(string[] args)
     {
-        if (args.Length is < 2 or > 4 || args[0] is not ("http" or "memory"))
+        if (args.Length is < 2 or > 4 || args[0] is not ("http" or "memory" or "history") ||
+            (args[0] == "history" && args.Length > 3))
         {
             Console.Error.WriteLine("Usage: FeedReader <http PORT | memory NAME> [sample-count] [max-age-ms]");
+            Console.Error.WriteLine("       FeedReader history PORT [sample-count]");
             return 1;
         }
 
@@ -49,7 +65,9 @@ internal static class Program
             Console.CancelKeyPress += cancel;
             try
             {
-                return await Watch(args[0], args[1], sampleLimit, maxAgeUs, stop.Token);
+                return args[0] == "history"
+                    ? await WatchHistory(args[1], sampleLimit, stop.Token)
+                    : await Watch(args[0], args[1], sampleLimit, maxAgeUs, stop.Token);
             }
             catch (OperationCanceledException) when (stop.IsCancellationRequested)
             {
@@ -89,7 +107,7 @@ internal static class Program
         do
         {
             cancellation.ThrowIfCancellationRequested();
-            var snapshot = http is null ? memory!.Read() : await ReadHttp(http, cancellation);
+            var snapshot = http is null ? memory!.Read() : await ReadHttp<Snapshot>(http, "/v1/latest", cancellation);
             var sample = snapshot?.Sample;
             if (sample is null || snapshot!.ActiveGeneration == 0 ||
                 sample.Generation != snapshot.ActiveGeneration || snapshot.SampleAgeUs is not ulong ageUs ||
@@ -121,6 +139,63 @@ internal static class Program
         return 0;
     }
 
+    private static async Task<int> WatchHistory(string port, int? sampleLimit, CancellationToken cancellation)
+    {
+        using var http = OpenHttp(port);
+        long? stream = null;
+        ulong cursor = 0;
+        var emitted = 0;
+        Console.Error.WriteLine("Waiting for history input.");
+        while (true)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            var path = "/v1/samples?after=" + cursor.ToString(CultureInfo.InvariantCulture);
+            var batch = await ReadHttp<HistoryBatch>(http, path, cancellation);
+            if (batch is null)
+            {
+                await Task.Delay(20, cancellation);
+                continue;
+            }
+
+            if (stream != batch.StreamStartUtcUs)
+            {
+                stream = batch.StreamStartUtcUs;
+                if (cursor != 0)
+                {
+                    cursor = 0;
+                    continue;
+                }
+            }
+
+            if (batch.Samples is null || batch.Samples.Length > 64)
+                throw new InvalidDataException("Invalid EtherNet/IP Workbench history batch.");
+            foreach (var sample in batch.Samples)
+            {
+                if (sample is null || sample.StreamStartUtcUs != stream || sample.SampleIndex <= cursor)
+                    throw new InvalidDataException("History samples must have increasing indexes in the current stream.");
+
+                var skipped = sample.SampleIndex - cursor - 1;
+                var beforeHistory = batch.OldestSampleIndex is ulong oldest && oldest > cursor
+                    ? Math.Min(skipped, oldest - cursor - 1)
+                    : 0;
+                Console.WriteLine(JsonSerializer.Serialize(new
+                {
+                    transport = "history",
+                    batch.ActiveGeneration,
+                    batch.OldestSampleIndex,
+                    SkippedExportIndexes = skipped,
+                    IndexesBeforeRetainedHistory = beforeHistory,
+                    sample
+                }, Json));
+                cursor = sample.SampleIndex;
+                if (sampleLimit is int limit && ++emitted == limit)
+                    return 0;
+            }
+            if (batch.Samples.Length == 0 || batch.LatestSampleIndex is not ulong latest || cursor >= latest)
+                await Task.Delay(20, cancellation);
+        }
+    }
+
     private static HttpClient OpenHttp(string port)
     {
         if (!ushort.TryParse(port, out var value) || value == 0)
@@ -132,18 +207,19 @@ internal static class Program
         };
     }
 
-    private static async Task<Snapshot?> ReadHttp(HttpClient http, CancellationToken cancellation)
+    private static async Task<T?> ReadHttp<T>(HttpClient http, string path, CancellationToken cancellation)
+        where T : class, IFeedResponse
     {
         try
         {
-            using var response = await http.GetAsync("/v1/latest", cancellation);
+            using var response = await http.GetAsync(path, cancellation);
             if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
                 return null;
             response.EnsureSuccessStatusCode();
-            var latest = await response.Content.ReadFromJsonAsync<Snapshot>(Json, cancellation);
-            if (latest?.SchemaVersion != 1)
+            var data = await response.Content.ReadFromJsonAsync<T>(Json, cancellation);
+            if (data?.SchemaVersion != 1)
                 throw new InvalidDataException("Expected EtherNet/IP Workbench HTTP schema version 1.");
-            return latest;
+            return data;
         }
         catch (HttpRequestException error) when (error.StatusCode is null)
         {

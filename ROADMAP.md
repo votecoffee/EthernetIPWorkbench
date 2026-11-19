@@ -26,7 +26,7 @@ The milestone requires concurrent loopback coverage and compatibility with exist
 
 Read-only software integration offers a loopback HTTP API, MQTT publishing, and a Windows shared-memory snapshot. Headless `serve` runs the feeds without CSV and keeps them open across a bounded input-only reconnect. HTTP supports bounded concurrent readers and exposes live Class 1 diagnostics and the preceding generation's timeout and close result. Run a physical bench comparison to quantify latency and loss with these feeds enabled.
 
-The [C# feed reader](examples/dotnet/README.md) demonstrates HTTP and shared-memory consumers with generation and freshness checks on Windows.
+The [C# feed reader](examples/dotnet/README.md) demonstrates HTTP and shared-memory latest-value consumers and retained HTTP history with cursor recovery and retention diagnostics.
 
 ## 0.4 Adapter compatibility
 

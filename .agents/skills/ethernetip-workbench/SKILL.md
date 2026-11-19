@@ -29,7 +29,7 @@ Use the profile and installed EDS supplied for the task. Ask for device identity
 - Attach software consumers to the existing connection. CLI serve starts one identity-checked read-only session with the configured feeds and no CSV writer. HTTP offers bounded history. MQTT and shared memory offer latest samples. They do not provide remote output control. C# can consume those interfaces or supervise the CLI. A native C ABI is still a proposed extension.
 - Use HTTP GET /v1/connection for live state, requested and negotiated intervals, packet timing and the preceding generation's timeout and close result.
 - Retry HTTP 503 or a closed request with backoff while the feed is running. Keep the last successful history cursor across reader retries.
-- Start a C# integration from the [.NET 8 feed reader](../../../examples/dotnet/README.md). It shows live generation and age checks for HTTP and shared memory.
+- Start a C# integration from the [.NET 8 feed reader](../../../examples/dotnet/README.md). It shows live generation and age checks for HTTP and shared memory, and a cursor for retained HTTP history.
 
 ## Preserve meaning and authorization
 
