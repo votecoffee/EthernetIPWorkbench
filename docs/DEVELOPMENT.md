@@ -16,7 +16,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/deadline_wait.rs | Windows deadline wait resource |
 | src/capture.rs and src/capture/field_summary.rs | Bounded sample queue, CSV writer, rotation and summaries |
 | src/integration.rs | Common export queue/history, sample indexes, lifecycle and counters |
-| src/integration/http.rs | Loopback read API and bounded history batches |
+| src/integration/http.rs | Loopback read API, bounded sample history and connection diagnostics |
 | src/integration/mqtt.rs | Latest-sample publisher and broker reconnect |
 | src/integration/shared_memory.rs | Windows mapping/mutex and binary snapshot |
 | src/gui.rs and src/gui/device.rs | GUI entry point and per-device lifecycle |
@@ -47,6 +47,8 @@ The listen-only role validates a read-only heartbeat and multicast T→O. Its Fo
 The CSV queue is preallocated and bounded. Samples retain sequence, monotonic timing, index and generation. Normal stop drains the queue. Preserve existing files if rotation or report creation encounters a collision. A disk failure is scoped to its capture and must remain visible.
 
 The integration receive path copies into a bounded queue and wakes its dispatcher. Serialization, network I/O and mapped-memory access occur in export workers. History retention, queue drops, MQTT publish errors and shared-memory contention have separate meanings. Preserve the versioned JSON and EIPWB001 binary contracts when updating consumers.
+
+For HTTP diagnostics, connect a read-only source to the feed once when each Class 1 generation starts. Retain only the latest two sources. These references have no publisher back-reference. The HTTP worker copies the existing published diagnostics and serializes its own response after releasing the scanner locks.
 
 Connection::start_with_publisher accepts an optional integration Publisher. The blocking scanner::run_input runner drives both CLI capture and serve, collects the final diagnostics for each connection generation, and calls the caller's stop predicate while receiving or waiting to retry. The CLI owns the writer and feed lifetimes. The GUI uses the per-connection methods from its event loop.
 

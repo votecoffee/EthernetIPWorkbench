@@ -137,6 +137,60 @@ impl InputTimes {
         let micros = offset.load(Relaxed).checked_sub(1)?;
         Some(self.origin + Duration::from_micros(micros))
     }
+
+    fn age(&self) -> Option<Duration> {
+        self.timestamp(&self.latest_us).map(|stamp| stamp.elapsed())
+    }
+}
+
+/// Read-only references to the measurements already published by a connection.
+pub(crate) struct DiagnosticsSource {
+    requested: (u32, u32),
+    status: Arc<Mutex<Status>>,
+    tx: Arc<AtomicU64>,
+    skipped: Arc<AtomicU64>,
+    tx_spacing: Arc<Mutex<Spacing>>,
+    send_timing: Arc<Mutex<SendTiming>>,
+    input_times: Arc<InputTimes>,
+}
+
+impl DiagnosticsSource {
+    pub(crate) fn diagnostics(&self) -> Diagnostics {
+        snapshot(
+            self.requested,
+            &self.status,
+            &self.tx,
+            &self.skipped,
+            &self.tx_spacing,
+            &self.send_timing,
+        )
+    }
+
+    pub(crate) fn input_age(&self) -> Option<Duration> {
+        self.input_times.age()
+    }
+}
+
+fn snapshot(
+    requested: (u32, u32),
+    status: &Mutex<Status>,
+    tx: &AtomicU64,
+    skipped: &AtomicU64,
+    tx_spacing: &Mutex<Spacing>,
+    send_timing: &Mutex<SendTiming>,
+) -> Diagnostics {
+    let status = status.lock().unwrap().clone();
+    let send_spacing = *tx_spacing.lock().unwrap();
+    let send_timing = *send_timing.lock().unwrap();
+    Diagnostics {
+        requested_ot_us: requested.0,
+        requested_to_us: requested.1,
+        status,
+        sent: tx.load(Relaxed),
+        skipped: skipped.load(Relaxed),
+        send_spacing,
+        send_timing,
+    }
 }
 
 pub struct Connection {
@@ -169,17 +223,16 @@ impl Connection {
         )
     }
 
-    /// Read the latest diagnostics without holding any internal locks.
+    /// Copy the latest diagnostics for inspection.
     pub fn diagnostics(&self) -> Diagnostics {
-        Diagnostics {
-            requested_ot_us: self.requested.0,
-            requested_to_us: self.requested.1,
-            status: self.status.lock().unwrap().clone(),
-            sent: self.tx.load(Relaxed),
-            skipped: self.skipped.load(Relaxed),
-            send_spacing: *self.tx_spacing.lock().unwrap(),
-            send_timing: *self.send_timing.lock().unwrap(),
-        }
+        snapshot(
+            self.requested,
+            &self.status,
+            &self.tx,
+            &self.skipped,
+            &self.tx_spacing,
+            &self.send_timing,
+        )
     }
 
     /// Copy the current output buffer for display or inspection.
@@ -318,6 +371,17 @@ impl Connection {
         let worker = thread::Builder::new()
             .name("class1-session".into())
             .spawn(move || {
+                if let Some(publisher) = &shared.publisher {
+                    publisher.track_connection(generation, || DiagnosticsSource {
+                        requested,
+                        status: shared.status.clone(),
+                        tx: shared.tx.clone(),
+                        skipped: shared.skipped.clone(),
+                        tx_spacing: shared.tx_spacing.clone(),
+                        send_timing: shared.send_timing.clone(),
+                        input_times: shared.input_times.clone(),
+                    });
+                }
                 let result = run(
                     &settings,
                     &slot,
@@ -373,9 +437,7 @@ impl Connection {
         self.input_times.timestamp(&self.input_times.first_us)
     }
     pub fn input_age(&self) -> Option<Duration> {
-        self.input_times
-            .timestamp(&self.input_times.latest_us)
-            .map(|stamp| stamp.elapsed())
+        self.input_times.age()
     }
     pub fn stop(&self) {
         self.stop.store(true, Relaxed);

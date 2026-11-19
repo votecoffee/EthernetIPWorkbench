@@ -345,6 +345,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                         ot_api, to_api = (1250, 1500) if mode in (
                             "different-api", "pause-different-api",
                         ) else (ot_rpi, to_rpi)
+                        if mode == "slower-api":
+                            ot_api, to_api = 10000, 12000
                         reply = struct.pack("<IIHHIIIBB", OT_ID, to, serial, vendor, origin,
                                             ot_api, to_api, 0, 0)
                         adapter_port = udp.getsockname()[1]
@@ -416,7 +418,7 @@ def main():
     parser.add_argument("report", type=Path)
     parser.add_argument("--mode", default="normal", choices=(
         "normal", "faults", "stall", "no-input", "invalid-input", "reject", "different-api", "owner",
-        "reconnect", "recover", "replacement", "qualify", "qualify-different-api",
+        "reconnect", "recover", "recover-slower-api", "replacement", "qualify", "qualify-different-api",
         "qualify-replacement", "close-reject", "close-mismatch", "close-short", "close-eof",
         "stall-close-reject", "qualify-close-reject",
         "slow-input", "pause-different-api",
@@ -442,6 +444,7 @@ def main():
         sequences = {
             "reconnect": ("normal", "normal"),
             "recover": ("stall", "normal"),
+            "recover-slower-api": ("stall", "slower-api"),
             "replacement": ("stall", "normal"),
             "qualify": ("normal", "normal", "normal", "normal"),
             "qualify-replacement": ("normal", "normal"),

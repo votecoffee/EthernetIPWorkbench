@@ -35,6 +35,28 @@ def get(port, path, method="GET", host=None):
         connection.close()
 
 
+def wait_for_connection(port, generation, actual):
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        status, response = get(port, "/v1/connection")
+        assert status == 200 and response["schema_version"] == 1
+        current = response["connection"]
+        if (response["active_generation"] == generation and current["generation"] == generation
+                and current["state"] == "Receiving" and current["receive_spacing"]["intervals"] > 0):
+            assert response["adapter_ip"] == response["local_ip"] == "127.0.0.1"
+            assert response["io_route"] is None and current["identity"]["serial"] == 305419896
+            assert current["requested_ot_us"] == current["requested_to_us"] == 8000
+            assert (current["actual_ot_us"], current["actual_to_us"]) == actual
+            assert current["input_age_us"] >= 0 and current["accepted"] > 1
+            assert current["connection_timeout"]["receive_watchdog_us"] == actual[1] * 32
+            assert current["receive_timeout"] is None and current["forward_close"] is None
+            assert current["network_error"] is None and current["cip_error"] is None
+            assert current["cyclic_io"]["first_input_source"].startswith("127.0.0.1:")
+            return response
+        time.sleep(0.02)
+    raise AssertionError(f"No live diagnostics for generation {generation}")
+
+
 def read_exact(sock, size):
     data = bytearray()
     while len(data) < size:
@@ -191,7 +213,8 @@ period_ms = 25
         received, errors = [], []
         worker = threading.Thread(target=receive_mqtt, args=(broker, received, errors), daemon=True)
         worker.start()
-        fixture = subprocess.Popen([sys.executable, FIXTURE, root / "adapter.json", "--mode", "recover"],
+        mode = "recover-slower-api" if args.serve else "recover"
+        fixture = subprocess.Popen([sys.executable, FIXTURE, root / "adapter.json", "--mode", mode],
                                    stdout=subprocess.PIPE, encoding="utf-8", creationflags=NO_WINDOW)
         capture = None
         try:
@@ -213,6 +236,14 @@ period_ms = 25
                 time.sleep(0.02)
             assert get(http_port, "/v1/latest", "POST")[0] == 405
             assert get(http_port, "/v1/latest", host="other.invalid")[0] == 400
+            assert get(http_port, "/v1/connection", "POST")[0] == 405
+            assert get(http_port, "/v1/connection", host="other.invalid")[0] == 400
+            assert set(get(http_port, "/v1/status")[1]) == {
+                "schema_version", "stream_start_utc_us", "active_generation", "counters",
+            }
+            first_connection = wait_for_connection(http_port, 1, (8000, 8000))
+            assert first_connection["previous_connection"] is None
+            (root / "connection-1.json").write_text(json.dumps(first_connection, indent=2), encoding="utf-8")
             with shared_memory(name) as memory:
                 before = read_memory(*memory)
                 assert before["generation"] == 1
@@ -238,6 +269,14 @@ period_ms = 25
                 assert all(int(sample["values"]["value"]) == int.from_bytes(
                     bytes.fromhex(sample["payload_hex"]), "little"
                 ) for sample in samples)
+                second_connection = wait_for_connection(http_port, 2, (10000, 12000) if args.serve else (8000, 8000))
+                previous = second_connection["previous_connection"]
+                assert previous["generation"] == 1 and previous["state"] == "Timed out"
+                assert previous["timeouts"] == 1 and previous["receive_timeout"]["limit_us"] == 256000
+                assert previous["forward_close"] == {"outcome": "confirmed"}
+                assert previous["accepted"] >= first_connection["connection"]["accepted"]
+                assert first_connection["stream_start_utc_us"] == second_connection["stream_start_utc_us"]
+                (root / "connection-2.json").write_text(json.dumps(second_connection, indent=2), encoding="utf-8")
                 kernel, lock, _ = memory
                 assert kernel.WaitForSingleObject(lock, 1000) == 0
                 try:
@@ -247,7 +286,7 @@ period_ms = 25
                 finally:
                     assert kernel.ReleaseMutex(lock)
                 with socket.create_connection(("127.0.0.1", http_port), timeout=1) as slow_http:
-                    slow_http.sendall(b"GET /v1/")
+                    slow_http.sendall(b"GET /v1/connection")
                     time.sleep(0.12)
                     assert read_memory(*memory)["sample_index"] > later["sample"]["sample_index"]
                 stdout, stderr = capture.communicate(timeout=8)
@@ -283,6 +322,7 @@ period_ms = 25
     assert stats["shared_memory_busy"] > 0 and stats["mqtt_errors"] > 0
     assert {message["generation"] for message in received} == {1, 2}
     assert all(message["stream_start_utc_us"] == before["stream_start_utc_us"] for message in received)
+    print("HTTP connection diagnostics preserved the previous timeout and Forward_Close.")
     print(f"HTTP and shared memory verified across reconnect. MQTT published {len(received)} samples.")
 
 

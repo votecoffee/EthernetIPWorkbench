@@ -190,6 +190,7 @@ Use [Connect other software](../README.md#connect-other-software) for complete p
 | Interface | Consumer contract |
 |---|---|
 | HTTP GET /v1/status | Active generation and independent integration counters |
+| HTTP GET /v1/connection | Connection diagnostics for the latest and immediately preceding generations |
 | HTTP GET /v1/latest | Latest raw/typed sample, age and active generation |
 | HTTP GET /v1/samples?after=N | Up to 64 samples from the newest 1,024 retained frames |
 | MQTT | Latest new active sample at the configured period, TCP 3.1.1, QoS 0, retain disabled |
@@ -202,6 +203,18 @@ Reset an HTTP cursor when stream_start_utc_us changes. Compare sample indexes an
 Shared-memory readers acquire the lock, copy and promptly release it. Discard an abandoned-mutex snapshot after releasing ownership. Close client handles before restarting a manual session with the same object names. A stale mapping may survive in a client process after the scanner exits.
 
 The implemented interfaces export telemetry. For C#, HTTP/shared memory or CLI process supervision can consume the scanner today. A C ABI for embedding the scanner is prospective work.
+
+### Inspect a live Class 1 connection
+
+~~~powershell
+curl.exe --fail http://127.0.0.1:8765/v1/connection
+~~~
+
+The schema version 1 response identifies the stream with `stream_start_utc_us` and includes the adapter or first bridge, local IPv4, and optional CIP route. `connection` covers the latest started generation and is null before startup. `previous_connection` retains the immediately preceding generation when a retry starts. `active_generation` is zero during a connection gap. Compare it with `connection.generation` and check the state and input age before treating a session as current.
+
+Each generation reports the Identity Object, connection state, accepted packet and anomaly counters, and the source, destination and connection IDs under `cyclic_io`. Read `requested_ot_us` and `requested_to_us` for the profile intervals, `actual_ot_us` and `actual_to_us` for the Forward_Open reply, and `send_spacing` and `receive_spacing` for measured socket timing. `input_age_us` uses the monotonic receive clock. During cyclic I/O, receive counters and spacing reflect the latest published scanner snapshot. `connection_timeout`, `receive_timeout`, and `forward_close` detail the configured watchdog, an observed timeout and the actual close result. The three error fields carry identity, CIP connection and transport messages separately. Measurements or results that are unavailable appear as null.
+
+The endpoint lives for the feed's lifetime. Use the final GUI run report or CLI receipt for a durable record after shutdown.
 
 ### Run feeds headlessly
 

@@ -6,6 +6,7 @@ mod mqtt;
 mod shared_memory;
 
 use crate::model::{MAX_ASSEMBLY_BYTES, MAX_LARGE_ASSEMBLY_BYTES, Settings, hex};
+use crate::scanner::DiagnosticsSource;
 use crossbeam_queue::ArrayQueue;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -127,6 +128,7 @@ struct Feed {
     dispatcher: OnceLock<Thread>,
     stop: AtomicBool,
     active_generation: AtomicU64,
+    http_connections: Option<Mutex<http::Connections>>,
     received: AtomicU64,
     queue_drops: AtomicU64,
     mqtt_connected: AtomicBool,
@@ -180,6 +182,16 @@ impl Feed {
 pub struct Publisher(Arc<Feed>);
 
 impl Publisher {
+    pub(crate) fn track_connection(
+        &self,
+        generation: u64,
+        source: impl FnOnce() -> DiagnosticsSource,
+    ) {
+        if let Some(connections) = &self.0.http_connections {
+            connections.lock().unwrap().track(generation, source());
+        }
+    }
+
     pub(crate) fn set_active_generation(&self, generation: u64) {
         self.0.active_generation.store(generation, Relaxed);
         self.0.wake_dispatcher();
@@ -262,6 +274,7 @@ impl Integration {
             dispatcher: OnceLock::new(),
             stop: AtomicBool::new(false),
             active_generation: AtomicU64::new(0),
+            http_connections: listener.as_ref().map(|_| Mutex::default()),
             received: AtomicU64::new(0),
             queue_drops: AtomicU64::new(0),
             mqtt_connected: AtomicBool::new(false),

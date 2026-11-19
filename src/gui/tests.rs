@@ -521,23 +521,37 @@ fn run_report_uses_the_final_loopback_connection() {
     device.start_capture();
     device.connect(&[]);
     poll_until(&mut device, |device| device.status.valid >= 50);
-    let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
-    client
-        .set_read_timeout(Some(Duration::from_secs(1)))
+    let get = |path: &str| -> serde_json::Value {
+        let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        write!(
+            client,
+            "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n"
+        )
         .unwrap();
-    write!(
-        client,
-        "GET /v1/latest HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n"
-    )
-    .unwrap();
-    let mut response = String::new();
-    client.read_to_string(&mut response).unwrap();
-    assert!(response.starts_with("HTTP/1.1 200 OK"));
-    let body: serde_json::Value =
-        serde_json::from_str(response.split_once("\r\n\r\n").unwrap().1).unwrap();
+        let mut response = String::new();
+        client.read_to_string(&mut response).unwrap();
+        assert!(response.starts_with("HTTP/1.1 200 OK"));
+        serde_json::from_str(response.split_once("\r\n\r\n").unwrap().1).unwrap()
+    };
+    let body = get("/v1/latest");
     assert_eq!(body["active_generation"].as_u64(), Some(1));
     assert_eq!(body["sample"]["generation"].as_u64(), Some(1));
     assert!(body["sample"]["sample_index"].as_u64().unwrap() >= 50);
+    let body = get("/v1/connection");
+    assert_eq!(body["active_generation"].as_u64(), Some(1));
+    assert!(body["previous_connection"].is_null());
+    let connection = &body["connection"];
+    assert_eq!(connection["state"].as_str(), Some("Receiving"));
+    assert_eq!(connection["requested_to_us"].as_u64(), Some(1000));
+    assert_eq!(connection["actual_to_us"].as_u64(), Some(1500));
+    assert_eq!(
+        connection["connection_timeout"]["receive_watchdog_us"].as_u64(),
+        Some(96_000)
+    );
+    assert!(connection["input_age_us"].is_u64());
     device.disconnect();
     poll_until(&mut device, |device| !device.link_busy());
     device.stop_capture();

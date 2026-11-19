@@ -425,6 +425,12 @@ One five-second headless pair requested and negotiated 1,000 µs in both directi
 
 The enabled run recorded zero integration queue drops. The client polled 221 HTTP batches and read shared memory 221 times. The MQTT fixture received 104 publications, including publications after its deliberate disconnect. The final API poll was 14 samples behind the completed connection. These figures measure one localhost pair. Physical-device timing and transport latency require separate measurement.
 
+## Live HTTP connection diagnostics
+
+The Windows localhost check queried `GET /v1/connection` during headless `serve` and CSV capture. In the `serve` check, the retry requested 8 ms each way and the fixture returned 10 ms O→T and 12 ms T→O. The response reported both sets of intervals, observed receive spacing, and a 384 ms receive watchdog from the returned input interval. After the retry began, the preceding generation remained available with its 256 ms receive timeout and confirmed Forward_Close. The check also exercised a slow HTTP client while shared-memory samples continued to advance.
+
+The headless GUI backend check queried the endpoint during a loopback capture and verified a 1 ms requested input interval, a 1.5 ms returned interval, and a 96 ms watchdog with timeout code 4. The saved run report recorded the same intervals and watchdog. The tests also exercised the loopback Host allowlist, GET-only behavior and the existing status response.
+
 ## Headless feeds without CSV
 
 The Windows localhost fixture exercised `serve` with HTTP, MQTT, and shared memory all enabled at an 8 ms requested and negotiated interval in both directions. The five-second run accepted 467 input packets across a forced I/O timeout and a serial-pinned reconnect. HTTP history and the shared-memory reader kept their sample indexes across generations. MQTT resumed after a deliberate broker disconnect. The report counted zero export queue drops and separated the broker error from shared-memory lock misses. Both I/O generations confirmed Forward_Close. No CSV file or capture directory was created.

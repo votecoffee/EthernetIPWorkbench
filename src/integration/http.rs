@@ -1,15 +1,96 @@
 use super::{Feed, IDLE, counters};
+use crate::scanner::DiagnosticsSource;
 use serde_json::{Value, json};
 use std::{
     io::{self, Read, Write},
     net::{TcpListener, TcpStream},
-    sync::atomic::Ordering::Relaxed,
+    sync::{Arc, atomic::Ordering::Relaxed},
     thread,
     time::{Duration, Instant},
 };
 
 const REQUEST_TIMEOUT: Duration = Duration::from_millis(250);
 const MAX_BATCH: usize = 64;
+
+struct TrackedConnection {
+    generation: u64,
+    source: DiagnosticsSource,
+}
+
+#[derive(Default)]
+pub(super) struct Connections {
+    current: Option<Arc<TrackedConnection>>,
+    previous: Option<Arc<TrackedConnection>>,
+}
+
+impl Connections {
+    pub(super) fn track(&mut self, generation: u64, source: DiagnosticsSource) {
+        self.previous = self
+            .current
+            .replace(Arc::new(TrackedConnection { generation, source }));
+    }
+}
+
+fn connection_json(feed: &Feed, tracked: &TrackedConnection) -> Value {
+    let diagnostics = tracked.source.diagnostics();
+    let status = &diagnostics.status;
+    let (actual_ot_us, actual_to_us) = status.actual.unzip();
+    json!({
+        "generation": tracked.generation,
+        "state": status.state,
+        "identity": status.identity,
+        "requested_ot_us": diagnostics.requested_ot_us,
+        "requested_to_us": diagnostics.requested_to_us,
+        "actual_ot_us": actual_ot_us,
+        "actual_to_us": actual_to_us,
+        "input_age_us": tracked.source.input_age().map(|age| age.as_micros() as u64),
+        "accepted": status.valid,
+        "sequence_gaps": status.gaps,
+        "duplicates": status.duplicates,
+        "late": status.late,
+        "invalid": status.invalid,
+        "timeouts": status.timeouts,
+        "sent": diagnostics.sent,
+        "skipped_deadlines": diagnostics.skipped,
+        "receive_spacing": status.spacing,
+        "send_spacing": diagnostics.send_spacing,
+        "send_timing": diagnostics.send_timing,
+        "startup_timing": status.startup_timing(diagnostics.send_timing),
+        "connection_timeout": feed.settings.connection_timeout(actual_to_us),
+        "receive_timeout": status.receive_timeout,
+        "forward_close": status.forward_close,
+        "cyclic_io": status.cyclic_io,
+        "identity_error": status.identity_error,
+        "cip_error": status.cip_error,
+        "network_error": status.network_error,
+    })
+}
+
+fn connections_json(feed: &Feed) -> Value {
+    let (current, previous, active) = {
+        let connections = feed
+            .http_connections
+            .as_ref()
+            .expect("HTTP feed")
+            .lock()
+            .unwrap();
+        (
+            connections.current.clone(),
+            connections.previous.clone(),
+            feed.active_generation.load(Relaxed),
+        )
+    };
+    json!({
+        "schema_version": 1,
+        "stream_start_utc_us": feed.started_utc_us,
+        "active_generation": active,
+        "adapter_ip": feed.settings.device_ip,
+        "local_ip": feed.settings.local_ip,
+        "io_route": (!feed.settings.io_route.trim().is_empty()).then_some(&feed.settings.io_route),
+        "connection": current.as_deref().map(|tracked| connection_json(feed, tracked)),
+        "previous_connection": previous.as_deref().map(|tracked| connection_json(feed, tracked)),
+    })
+}
 
 pub(super) fn serve(feed: &Feed, listener: TcpListener) {
     let port = listener.local_addr().expect("bound listener").port();
@@ -113,6 +194,7 @@ fn route(feed: &Feed, request: &[u8], hosts: &[String]) -> (&'static str, Value)
                 "counters": counters(feed),
             }),
         ),
+        "/v1/connection" if query.is_empty() => ("200 OK", connections_json(feed)),
         "/v1/latest" if query.is_empty() => {
             let sample = feed.latest();
             (
