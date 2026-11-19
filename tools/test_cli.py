@@ -16,10 +16,10 @@ PROFILE = FIXTURE.parent.parent / "samples" / "loopback.toml"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
-def with_adapter(root, case, command, mode="normal"):
+def with_adapter(root, case, command, mode="normal", *, fixture_args=()):
     report = root / f"{case}-adapter.json"
     adapter = subprocess.Popen(
-        [sys.executable, FIXTURE, report, "--mode", mode], stdout=subprocess.PIPE, text=True,
+        [sys.executable, FIXTURE, report, "--mode", mode, *fixture_args], stdout=subprocess.PIPE, text=True,
         creationflags=NO_WINDOW
     )
     try:
@@ -413,7 +413,7 @@ def main():
 
     unsupported_eds = root / "unsupported.eds"
     unsupported_eds.write_text(PROFILE.with_suffix(".eds").read_text(encoding="utf-8")
-                               .replace("0x22440305", "0x44244305"), encoding="utf-8")
+                               .replace("0x22440305", "0x22420305"), encoding="utf-8")
     blocked = subprocess.run([*validate, unsupported_eds, "Connection1"],
                              capture_output=True, text=True, timeout=5)
     assert blocked.returncode == 1 and not tomllib.loads(blocked.stdout)["connection_valid"]

@@ -43,6 +43,9 @@ pub struct Settings {
     pub local_udp_port: u16,
     pub input_instance: u16,
     pub input_size: u16,
+    /// Request T->O multicast. The adapter selects the group and port.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub input_multicast: bool,
     /// Presence requests variable-size T->O. The adapter sees input_size as the
     /// maximum and the scanner enforces this lower bound locally.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -99,6 +102,7 @@ impl Default for Settings {
             local_udp_port: 0,
             input_instance: 101,
             input_size: 4,
+            input_multicast: false,
             input_min_size: None,
             output_instance: 254,
             output_size: 0,

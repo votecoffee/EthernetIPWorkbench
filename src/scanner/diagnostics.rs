@@ -209,6 +209,10 @@ pub struct Diagnostics {
 pub struct CyclicIo {
     pub local_udp: SocketAddr,
     pub output_destination: SocketAddr,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_multicast_destination: Option<std::net::SocketAddrV4>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_local_udp: Option<SocketAddr>,
     pub first_input_source: Option<SocketAddr>,
     pub ot_connection_id: u32,
     pub to_connection_id: u32,

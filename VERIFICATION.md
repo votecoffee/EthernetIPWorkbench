@@ -453,6 +453,12 @@ The localhost bridge fixture checked the Unconnected Send wrapper, the embedded 
 
 The Windows loopback fixture verified standard and Large Forward_Open with a variable-size T→O parameter, fixed-size O→T and a T→O Run/Idle header. It passed 4-, 7- and 12-byte inputs through HTTP, MQTT and shared memory at 8 ms requested and negotiated in both directions. The large connection accepted up to 600 bytes. Each run rejected one undersized and one oversized datagram, recorded the two sequence gaps, and confirmed Forward_Close. CSV matched the accepted values without buffer overruns. On-change capture suppressed changes confined to the unmapped tail. The offline checks also covered the EDS variable-size flag and a mapping beyond the configured minimum. Physical acceptance remains open.
 
+## Class 1 multicast input
+
+The Windows loopback fixture verified T→O multicast with unicast O→T at an 8 ms requested and negotiated RPI. It returned a different T→O connection ID and UDP port, injected a datagram with the wrong connection ID, and checked the accepted CSV values. Separate and shared receive/send socket cases passed. Missing or unicast T→O addresses and an occupied receive port each stopped before cyclic output and completed Forward_Close. The localhost EDS check verified the import of a multicast-only T→O profile.
+
+The pinned OpENer adapter selected `239.192.1.32:2222` on Windows loopback at a requested and negotiated 30 ms in both directions. A three-second capture saved 101 rows with zero sequence gaps or buffer overruns and a confirmed Forward_Close. Physical switch and adapter verification remain open.
+
 ## Physical bench acceptance
 
 Physical-device measurements require a connected bench adapter and verified device settings. First verify the Identity Object and the intended profile, preferably input-only. Confirm output ownership and write permissions before using a profile that owns outputs, asserts Run or sends configuration bytes. Then run the Windows GUI and logger with the requested RPIs and record the Forward_Open actual intervals separately from socket spacing percentiles, longest gap, sequence gaps, timeouts, missed send slots and capture losses. Use a capture at the NIC or switch if wire-level timestamps are required.

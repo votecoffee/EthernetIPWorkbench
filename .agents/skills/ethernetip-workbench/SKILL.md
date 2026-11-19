@@ -34,6 +34,8 @@ Use zero-based byte offsets for mappings. Apply the profile's actual endian and 
 
 For variable-size T→O profiles, verify the maximum `input_size` and local `input_min_size` against the adapter documentation. Validate all input mappings at the minimum. Check the actual payload length in the input view or export before reporting a readback.
 
+For multicast T→O profiles, verify the selected NIC, the returned group and receive port in `cyclic_io`, and the Forward_Close result. O→T stays unicast and the usual ownership rules apply.
+
 For live work, use the session's authorization and an isolated bench. Confirm the exact ownership and output/configuration actions when they are not already authorized. Configuration travels in Forward_Open and an owner may start transmitting staged output immediately.
 
 Separate requested RPI, Forward_Open actual intervals, observed socket spacing and disk/export loss. Preserve captures and failure receipts. Do not infer that skipped producer slots are received sequence gaps. Keep .local/ private, and keep desktop interaction subject to an explicit request in the current chat.

@@ -104,6 +104,7 @@ impl Device {
                 s.config_instance, s.config_size, s.timeout_multiplier_code,
                 s.large_forward_open, s.electronic_key,
                 s.input_size, s.input_min_size,
+                s.input_multicast,
             );
             let before = write_settings(s);
             ui.separator();
@@ -122,6 +123,10 @@ impl Device {
                 ui.label("32-bit Run/Idle");
                 ui.checkbox(&mut s.input_run_idle, "");
                 ui.checkbox(&mut s.output_run_idle, ""); ui.end_row();
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.checkbox(&mut s.input_multicast, "Multicast input (T->O)")
+                    .on_hover_text("The adapter selects the input group and port. Outputs remain unicast.");
             });
             ui.horizontal_wrapped(|ui| {
                 let mut variable = s.input_min_size.is_some();
@@ -220,6 +225,9 @@ impl Device {
                 "Variable T->O · {min}–{} payload bytes",
                 self.settings.input_size
             ));
+        }
+        if self.settings.input_multicast {
+            ui.label("Multicast T->O · the adapter selects the group and port");
         }
         if self.settings.large_forward_open {
             ui.label("Large Forward_Open");

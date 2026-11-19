@@ -262,10 +262,14 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
             // EDS connection-parameter bits 0/1 describe fixed/variable O->T,
             // and bits 2/3 describe fixed/variable T->O.
             let variable_input = mask & 0x0c == 0x08;
-            if mask & 0x0044_0001 != 0x0044_0001 || mask & 0x0c == 0 {
+            if mask & 0x0004_0001 != 0x0004_0001 || mask & 0x0060_0000 == 0 || mask & 0x0c == 0 {
                 issues.push(
-                    "Profile must support point-to-point I/O in both directions and fixed-size O->T".into(),
+                    "Profile requires fixed-size point-to-point O->T and point-to-point or multicast T->O".into(),
                 );
+            }
+            if mask & 0x0060_0000 == 0x0020_0000 {
+                s.input_multicast = true;
+                origin.insert("T->O distribution".into(), "Multicast".into());
             }
             for (shift, direction, header, priority) in [
                 (0, "O->T", &mut s.output_run_idle, &mut s.output_priority),
@@ -453,13 +457,13 @@ mod tests {
             .replace("2C FE 2C 65", "2C [Param7] 2C [Param5]");
         let profiles = parse(&sample).unwrap();
         let p = &profiles[0];
-        // This test profile advertises multicast T->O. Keep the decoded
-        // path available for review without treating it as a unicast profile.
+        // The profile requires multicast T->O and retains the decoded path.
         assert_eq!(p.settings.config_instance, Some(1));
         assert_eq!(p.settings.output_instance, 254);
         assert_eq!(p.settings.input_instance, 101);
-        assert_eq!(p.unsupported.len(), 1);
-        assert!(p.unsupported[0].contains("point-to-point"));
+        assert!(p.settings.input_multicast);
+        assert_eq!(p.fields["T->O distribution"], "Multicast");
+        assert!(p.unsupported.is_empty(), "{:?}", p.unsupported);
         assert_eq!(
             p.fields["Assembly path"],
             "20 04 24 01 2C [Param7] 2C [Param5] => 20 04 24 01 2C FE 2C 65"

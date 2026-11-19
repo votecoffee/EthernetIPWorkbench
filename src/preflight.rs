@@ -54,6 +54,8 @@ pub struct Report {
     pub adapter_ip: Ipv4Addr,
     pub local_ip: Ipv4Addr,
     pub local_udp_port: u16,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub input_multicast: bool,
     pub requests_output_ownership: bool,
     pub asserts_run: bool,
     pub configuration_assembly: Option<u16>,
@@ -211,6 +213,14 @@ pub fn inspect(
                 mode(imported.input_min_size).into(),
             );
         }
+        if settings.input_multicast || imported.input_multicast {
+            let mode = |enabled| if enabled { "Multicast" } else { "Unicast" };
+            compare(
+                "T->O distribution",
+                mode(settings.input_multicast).into(),
+                mode(imported.input_multicast).into(),
+            );
+        }
         compare(
             "Timeout multiplier code",
             settings.timeout_multiplier_code.to_string(),
@@ -224,6 +234,7 @@ pub fn inspect(
         adapter_ip: settings.device_ip,
         local_ip: settings.local_ip,
         local_udp_port: settings.local_udp_port,
+        input_multicast: settings.input_multicast,
         requests_output_ownership: !settings.input_only,
         asserts_run: settings.output_run_idle,
         configuration_assembly: settings.config_instance,

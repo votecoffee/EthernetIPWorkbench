@@ -2,7 +2,7 @@
 
 Windows EtherNet/IP Class 1 scanner and CSV assembly logger.
 
-EthernetIPWorkbench is the source repository for the Assembly Scanner desktop application. It opens cyclic IPv4 unicast connections, displays device identity and live assembly data, stages typed output values, and records selected inputs to CSV. The GUI can run separate sessions for multiple adapters in one window. Each device session owns its TCP and UDP sockets, producer, receiver, output buffer and counters. The CSV writer runs independently.
+EthernetIPWorkbench is the source repository for the Assembly Scanner desktop application. It opens cyclic IPv4 connections, displays device identity and live assembly data, stages typed output values, and records selected inputs to CSV. The GUI can run separate sessions for multiple adapters in one window. Each device session owns its TCP and UDP sockets, producer, receiver, output buffer and counters. The CSV writer runs independently.
 
 ## Table of Contents
 
@@ -124,7 +124,9 @@ For adapters requiring the large request format, enable **Use Large Forward_Open
 
 For adapters that produce variable-size T→O data, enable **Variable-size input (T->O)** in **Device** and enter the documented minimum and maximum payload lengths. All input mappings must fit in the minimum. The input view and software feeds show the bytes actually received. Fixed-size input remains the default. [Variable input settings](docs/OPERATIONS.md#configure-variable-size-input)
 
-The cyclic protocol scope is Class 1 unicast with direct assembly paths and fixed-size output. Routed cyclic I/O, multicast, listen-only and variable-size output remain on the [roadmap](ROADMAP.md#04-adapter-compatibility). Keep device-specific presets, vendor files and raw captures in the Git-ignored `.local/` folder. The tracked [sample EDS](samples/loopback.eds) and [sample TOML](samples/loopback.toml) target the localhost fixture.
+For a multicast producer, enable **Multicast input (T->O)** in **Device**. The scanner joins the group returned by the adapter on the selected NIC. O→T output or heartbeat stays unicast. [Multicast settings](docs/OPERATIONS.md#configure-multicast-input)
+
+The cyclic protocol scope is Class 1 with direct assembly paths and fixed-size unicast output. Routed cyclic I/O, listen-only and variable-size output remain on the [roadmap](ROADMAP.md#04-adapter-compatibility). Keep device-specific presets, vendor files and raw captures in the Git-ignored `.local/` folder. The tracked [sample EDS](samples/loopback.eds) and [sample TOML](samples/loopback.toml) target the localhost fixture.
 
 Set **CIP timeout code** in the GUI or `timeout_multiplier_code` in the TOML profile. Codes 0 through 7 represent factors of 4 through 512 in powers of two. Profiles that omit the setting use code 3 (32 times the interval). The app sends the code in Forward_Open and uses the returned input interval times that factor for its local receive watchdog. Before the first valid input, the scanner waits for the larger of two seconds and two returned input intervals. Preflight shows the watchdog calculated from the requested interval. Capture reports also show the local watchdog calculated from the interval the adapter returned.
 

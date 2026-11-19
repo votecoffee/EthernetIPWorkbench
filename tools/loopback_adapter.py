@@ -14,6 +14,7 @@ IP = "127.0.0.1"
 SESSION = 0xABCD0123
 OT_ID = 0x1234ABCD
 VARIABLE_INPUT_MAX = {"variable-input": 12, "large-variable-input": 600}
+MULTICAST_GROUP = "239.255.92.44"
 
 
 def recv_exact(sock, length):
@@ -65,7 +66,7 @@ def spacing(stamps):
     }
 
 
-def udp_loop(udp, source, endpoint, connection, api, mode, value_base, stop, report):
+def udp_loop(udp, source, endpoint, connection, api, mode, value_base, stop, report, multicast=None):
     sent, received = [], []
     output_values = set()
     owner = mode == "owner"
@@ -83,6 +84,9 @@ def udp_loop(udp, source, endpoint, connection, api, mode, value_base, stop, rep
                 stamp = time.perf_counter_ns()
             except BlockingIOError:
                 break
+            if multicast and not endpoint[1] and peer[0] == endpoint[0]:
+                endpoint = peer
+                report["cyclic_io"]["local_udp"] = f"{peer[0]}:{peer[1]}"
             if peer != endpoint or len(packet) != (26 if owner else 20):
                 invalid += 1
                 continue
@@ -125,7 +129,9 @@ def udp_loop(udp, source, endpoint, connection, api, mode, value_base, stop, rep
                     value = value[:-1]
                 packet = io_packet(connection, seq,
                                    (bytes((1, 0, 0, 0)) if owner or variable_max is not None else b"") + value)
-                source.sendto(packet, endpoint)
+                if multicast and seq == 5:
+                    source.sendto(io_packet(connection ^ 1, seq, b"\xFF" * 4), multicast)
+                source.sendto(packet, multicast or endpoint)
                 sent.append(time.perf_counter_ns())
                 if len(sent) == 1 and mode != "invalid-input":
                     source_ip, source_port = source.getsockname()
@@ -182,10 +188,11 @@ def routed_reply(cip, attrs, report):
     return bytes.fromhex("8E 00 00 00") + attrs[6]
 
 
-def serve(tcp, udp, source, mode, report, serial_delta=0):
+def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     stop = threading.Event()
     io = None
     owner = mode == "owner"
+    multicast = mode.startswith("multicast")
     udp_mode = "stall" if mode == "stall-close-reject" else mode
     adapter_ip = tcp.getsockname()[0]
     scanner_ip = tcp.getpeername()[0]
@@ -261,14 +268,16 @@ def serve(tcp, udp, source, mode, report, serial_delta=0):
                             "<IHIHBB", body, 22
                         )
                         assert ot_params & 0xE3FF == (0x4008 if owner else 0x4002)
-                        expected_input = 0x4212 if mode == "variable-input" else (0x400A if owner else 0x4006)
+                        expected_input = (0x2006 if multicast else 0x4212 if mode == "variable-input"
+                                          else 0x400A if owner else 0x4006)
                         assert to_params & 0xE3FF == expected_input
                         path_offset = 36
                     assert transport == 1
                     assert len(body[path_offset:]) == path_words * 2
                     assert body[path_offset:] == path + (bytes.fromhex("80 02 AA BB CC 00") if owner else b"")
                     family, port, address = struct.unpack(">HH4s8x", items[0x8001])
-                    assert family == 2 and socket.inet_ntoa(address) == scanner_ip and port != 0
+                    assert family == 2 and port != 0
+                    assert socket.inet_ntoa(address) == ("0.0.0.0" if multicast else scanner_ip)
                     assert body[18] <= 7 and body[19:22] == bytes(3)
                     report.update(ot_requested_us=ot_rpi, to_requested_us=to_rpi,
                                   timeout_multiplier_code=body[18])
@@ -281,8 +290,18 @@ def serve(tcp, udp, source, mode, report, serial_delta=0):
                         reply = struct.pack("<IIHHIIIBB", OT_ID, to, serial, vendor, origin,
                                             ot_api, to_api, 0, 0)
                         adapter_port = udp.getsockname()[1]
-                        response = rr_reply(bytes([service | 0x80, 0, 0, 0]) + reply,
-                                            (0x8000, sockaddr(adapter_ip, adapter_port)))
+                        extras = [(0x8000, sockaddr(adapter_ip, adapter_port))]
+                        group = None
+                        if multicast:
+                            # Supply a different T->O ID to model an existing producer.
+                            to = 0xBCDE8765
+                            reply = struct.pack("<IIHHIIIBB", OT_ID, to, serial, vendor, origin,
+                                                ot_api, to_api, 0, 0)
+                            report["requested_input_port"] = port
+                            if mode != "multicast-missing":
+                                group = (MULTICAST_GROUP if mode == "multicast" else adapter_ip, multicast_port)
+                                extras.append((0x8001, sockaddr(*group)))
+                        response = rr_reply(bytes([service | 0x80, 0, 0, 0]) + reply, *extras)
                         report["cyclic_io"] = {
                             "local_udp": f"{scanner_ip}:{port}",
                             "output_destination": f"{adapter_ip}:{adapter_port}",
@@ -291,10 +310,19 @@ def serve(tcp, udp, source, mode, report, serial_delta=0):
                         }
                         if mode == "delayed-start":
                             time.sleep(0.05)
-                        io = threading.Thread(target=udp_loop,
-                                              args=(udp, source, (scanner_ip, port), to, to_api, udp_mode,
-                                                    value_base, stop, report))
-                        io.start()
+                        if not multicast or mode == "multicast":
+                            if multicast:
+                                # The fixture never emits multicast beyond localhost.
+                                source.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
+                                                  socket.inet_aton(adapter_ip))
+                                source.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 0)
+                                source.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
+                                report["cyclic_io"]["input_multicast_destination"] = f"{group[0]}:{group[1]}"
+                                report["cyclic_io"]["input_local_udp"] = f"{scanner_ip}:{group[1]}"
+                            io = threading.Thread(target=udp_loop,
+                                                  args=(udp, source, (scanner_ip, 0 if multicast else port),
+                                                        to, to_api, udp_mode, value_base, stop, report, group))
+                            io.start()
                 elif service == 0x4E and object_class == 6:
                     assert struct.unpack_from("<HHI", body, 2) == (serial, vendor, origin)
                     assert body[12:] == path
@@ -333,9 +361,11 @@ def main():
         "slow-input", "pause-different-api",
         "identity-then-owner",
         "explicit", "large-keyed", "routed", "variable-input", "large-variable-input",
+        "multicast", "multicast-missing", "multicast-unicast",
         "delayed-start", "split-udp",
     ))
     parser.add_argument("--address", type=IPv4Address, default=IPv4Address(IP))
+    parser.add_argument("--multicast-port", type=int, default=2222)
     args = parser.parse_args()
     if not args.address.is_loopback:
         parser.error("--address must be an IPv4 loopback address")
@@ -371,7 +401,8 @@ def main():
                 with input_socket as source:
                     if source is not udp:
                         source.bind((address, 0))
-                    serve(conn, udp, source, mode, attempt, serial_delta=int(replacement))
+                    serve(conn, udp, source, mode, attempt, serial_delta=int(replacement),
+                          multicast_port=args.multicast_port)
                 if record_attempts:
                     report["attempts"].append(attempt)
     args.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

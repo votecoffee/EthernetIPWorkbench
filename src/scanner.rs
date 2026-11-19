@@ -9,10 +9,9 @@ use ethernetip_connections::forward_open::{
     NetworkConnectionParameters,
 };
 use ethernetip_core::{cpf, error::EipError};
-use socket2::{Domain, Protocol, Socket, Type};
 use std::{
     io,
-    net::{SocketAddr, UdpSocket},
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering::Relaxed},
@@ -100,6 +99,7 @@ impl Reconnect {
 pub use crate::explicit::read_identity;
 mod cyclic;
 mod diagnostics;
+mod udp;
 use cyclic::{produce, receive};
 #[cfg(test)]
 use diagnostics::Histogram;
@@ -450,10 +450,11 @@ fn params(
     header: bool,
     priority: u8,
     variable_size: bool,
+    multicast: bool,
 ) -> NetworkConnectionParameters {
     NetworkConnectionParameters {
         redundant_owner: false,
-        connection_type: 2,
+        connection_type: if multicast { 1 } else { 2 },
         priority,
         variable_size,
         size: size + 2 + 4 * u16::from(header),
@@ -512,13 +513,10 @@ fn run(
             }
         }
     }
-    let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
-    socket.set_recv_buffer_size(512 * 1024)?;
-    socket.bind(&SocketAddr::from((cfg.local_ip, cfg.local_udp_port)).into())?;
-    let udp: UdpSocket = socket.into();
-    #[cfg(not(windows))]
-    udp.set_read_timeout(Some(Duration::from_millis(2)))?;
-    udp.set_write_timeout(Some(Duration::from_millis(10)))?;
+    let udp = udp::bind(
+        SocketAddrV4::new(cfg.local_ip, cfg.local_udp_port),
+        cfg.input_multicast,
+    )?;
 
     let mut ids = [0; 10];
     getrandom::fill(&mut ids).map_err(|e| protocol(e.to_string()))?;
@@ -547,6 +545,7 @@ fn run(
             cfg.output_run_idle,
             cfg.output_priority,
             false,
+            false,
         ),
         t_to_o_rpi_us: cfg.input_rpi_us,
         t_to_o_params: params(
@@ -554,6 +553,7 @@ fn run(
             cfg.input_run_idle,
             cfg.input_priority,
             cfg.input_min_size.is_some(),
+            cfg.input_multicast,
         ),
         transport_type: 1,
         connection_path: open_path,
@@ -562,13 +562,27 @@ fn run(
         return Ok(());
     }
     let local_addr = udp.local_addr()?;
+    let requested_input = if cfg.input_multicast {
+        // Ask the target to select the group. Some adapters require this
+        // placeholder item and always return their own group and port.
+        SocketAddr::from((
+            Ipv4Addr::UNSPECIFIED,
+            if cfg.local_udp_port == 0 {
+                udp::IO_PORT
+            } else {
+                cfg.local_udp_port
+            },
+        ))
+    } else {
+        local_addr
+    };
     let (service, request) = if cfg.large_forward_open {
         (0x5b, encode_large_open(&open))
     } else {
         (0x54, open.encode())
     };
     let open_started = Instant::now();
-    let open_result = session.cip(service, 6, &request, Some(local_addr));
+    let open_result = session.cip(service, 6, &request, Some(requested_input));
     let open_completed = Instant::now();
     shared.status.lock().unwrap().forward_open_exchange_us =
         Some((open_completed - open_started).as_micros() as u64);
@@ -595,16 +609,28 @@ fn run(
                 "Forward_Open returned invalid connection identifiers or intervals",
             ));
         }
-        let peer = cpf::resolve_peer_udp(&envelope, OT_SOCKET, cfg.device_ip.into(), 2222);
+        shared.status.lock().unwrap().actual =
+            Some((reply.o_to_t_actual_rpi_us, reply.t_to_o_actual_rpi_us));
+        let peer = cpf::resolve_peer_udp(&envelope, OT_SOCKET, cfg.device_ip.into(), udp::IO_PORT);
         if peer.ip() != cfg.device_ip {
             return Err(protocol("Adapter advertised an unexpected O->T address"));
         }
+        let destination = cfg
+            .input_multicast
+            .then(|| udp::multicast_destination(&envelope))
+            .transpose()?;
+        let input_udp = destination
+            .map(|group| udp::join(&udp, cfg.local_ip, group))
+            .transpose()?
+            .flatten();
+        let receiver = input_udp.as_ref().unwrap_or(&udp);
         {
             let mut status = shared.status.lock().unwrap();
-            status.actual = Some((reply.o_to_t_actual_rpi_us, reply.t_to_o_actual_rpi_us));
             status.cyclic_io = Some(CyclicIo {
                 local_udp: local_addr,
                 output_destination: peer,
+                input_multicast_destination: destination,
+                input_local_udp: destination.map(|_| receiver.local_addr()).transpose()?,
                 first_input_source: None,
                 ot_connection_id: reply.o_to_t_connection_id,
                 to_connection_id: reply.t_to_o_connection_id,
@@ -630,7 +656,15 @@ fn run(
                 }
                 result
             });
-            let result = receive(&udp, cfg, &reply, open_completed, slot, generation, shared);
+            let result = receive(
+                receiver,
+                cfg,
+                &reply,
+                open_completed,
+                slot,
+                generation,
+                shared,
+            );
             shared.stop.store(true, Relaxed);
             let tx = sender
                 .join()

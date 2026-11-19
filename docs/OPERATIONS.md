@@ -80,6 +80,14 @@ All input mappings must fit the shortest accepted packet. Shorter or oversized p
 
 When an EDS profile requires variable T→O, the importer enables it and initially sets the minimum equal to the imported maximum. Review and enter the documented minimum before connecting. If the EDS allows both fixed and variable input, the importer selects fixed. Omit `input_min_size` to retain fixed-size behavior.
 
+### Configure multicast input
+
+Enable **Multicast input (T->O)** in Device or set `input_multicast = true` in TOML. A multicast-only T→O EDS profile selects it automatically. When the EDS offers both distributions, it defaults to unicast. Input-only and exclusive-owner profiles retain their existing ownership and confirmation rules. O→T stays unicast.
+
+Forward_Open returns the T→O group, UDP port and connection ID. The scanner joins that group on the configured NIC and checks the adapter's source IP and returned ID. Use **Diagnostics** or the capture report's `cyclic_io` table to see the multicast destination and local receive endpoint. The requested local UDP port still binds the O→T socket. For multicast it also supplies the port hint, which defaults to 2222 when the field is zero. The returned receive port takes precedence.
+
+Windows uses one owning socket per local address and port. The scanner shares its own socket within a session when the returned input port matches its output socket. A port already occupied by another session or application causes an error and a Forward_Close attempt. If the connection opens but inputs time out, verify the returned group, selected NIC and multicast forwarding on the bench network.
+
 Configure the optional `[electronic_key]` table with decimal `vendor`, `device_type`, `product`, `major` and `minor` fields. The EDS importer handles a supported leading format 4 electronic key, UTF-16 with a BOM, and 16-bit Assembly class segments. Review the imported Large Forward_Open setting when the declared size exceeds the standard limit. Device payload and supported services still need checking against the adapter.
 
 In the GUI, import the EDS, choose a connection profile, review provenance and edit overrides. Use Manual settings when entering the connection directly. Read identity and verify vendor, device type, product code and serial before connecting. A successful identity read pins the next manual connection to that unit. Changing the addresses or loading a profile clears the pin.

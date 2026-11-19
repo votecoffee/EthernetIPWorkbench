@@ -66,6 +66,13 @@ impl Device {
                     "UDP local {} · O->T destination {} · First T->O source {input}",
                     io.local_udp, io.output_destination
                 ));
+                if let (Some(group), Some(listener)) =
+                    (io.input_multicast_destination, io.input_local_udp)
+                {
+                    ui.small(format!(
+                        "T->O multicast {group} · Local receiver {listener}"
+                    ));
+                }
                 ui.small(format!(
                     "Connection IDs · O->T 0x{:08X} · T->O 0x{:08X}",
                     io.ot_connection_id, io.to_connection_id

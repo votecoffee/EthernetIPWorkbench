@@ -24,6 +24,7 @@ ASSETS = (
     "samples/opener-loopback.toml",
     "tools/test_recovery.py", "tools/test_interrupt.py", "tools/test_opener.py", "tools/fixtures/opener_loopback.c",
     "tools/test_integration.py", "tools/test_explore.py", "tools/test_variable_input.py",
+    "tools/test_multicast.py",
 )
 NOTICE_FILE = re.compile(
     r"(^|[-_.])(licen[cs]e|copying|copyright|notice|ofl|ufl|unlicense)([-_.]|$)", re.I

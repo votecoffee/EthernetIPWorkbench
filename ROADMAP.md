@@ -1,6 +1,6 @@
 # EthernetIPWorkbench roadmap
 
-EthernetIPWorkbench hosts Assembly Scanner, a standalone Windows x64 EtherNet/IP scanner. The current GUI can run multiple cyclic Class 1 unicast connections with a separate setup and capture per device. It supports EDS and manual setup, saved profiles, typed assembly mappings, authorized output staging, a GUI and CLI, and selective CSV logging with rotation and loss accounting.
+EthernetIPWorkbench hosts Assembly Scanner, a standalone Windows x64 EtherNet/IP scanner. The current GUI can run multiple cyclic Class 1 connections with a separate setup and capture per device. It supports EDS and manual setup, saved profiles, typed assembly mappings, authorized output staging, a GUI and CLI, and selective CSV logging with rotation and loss accounting.
 
 Simulator checks cover that workflow. Physical acceptance of sustained 1 ms capture on a bench adapter remains open. Treat the requested RPI, the intervals returned by Forward_Open, and the measured send and receive spacing as separate results.
 
@@ -32,6 +32,7 @@ Read-only software integration now offers a loopback HTTP API, MQTT publishing, 
 - Discovery, the direct CIP read browser, saved read requests, Large Forward_Open and exact mode electronic keys have localhost coverage. Verify them against documented physical adapters.
 - Routed explicit reads support backplane and IPv4 links in Explore, CLI and the Rust API. Verify them through a physical bridge.
 - Variable-size T→O supports standard and Large Forward_Open, offline decoding, CSV and all three export feeds. Verify it on a physical adapter that produces variable-size assemblies.
-- Add routed cyclic paths, multicast, listen-only and variable-size output as separate compatibility work. Pair each extension with fixture coverage and device-level evidence.
+- Multicast T→O uses the adapter's group, port and connection ID with unicast O→T. Verify group membership and capture through a physical bench switch.
+- Add routed cyclic paths, listen-only and variable-size output as separate compatibility work. Pair each extension with fixture coverage and device-level evidence.
 
 Device profiles, vendor files, and raw captures belong in the ignored `.local/` directory. [Adapter-compatibility milestone](https://github.com/votecoffee/EthernetIPWorkbench/milestone/3)
