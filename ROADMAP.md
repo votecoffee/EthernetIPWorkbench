@@ -26,6 +26,8 @@ The milestone requires concurrent loopback coverage and compatibility with exist
 
 Read-only software integration offers a loopback HTTP API, MQTT publishing, and a Windows shared-memory snapshot. Headless `serve` runs the feeds without CSV and keeps them open across a bounded input-only reconnect. HTTP supports bounded concurrent readers and exposes live Class 1 diagnostics and the preceding generation's timeout and close result. Run a physical bench comparison to quantify latency and loss with these feeds enabled.
 
+The [C# feed reader](examples/dotnet/README.md) demonstrates HTTP and shared-memory consumers with generation and freshness checks on Windows.
+
 ## 0.4 Adapter compatibility
 
 - [Verify a second documented adapter family](https://github.com/votecoffee/EthernetIPWorkbench/issues/7). The [OpENer software adapter check](VERIFICATION.md#opener-compatibility) covers the upstream EDS, identity, assembly decoding, and sustained unicast input-only capture. Physical device acceptance remains separate.

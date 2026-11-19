@@ -443,6 +443,10 @@ The Windows localhost fixture exercised `serve` with HTTP, MQTT, and shared memo
 
 A separate HTTP-only run lasted 12 seconds and accepted 1,501 packets with zero sequence gaps or export queue drops. Observed receive p99 was 8.69 ms and the longest gap was 10.68 ms. The windowless Windows console test also stopped an untimed `serve` with Ctrl+Break, confirmed Forward_Close and returned exit code 130. The CSV capture, deadline, writer failure and qualification interrupt regression checks passed with the shared session runner.
 
+## C# feed reader
+
+The .NET 8 sample built in Release with zero warnings. The Windows localhost test started both readers before `serve`, then forced an I/O timeout and a reconnect at 8 ms. Each reader emitted 60 fresh samples spanning two connection generations. Every emitted sample matched the scanner's retained HTTP history by stream timestamp, monotonic elapsed time, packet sequences and payload bytes. The HTTP reader preserved the configured field names and the decoder's count as a string. Both scanner generations confirmed Forward_Close, with zero sequence gaps and export queue drops.
+
 ## Future-chat documentation and skill discovery
 
 The repository now routes future chats through AGENTS.md and the ethernetip-workbench skill to operational and development guides. The portable package includes these files and tools/install_skill.py. The installed local skill entry point points to the current source location.

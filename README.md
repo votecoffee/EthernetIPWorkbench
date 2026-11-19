@@ -277,6 +277,8 @@ The HTTP feed serves up to four readers concurrently and keeps a bounded queue f
 
 Integration queue drops, MQTT errors, and shared-memory lock misses are counted separately from UDP sequence gaps and CSV buffer overruns. Shared memory and MQTT are latest-value feeds. HTTP history provides bounded catch-up. Try `curl.exe http://127.0.0.1:8765/v1/latest` while the session is running.
 
+The .NET 8 C# example reads over HTTP or Windows shared memory and emits fresh samples as JSON lines. The Windows bundle includes its source and localhost verification script. [C# feed reader](examples/dotnet/README.md)
+
 ### Run the headless bench sequence
 
 `qualify` uses an input-only profile and a verified decimal `vendor:type:product:serial`. It checks the identity in the same TCP session before every Forward_Open. It runs 15 seconds at 8 ms, followed by three 60-second captures at 1 ms. Each run sets both directional RPIs, records every valid packet, and uses a fresh connection. The source profile is preserved.

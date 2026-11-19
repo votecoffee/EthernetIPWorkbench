@@ -2,3 +2,5 @@
 /captures/
 /.local/
 __pycache__/
+/examples/dotnet/bin/
+/examples/dotnet/obj/
