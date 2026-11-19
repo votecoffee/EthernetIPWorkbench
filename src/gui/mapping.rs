@@ -126,12 +126,18 @@ impl Device {
         ui.label("Define the primary readback and named values. CSV checkboxes select which input values are logged.");
         ui.add_enabled_ui(!self.link_busy() && !self.capturing, |ui| {
             let s = &mut self.settings;
+            let minimum = s.input_min_size.unwrap_or(s.input_size);
             title(ui, "Assembly mappings");
+            if s.input_min_size.is_some() {
+                ui.small(format!(
+                    "Input mappings must fit in the shortest accepted payload ({minimum} bytes)."
+                ));
+            }
             egui::CollapsingHeader::new("Primary input readback")
                 .default_open(true)
                 .show(ui, |ui| {
                     edit_selection(ui, &mut s.selection);
-                    if let Err(e) = s.selection.validate(s.input_size as usize) {
+                    if let Err(e) = s.selection.validate(usize::from(minimum)) {
                         ui.colored_label(RED, e);
                     }
                 });
@@ -172,7 +178,7 @@ impl Device {
                         "input",
                         &mut s.capture_fields,
                         s.log_fields.as_mut(),
-                        s.input_size,
+                        minimum,
                     );
                     if had_fields == s.capture_fields.is_empty() {
                         if let Some(names) = &mut s.log_fields {

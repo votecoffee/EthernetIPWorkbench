@@ -372,6 +372,14 @@ impl Device {
         );
         ui.horizontal_wrapped(|ui| {
             ui.label(format!("Accepted input packets {}", self.status.valid));
+            if self.status.valid != 0
+                && self
+                    .active
+                    .as_ref()
+                    .is_some_and(|settings| settings.input_min_size.is_some())
+            {
+                ui.label(format!("Last input · {} bytes", self.status.input.len()));
+            }
             ui.label(age.map_or_else(
                 || "No input received".into(),
                 |age| format!("Last input {:.2} ms ago", age.as_secs_f64() * 1000.0),

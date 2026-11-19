@@ -32,6 +32,8 @@ Use the profile and installed EDS supplied for the task. Ask for device identity
 
 Use zero-based byte offsets for mappings. Apply the profile's actual endian and swap settings through model::Selection. Use decode-input with distinct synthetic field values to detect overlapping or incorrect offsets. Engineering-unit scaling belongs to the device's documented interpretation, which must be checked separately from raw integer decoding.
 
+For variable-size T→O profiles, verify the maximum `input_size` and local `input_min_size` against the adapter documentation. Validate all input mappings at the minimum. Check the actual payload length in the input view or export before reporting a readback.
+
 For live work, use the session's authorization and an isolated bench. Confirm the exact ownership and output/configuration actions when they are not already authorized. Configuration travels in Forward_Open and an owner may start transmitting staged output immediately.
 
 Separate requested RPI, Forward_Open actual intervals, observed socket spacing and disk/export loss. Preserve captures and failure receipts. Do not infer that skipped producer slots are received sequence gaps. Keep .local/ private, and keep desktop interaction subject to an explicit request in the current chat.

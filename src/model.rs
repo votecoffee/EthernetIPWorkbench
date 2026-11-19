@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::net::Ipv4Addr;
+use std::{net::Ipv4Addr, ops::RangeInclusive};
 
 pub const CAPTURE_METADATA: [&str; 6] = [
     "capture_start_utc",
@@ -43,6 +43,10 @@ pub struct Settings {
     pub local_udp_port: u16,
     pub input_instance: u16,
     pub input_size: u16,
+    /// Presence requests variable-size T->O. The adapter sees input_size as the
+    /// maximum and the scanner enforces this lower bound locally.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_min_size: Option<u16>,
     pub output_instance: u16,
     pub output_size: u16,
     pub config_instance: Option<u16>,
@@ -95,6 +99,7 @@ impl Default for Settings {
             local_udp_port: 0,
             input_instance: 101,
             input_size: 4,
+            input_min_size: None,
             output_instance: 254,
             output_size: 0,
             config_instance: Some(1),
@@ -155,6 +160,18 @@ impl Settings {
 
     pub fn input_only_without_writes(&self) -> bool {
         self.input_only && self.output_size == 0 && self.config_size == 0 && !self.output_run_idle
+    }
+
+    /// Allowed application byte counts, excluding all connected I/O headers.
+    pub fn input_lengths(&self) -> Result<RangeInclusive<usize>, String> {
+        let min = usize::from(self.input_min_size.unwrap_or(self.input_size));
+        let max = usize::from(self.input_size);
+        if min == 0 || min > max || max > MAX_LARGE_ASSEMBLY_BYTES {
+            return Err(format!(
+                "Input requires 1 ≤ minimum bytes ≤ maximum bytes ≤ {MAX_LARGE_ASSEMBLY_BYTES}"
+            ));
+        }
+        Ok(min..=max)
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -234,7 +251,7 @@ impl Settings {
             return Err("Encoded connection path exceeds 255 words".into());
         }
         self.output()?;
-        self.selection.validate(self.input_size as usize)?;
+        self.selection.validate(*self.input_lengths()?.start())?;
         if !self.input_only {
             validate_fields(&self.output_fields, self.output_size as usize, false)?;
         }
@@ -274,9 +291,10 @@ impl Settings {
 
     /// Validate the readback fields against the assembly size, independently of CSV.
     pub fn input_mapping(&self) -> Result<Vec<CaptureField>, String> {
-        validate_fields(&self.capture_fields, self.input_size as usize, true)?;
+        let min = *self.input_lengths()?.start();
+        validate_fields(&self.capture_fields, min, true)?;
         let mapped = if self.capture_fields.is_empty() {
-            self.selection.validate(self.input_size as usize)?;
+            self.selection.validate(min)?;
             vec![CaptureField {
                 name: "value".into(),
                 selection: self.selection,
@@ -289,15 +307,14 @@ impl Settings {
 
     /// Decode an assembly payload with the profile's mapping and CSV selection.
     pub fn preview_input(&self, bytes: &[u8]) -> Result<InputPreview, String> {
-        let size = self.input_size as usize;
-        if !(1..=MAX_LARGE_ASSEMBLY_BYTES).contains(&size) {
+        let lengths = self.input_lengths()?;
+        if !lengths.contains(&bytes.len()) {
+            let expected = match self.input_min_size {
+                Some(min) => format!("{min}–{}", self.input_size),
+                None => self.input_size.to_string(),
+            };
             return Err(format!(
-                "Input payload size must be between 1 and {MAX_LARGE_ASSEMBLY_BYTES} bytes"
-            ));
-        }
-        if bytes.len() != size {
-            return Err(format!(
-                "Expected {size} input payload bytes, got {}",
+                "Expected {expected} input payload bytes, got {}",
                 bytes.len()
             ));
         }
@@ -319,6 +336,8 @@ impl Settings {
         Ok(InputPreview {
             input_assembly: self.input_instance,
             input_size: self.input_size,
+            input_min_size: self.input_min_size,
+            payload_bytes: self.input_min_size.map(|_| bytes.len()),
             payload_hex: hex(bytes),
             fields,
         })

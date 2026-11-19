@@ -1,11 +1,10 @@
-use crate::model::{
-    CAPTURE_METADATA, CaptureField, CaptureMode, MAX_LARGE_ASSEMBLY_BYTES, Settings, Value,
-};
+use crate::model::{CAPTURE_METADATA, CaptureField, CaptureMode, Settings, Value};
 use chrono::Utc;
 use crossbeam_queue::ArrayQueue;
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, BufWriter, Write},
+    ops::RangeInclusive,
     path::PathBuf,
     sync::{
         Arc, Mutex, OnceLock, RwLock,
@@ -30,11 +29,13 @@ struct Sample {
     generation: u64,
     sequence: u32,
     cip_sequence: u16,
+    size: usize,
     input: Box<[u8]>,
 }
 
 struct ChangeState {
     generation: Option<u64>,
+    size: usize,
     previous: Box<[u8]>,
 }
 
@@ -49,7 +50,7 @@ pub struct Sink {
     queue: ArrayQueue<Sample>,
     available: ArrayQueue<Box<[u8]>>,
     fields: Vec<CaptureField>,
-    input_size: usize,
+    input_lengths: RangeInclusive<usize>,
     changes: Option<Mutex<ChangeState>>,
     timer: Option<CaptureTimer>,
     header: String,
@@ -105,7 +106,7 @@ impl Sink {
         cip_sequence: u16,
         input: &[u8],
     ) {
-        if stamp < self.start || input.len() != self.input_size {
+        if stamp < self.start || !self.input_lengths.contains(&input.len()) {
             return;
         }
         if let Some(timer) = &self.timer
@@ -119,7 +120,7 @@ impl Sink {
         if let Some(state) = changes.as_ref()
             && state.generation == Some(generation)
             && self.fields.iter().all(|field| {
-                let a = field.selection.decode(&state.previous);
+                let a = field.selection.decode(&state.previous[..state.size]);
                 let b = field.selection.decode(input);
                 match (a, b) {
                     (Some(Value::Float32(a)), Some(Value::Float32(b))) => {
@@ -143,25 +144,27 @@ impl Sink {
             self.overrun.fetch_add(1, Relaxed);
             return;
         };
-        bytes.copy_from_slice(input);
+        bytes[..input.len()].copy_from_slice(input);
         if let Err(sample) = self.queue.push(Sample {
             elapsed: stamp.duration_since(self.start).as_micros() as u64,
             index,
             generation,
             sequence,
             cip_sequence,
+            size: input.len(),
             input: bytes,
         }) {
             self.recycle(sample.input);
             self.overrun.fetch_add(1, Relaxed);
         } else if let Some(state) = &mut changes {
             state.generation = Some(generation);
-            state.previous.copy_from_slice(input);
+            state.size = input.len();
+            state.previous[..input.len()].copy_from_slice(input);
         }
     }
 
     fn recycle(&self, buffer: Box<[u8]>) {
-        debug_assert_eq!(buffer.len(), self.input_size);
+        debug_assert_eq!(buffer.len(), *self.input_lengths.end());
         let recycled = self.available.push(buffer);
         debug_assert!(recycled.is_ok(), "buffer pool is full");
     }
@@ -203,13 +206,10 @@ impl Capture {
         let fields = settings
             .csv_fields()
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
-        let input_size = usize::from(settings.input_size);
-        if !(1..=MAX_LARGE_ASSEMBLY_BYTES).contains(&input_size) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Invalid capture input assembly size",
-            ));
-        }
+        let input_lengths = settings
+            .input_lengths()
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
+        let input_size = *input_lengths.end();
         // One extra buffer lets the writer format a row while the queue is full.
         let available = ArrayQueue::new(opts.capacity + 1);
         for _ in 0..=opts.capacity {
@@ -237,10 +237,11 @@ impl Capture {
             queue: ArrayQueue::new(opts.capacity),
             available,
             fields,
-            input_size,
+            input_lengths,
             changes: (settings.capture_mode == CaptureMode::OnChange).then(|| {
                 Mutex::new(ChangeState {
                     generation: None,
+                    size: 0,
                     previous: vec![0; input_size].into_boxed_slice(),
                 })
             }),
@@ -350,7 +351,7 @@ fn drain(sink: &Sink, opts: Options, mut part: Part, delay: Duration) -> io::Res
             for (field, stats) in sink.fields.iter().zip(&mut summaries) {
                 let value = field
                     .selection
-                    .decode(&sample.input)
+                    .decode(&sample.input[..sample.size])
                     .ok_or_else(|| io::Error::other("Invalid CSV field selection"))?;
                 match value {
                     Value::Text(bytes) => {

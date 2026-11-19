@@ -445,12 +445,17 @@ fn path(cfg: &Settings) -> Vec<u8> {
     segment(&mut path, 0x2c, cfg.input_instance);
     path
 }
-fn params(size: u16, header: bool, priority: u8) -> NetworkConnectionParameters {
+fn params(
+    size: u16,
+    header: bool,
+    priority: u8,
+    variable_size: bool,
+) -> NetworkConnectionParameters {
     NetworkConnectionParameters {
         redundant_owner: false,
         connection_type: 2,
         priority,
-        variable_size: false,
+        variable_size,
         size: size + 2 + 4 * u16::from(header),
     }
 }
@@ -537,9 +542,19 @@ fn run(
         originator_serial: le32(&ids, 6).max(1),
         connection_timeout_mult: cfg.timeout_multiplier_code,
         o_to_t_rpi_us: cfg.output_rpi_us,
-        o_to_t_params: params(cfg.output_size, cfg.output_run_idle, cfg.output_priority),
+        o_to_t_params: params(
+            cfg.output_size,
+            cfg.output_run_idle,
+            cfg.output_priority,
+            false,
+        ),
         t_to_o_rpi_us: cfg.input_rpi_us,
-        t_to_o_params: params(cfg.input_size, cfg.input_run_idle, cfg.input_priority),
+        t_to_o_params: params(
+            cfg.input_size,
+            cfg.input_run_idle,
+            cfg.input_priority,
+            cfg.input_min_size.is_some(),
+        ),
         transport_type: 1,
         connection_path: open_path,
     };

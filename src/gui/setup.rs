@@ -103,6 +103,7 @@ impl Device {
                 s.input_only, s.output_instance, s.output_size, s.output_run_idle,
                 s.config_instance, s.config_size, s.timeout_multiplier_code,
                 s.large_forward_open, s.electronic_key,
+                s.input_size, s.input_min_size,
             );
             let before = write_settings(s);
             ui.separator();
@@ -112,7 +113,7 @@ impl Device {
                 ui.label("Connection point");
                 ui.add(egui::DragValue::new(&mut s.input_instance));
                 ui.add(egui::DragValue::new(&mut s.output_instance)); ui.end_row();
-                ui.label("Assembly bytes");
+                ui.label(if s.input_min_size.is_some() { "Max input / fixed output bytes" } else { "Assembly bytes" });
                 ui.add(egui::DragValue::new(&mut s.input_size));
                 ui.add(egui::DragValue::new(&mut s.output_size)); ui.end_row();
                 ui.label("Requested RPI (µs)");
@@ -121,6 +122,16 @@ impl Device {
                 ui.label("32-bit Run/Idle");
                 ui.checkbox(&mut s.input_run_idle, "");
                 ui.checkbox(&mut s.output_run_idle, ""); ui.end_row();
+            });
+            ui.horizontal_wrapped(|ui| {
+                let mut variable = s.input_min_size.is_some();
+                if ui.checkbox(&mut variable, "Variable-size input (T->O)").changed() {
+                    s.input_min_size = variable.then_some(s.input_size.max(1));
+                }
+                if let Some(min) = &mut s.input_min_size {
+                    ui.label("Minimum input bytes");
+                    ui.add(egui::DragValue::new(min).range(1..=s.input_size.max(1)).clamp_existing_to_range(false));
+                }
             });
             ui.collapsing("Configuration and advanced timing", |ui| {
                 ui.checkbox(&mut s.large_forward_open, "Use Large Forward_Open");
@@ -204,6 +215,12 @@ impl Device {
             self.settings.input_size,
             self.settings.input_rpi_us as f64 / 1000.0
         ));
+        if let Some(min) = self.settings.input_min_size {
+            ui.label(format!(
+                "Variable T->O · {min}–{} payload bytes",
+                self.settings.input_size
+            ));
+        }
         if self.settings.large_forward_open {
             ui.label("Large Forward_Open");
         }
@@ -322,9 +339,13 @@ impl Device {
             ("T->O input", &report.input),
             ("O->T output", &report.output),
         ] {
+            let bytes = direction.minimum_payload_bytes.map_or_else(
+                || direction.payload_bytes.to_string(),
+                |min| format!("{min}–{}", direction.payload_bytes),
+            );
             ui.label(format!(
                 "{label} · Assembly {} · {} bytes · {} µs requested",
-                direction.assembly, direction.payload_bytes, direction.requested_rpi_us
+                direction.assembly, bytes, direction.requested_rpi_us
             ));
         }
         if let Some(us) = report.connection_timeout.requested_receive_watchdog_us {

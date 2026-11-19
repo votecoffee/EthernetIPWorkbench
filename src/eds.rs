@@ -259,9 +259,12 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
             }
 
             let mask = number(get(1)).unwrap_or(0);
-            if mask & 0x0044_0005 != 0x0044_0005 {
+            // EDS connection-parameter bits 0/1 describe fixed/variable O->T,
+            // and bits 2/3 describe fixed/variable T->O.
+            let variable_input = mask & 0x0c == 0x08;
+            if mask & 0x0044_0001 != 0x0044_0001 || mask & 0x0c == 0 {
                 issues.push(
-                    "Profile must support fixed-size point-to-point I/O in both directions".into(),
+                    "Profile must support point-to-point I/O in both directions and fixed-size O->T".into(),
                 );
             }
             for (shift, direction, header, priority) in [
@@ -373,6 +376,12 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
             }
             if !origin.contains_key("O->T size") {
                 issues.push("Unresolved O->T size; verify it in manual mode".into());
+            }
+            if variable_input {
+                // The EDS defines the configured maximum, not a reliable local
+                // lower bound. Keep the conservative boundary until reviewed.
+                s.input_min_size = Some(s.input_size);
+                origin.insert("T->O size mode".into(), "Variable; review minimum input bytes".into());
             }
             if usize::from(s.input_size) + 4 * usize::from(s.input_run_idle) > MAX_ASSEMBLY_BYTES
                 || usize::from(s.output_size) + 4 * usize::from(s.output_run_idle)

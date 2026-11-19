@@ -113,6 +113,10 @@ pub struct CaptureField {
 pub struct InputPreview {
     pub input_assembly: u16,
     pub input_size: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_min_size: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload_bytes: Option<usize>,
     pub payload_hex: String,
     pub fields: Vec<InputFieldPreview>,
 }

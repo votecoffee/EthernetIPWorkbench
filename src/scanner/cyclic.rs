@@ -128,14 +128,14 @@ pub(super) fn produce(
     result
 }
 
-fn parse_packet(
-    packet: &[u8],
+fn parse_packet<'packet>(
+    packet: &'packet [u8],
     connection: u32,
     header: bool,
-    size: u16,
-) -> Option<(u32, u16, Option<bool>, &[u8])> {
+    lengths: &std::ops::RangeInclusive<usize>,
+) -> Option<(u32, u16, Option<bool>, &'packet [u8])> {
     let start = 20 + 4 * usize::from(header);
-    if packet.len() != start + size as usize
+    if !lengths.contains(&packet.len().checked_sub(start)?)
         || packet[..6] != [2, 0, 2, 0x80, 8, 0]
         || le32(packet, 6) != connection
         || le16(packet, 14) != 0xb1
@@ -214,6 +214,7 @@ pub(super) fn receive(
             .expect("validated timeout code and actual input interval"),
     );
     let mut packet = [0; 65_536];
+    let lengths = cfg.input_lengths().map_err(protocol)?;
     let mut last_seq: Option<u32> = None;
     let mut last_udp = None;
     let mut sent_at_last_input = 0;
@@ -242,7 +243,7 @@ pub(super) fn receive(
                     &packet[..length],
                     reply.t_to_o_connection_id,
                     cfg.input_run_idle,
-                    cfg.input_size,
+                    &lengths,
                 )
                 .filter(|_| addr.ip() == cfg.device_ip)
                 {

@@ -449,6 +449,10 @@ The release tests covered the eighth tab at the existing headless window sizes, 
 
 The localhost bridge fixture checked the Unconnected Send wrapper, the embedded read request, and the port/link route bytes. It exercised a single backplane slot and a three-hop path with a padded IPv4 link. The CLI decoded the returned target payload, preserved separate numeric router and target rejections, rejected an empty success reply, and rejected invalid routes before connecting. The saved-read test reopened a routed TOML request and the headless GUI profile test verified route persistence. The same fixture suite also passed the direct read, discovery, and keyed Class 1 capture checks. Physical bridge validation remains open.
 
+## Variable-size Class 1 input
+
+The Windows loopback fixture verified standard and Large Forward_Open with a variable-size T→O parameter, fixed-size O→T and a T→O Run/Idle header. It passed 4-, 7- and 12-byte inputs through HTTP, MQTT and shared memory at 8 ms requested and negotiated in both directions. The large connection accepted up to 600 bytes. Each run rejected one undersized and one oversized datagram, recorded the two sequence gaps, and confirmed Forward_Close. CSV matched the accepted values without buffer overruns. On-change capture suppressed changes confined to the unmapped tail. The offline checks also covered the EDS variable-size flag and a mapping beyond the configured minimum. Physical acceptance remains open.
+
 ## Physical bench acceptance
 
 Physical-device measurements require a connected bench adapter and verified device settings. First verify the Identity Object and the intended profile, preferably input-only. Confirm output ownership and write permissions before using a profile that owns outputs, asserts Run or sends configuration bytes. Then run the Windows GUI and logger with the requested RPIs and record the Forward_Open actual intervals separately from socket spacing percentiles, longest gap, sequence gaps, timeouts, missed send slots and capture losses. Use a capture at the NIC or switch if wire-level timestamps are required.

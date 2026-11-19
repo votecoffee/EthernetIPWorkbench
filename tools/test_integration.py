@@ -56,10 +56,10 @@ def mqtt_packet(sock):
     raise ValueError("Invalid MQTT remaining length")
 
 
-def receive_mqtt(listener, received, errors):
+def receive_mqtt(listener, received, errors, disconnect_once=True):
     """Minimal independent broker fixture for MQTT 3.1.1 CONNECT and QoS 0."""
     try:
-        for attempt in range(2):
+        for attempt in range(2 if disconnect_once else 1):
             sock, _ = listener.accept()
             with sock:
                 sock.settimeout(7)
@@ -81,7 +81,7 @@ def receive_mqtt(listener, received, errors):
                     received.append(json.loads(body[2 + size:]))
                     count += 1
                     # Force the publishing client to reconnect while scanning continues.
-                    if attempt == 0 and count == 3:
+                    if disconnect_once and attempt == 0 and count == 3:
                         break
     except Exception as error:
         errors.append(error)

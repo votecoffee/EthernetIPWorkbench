@@ -2,7 +2,7 @@
 
 Windows EtherNet/IP Class 1 scanner and CSV assembly logger.
 
-EthernetIPWorkbench is the source repository for the Assembly Scanner desktop application. It opens fixed-size cyclic IPv4 unicast connections, displays device identity and live assembly data, stages typed output values, and records selected inputs to CSV. The GUI can run separate sessions for multiple adapters in one window. Each device session owns its TCP and UDP sockets, producer, receiver, output buffer and counters. The CSV writer runs independently.
+EthernetIPWorkbench is the source repository for the Assembly Scanner desktop application. It opens cyclic IPv4 unicast connections, displays device identity and live assembly data, stages typed output values, and records selected inputs to CSV. The GUI can run separate sessions for multiple adapters in one window. Each device session owns its TCP and UDP sockets, producer, receiver, output buffer and counters. The CSV writer runs independently.
 
 ## Table of Contents
 
@@ -122,7 +122,9 @@ Open **Offline profile check** to review the effective assemblies, requested int
 
 For adapters requiring the large request format, enable **Use Large Forward_Open** under **Configuration and advanced timing**. It allows up to 1,400 assembly plus Run/Idle bytes per direction. Standard Forward_Open remains the default for saved profiles that omit this setting. The same section supports CIP electronic key format 4 with the compatibility bit clear. The adapter applies its key matching rules. The application identity pin additionally checks the unit serial number.
 
-The cyclic protocol scope is fixed-size Class 1 unicast with direct assembly paths. Routed cyclic I/O, multicast, listen-only and variable-size I/O remain on the [roadmap](ROADMAP.md#04-adapter-compatibility). Keep device-specific presets, vendor files and raw captures in the Git-ignored `.local/` folder. The tracked [sample EDS](samples/loopback.eds) and [sample TOML](samples/loopback.toml) target the localhost fixture.
+For adapters that produce variable-size T→O data, enable **Variable-size input (T->O)** in **Device** and enter the documented minimum and maximum payload lengths. All input mappings must fit in the minimum. The input view and software feeds show the bytes actually received. Fixed-size input remains the default. [Variable input settings](docs/OPERATIONS.md#configure-variable-size-input)
+
+The cyclic protocol scope is Class 1 unicast with direct assembly paths and fixed-size output. Routed cyclic I/O, multicast, listen-only and variable-size output remain on the [roadmap](ROADMAP.md#04-adapter-compatibility). Keep device-specific presets, vendor files and raw captures in the Git-ignored `.local/` folder. The tracked [sample EDS](samples/loopback.eds) and [sample TOML](samples/loopback.toml) target the localhost fixture.
 
 Set **CIP timeout code** in the GUI or `timeout_multiplier_code` in the TOML profile. Codes 0 through 7 represent factors of 4 through 512 in powers of two. Profiles that omit the setting use code 3 (32 times the interval). The app sends the code in Forward_Open and uses the returned input interval times that factor for its local receive watchdog. Before the first valid input, the scanner waits for the larger of two seconds and two returned input intervals. Preflight shows the watchdog calculated from the requested interval. Capture reports also show the local watchdog calculated from the interval the adapter returned.
 
@@ -138,7 +140,7 @@ The EDS importer resolves supported connection profiles. Define the application-
 
 ### Preview an input payload
 
-Open **Mappings → Preview input payload** while offline. Paste the assembly payload as space-separated hex bytes. Use exactly the configured input size and exclude sequence and Run/Idle headers. For a previous CLI capture, copy the `last_input_hex` value from `capture.toml`. The preview shows each named input's byte offset, source bytes, decoded value, and whether it is included in CSV. With no named inputs, it shows the primary `value` field.
+Open **Mappings → Preview input payload** while offline. Paste the assembly payload as space-separated hex bytes. Use the configured input size for fixed-size profiles or a length within the configured bounds for variable-size profiles. Exclude sequence and Run/Idle headers. For a previous CLI capture, copy the `last_input_hex` value from `capture.toml`. The preview shows each named input's byte offset, source bytes, decoded value, and whether it is included in CSV. With no named inputs, it shows the primary `value` field.
 
 The `decode-input` command runs the same check and prints TOML. Values are represented as text to preserve full-width integers and the displayed float and string values. The command loads the profile and decodes the supplied bytes offline.
 

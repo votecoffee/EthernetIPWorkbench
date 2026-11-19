@@ -49,7 +49,7 @@ The saved read uses the device or bridge address and NIC of the enclosing profil
 
 eds lists supported connection profiles and unresolved features. validate can compare a manual/saved profile to one EDS connection. Its origins distinguish EDS values, overrides, assembly-definition sizes and manual values. An assembly-definition size needs comparison with the device's configured payload. Check connection_valid and capture_config_valid. The validate exit code follows connection_valid, so a successful exit alone does not establish that CSV selection is valid.
 
-decode-input requires exactly input_size bytes of assembly payload with no sequence or Run/Idle headers. It lists every mapped field's source bytes, decoded text value and CSV inclusion. The GUI has the same check under Mappings → Preview input payload. With no named input fields, the primary selection appears as value.
+decode-input accepts exactly input_size bytes for fixed-size profiles or a length within the configured bounds for variable-size profiles. Exclude sequence and Run/Idle headers. It lists every mapped field's source bytes, decoded text value and CSV inclusion. The GUI has the same check under Mappings → Preview input payload. With no named input fields, the primary selection appears as value.
 
 ## Configure a device
 
@@ -71,6 +71,14 @@ Start from a generic sample and use the device's EDS and manual to establish eac
 Sizes exclude the Class 1 sequence and optional Run/Idle header. Standard Forward_Open supports at most 509 payload plus Run/Idle bytes per direction here. The code accepts requested intervals from 1,000 to 10,000,000 microseconds.
 
 Set the root TOML key `large_forward_open = true` when the adapter supports service 0x5B. Large Forward_Open allows up to 1,400 payload plus Run/Idle bytes here. CSV, live views, HTTP and MQTT support the larger payloads. The existing EIPWB001 shared memory format keeps its 509-byte limit. The app rejects a larger input when shared memory is enabled.
+
+### Configure variable-size input
+
+In **Device**, set the maximum T→O payload in the assembly grid, enable **Variable-size input (T->O)** and set **Minimum input bytes**. In TOML, `input_size` is the maximum and `input_min_size` enables variable-size input and sets the inclusive lower bound. For example, `input_size = 12` and `input_min_size = 4` accept 4 through 12 payload bytes. The adapter sees only the maximum and the variable-size flag in Forward_Open. O→T retains its fixed size. The local minimum and maximum exclude sequence and Run/Idle bytes.
+
+All input mappings must fit the shortest accepted packet. Shorter or oversized packets increment the invalid-packet counter. Missing accepted sequence numbers also appear as sequence gaps. The live input view, offline decoder and software feeds use actual payload lengths. CSV retains its existing columns. On-change capture compares the selected values, so a change in an unmapped tail or its length alone adds no row.
+
+When an EDS profile requires variable T→O, the importer enables it and initially sets the minimum equal to the imported maximum. Review and enter the documented minimum before connecting. If the EDS allows both fixed and variable input, the importer selects fixed. Omit `input_min_size` to retain fixed-size behavior.
 
 Configure the optional `[electronic_key]` table with decimal `vendor`, `device_type`, `product`, `major` and `minor` fields. The EDS importer handles a supported leading format 4 electronic key, UTF-16 with a BOM, and 16-bit Assembly class segments. Review the imported Large Forward_Open setting when the declared size exceeds the standard limit. Device payload and supported services still need checking against the adapter.
 

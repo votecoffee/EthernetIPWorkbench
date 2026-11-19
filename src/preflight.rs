@@ -11,6 +11,8 @@ use std::net::Ipv4Addr;
 pub struct Direction {
     pub assembly: u16,
     pub payload_bytes: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub minimum_payload_bytes: Option<u16>,
     pub requested_rpi_us: u32,
     pub run_idle_header: bool,
     pub priority: u8,
@@ -201,6 +203,14 @@ pub fn inspect(
                 imported.large_forward_open.to_string(),
             );
         }
+        if settings.input_min_size.is_some() || imported.input_min_size.is_some() {
+            let mode = |min: Option<u16>| if min.is_some() { "Variable" } else { "Fixed" };
+            compare(
+                "T->O size mode",
+                mode(settings.input_min_size).into(),
+                mode(imported.input_min_size).into(),
+            );
+        }
         compare(
             "Timeout multiplier code",
             settings.timeout_multiplier_code.to_string(),
@@ -227,6 +237,7 @@ pub fn inspect(
         input: Direction {
             assembly: settings.input_instance,
             payload_bytes: settings.input_size,
+            minimum_payload_bytes: settings.input_min_size,
             requested_rpi_us: settings.input_rpi_us,
             run_idle_header: settings.input_run_idle,
             priority: settings.input_priority,
@@ -234,6 +245,7 @@ pub fn inspect(
         output: Direction {
             assembly: settings.output_instance,
             payload_bytes: settings.output_size,
+            minimum_payload_bytes: None,
             requested_rpi_us: settings.output_rpi_us,
             run_idle_header: settings.output_run_idle,
             priority: settings.output_priority,

@@ -366,6 +366,8 @@ struct Report {
     local_ip: std::net::Ipv4Addr,
     input_assembly: u16,
     input_size: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input_min_size: Option<u16>,
     duration_seconds: u64,
     duration_reached: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -656,6 +658,7 @@ fn capture(
         local_ip: settings.local_ip,
         input_assembly: settings.input_instance,
         input_size: settings.input_size,
+        input_min_size: settings.input_min_size,
         duration_seconds: seconds,
         duration_reached,
         interrupted: interrupt::requested(),

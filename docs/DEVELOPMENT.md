@@ -32,6 +32,8 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 
 The explicit TCP session reads identity before opening I/O. The cyclic producer schedules from the returned O-to-T interval. The receiver validates the packet source, connection ID, payload length and sequence. It timestamps near receive and copies accepted data to the independent capture and export paths.
 
+Use `Settings::input_lengths()` for the payload bounds used by the receiver, recorder and export feed. With a variable T→O profile, the mapping must validate at the local minimum, and the connection request encodes the maximum plus the configured headers. The recorder reserves buffers at the maximum and keeps each sample's actual length for decoding. Published raw payloads retain their actual length. The connection flags are verified by the fixture against the standard and large layouts. [OpENer connection parameter reference](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipconnectionobject.c)
+
 The CSV queue is preallocated and bounded. Samples retain sequence, monotonic timing, index and generation. Normal stop drains the queue. Preserve existing files if rotation or report creation encounters a collision. A disk failure is scoped to its capture and must remain visible.
 
 The integration receive path copies into a bounded queue and wakes its dispatcher. Serialization, network I/O and mapped-memory access occur in export workers. History retention, queue drops, MQTT publish errors and shared-memory contention have separate meanings. Preserve the versioned JSON and EIPWB001 binary contracts when updating consumers.
@@ -64,6 +66,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 |---|---|
 | Profiles, mapping, CLI and capture | python tools/test_cli.py target/release/eipmaster-cli.exe .local/cli-check-01 |
 | Discovery, direct and routed reads, saved requests, identity fallback, keyed large I/O | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
+| Variable-size T→O, EDS provenance, CSV and all three exports | python tools/test_variable_input.py target/release/eipmaster-cli.exe .local/variable-check-01 |
 | Reconnect, concurrent capture and writer failure | python tools/test_recovery.py target/release/eipmaster-cli.exe .local/recovery-check-01 |
 | HTTP, MQTT and shared memory | python tools/test_integration.py target/release/eipmaster-cli.exe .local/integration-check-01 |
 | Qualification supervisor | python tools/test_cli.py target/release/eipmaster-cli.exe .local/qualify-check-01 --qualification |

@@ -121,6 +121,7 @@ struct Feed {
     origin: Instant,
     started_utc_us: i64,
     settings: Settings,
+    input_lengths: std::ops::RangeInclusive<usize>,
     queue: ArrayQueue<Frame>,
     history: Mutex<VecDeque<Frame>>,
     dispatcher: OnceLock<Thread>,
@@ -193,9 +194,7 @@ impl Publisher {
         bytes: &[u8],
     ) {
         let feed = &self.0;
-        if bytes.len() != usize::from(self.0.settings.input_size)
-            || bytes.len() > MAX_LARGE_ASSEMBLY_BYTES
-        {
+        if !feed.input_lengths.contains(&bytes.len()) {
             self.0.queue_drops.fetch_add(1, Relaxed);
             return;
         }
@@ -257,6 +256,7 @@ impl Integration {
             origin: Instant::now(),
             started_utc_us: chrono::Utc::now().timestamp_micros(),
             settings: settings.clone(),
+            input_lengths: settings.input_lengths()?,
             queue: ArrayQueue::new(CAPACITY),
             history: Mutex::new(VecDeque::with_capacity(CAPACITY)),
             dispatcher: OnceLock::new(),

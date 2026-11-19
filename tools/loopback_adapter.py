@@ -13,6 +13,7 @@ import time
 IP = "127.0.0.1"
 SESSION = 0xABCD0123
 OT_ID = 0x1234ABCD
+VARIABLE_INPUT_MAX = {"variable-input": 12, "large-variable-input": 600}
 
 
 def recv_exact(sock, length):
@@ -68,6 +69,7 @@ def udp_loop(udp, source, endpoint, connection, api, mode, value_base, stop, rep
     sent, received = [], []
     output_values = set()
     owner = mode == "owner"
+    variable_max = VARIABLE_INPUT_MAX.get(mode)
     prior_sequence = last_sent_sequence = None
     missed = invalid = skipped = 0
     seq = 0
@@ -112,9 +114,17 @@ def udp_loop(udp, source, endpoint, connection, api, mode, value_base, stop, rep
                 value = struct.pack("<I", value_base + seq // 16)
                 if mode == "large-keyed":
                     value += bytes(592) + struct.pack("<I", 0xA1B2C3D4)
+                if variable_max is not None:
+                    length = (4, 7, variable_max)[(seq // 8) % 3]
+                    if seq == 10:
+                        length = 3
+                    elif seq == 20:
+                        length = variable_max + 1
+                    value = (value + b"\xA5" * length)[:length]
                 if mode == "invalid-input":
                     value = value[:-1]
-                packet = io_packet(connection, seq, (bytes((1, 0, 0, 0)) if owner else b"") + value)
+                packet = io_packet(connection, seq,
+                                   (bytes((1, 0, 0, 0)) if owner or variable_max is not None else b"") + value)
                 source.sendto(packet, endpoint)
                 sent.append(time.perf_counter_ns())
                 if len(sent) == 1 and mode != "invalid-input":
@@ -237,12 +247,13 @@ def serve(tcp, udp, source, mode, report, serial_delta=0):
                 elif service in (0x54, 0x5B) and object_class == 6:
                     assert io is None
                     _, to, serial, vendor, origin = struct.unpack_from("<IIHHI", body, 2)
-                    if mode == "large-keyed":
+                    if mode in ("large-keyed", "large-variable-input"):
                         assert service == 0x5B
                         ot_rpi, ot_params, to_rpi, to_params, transport, path_words = struct.unpack_from(
                             "<IIIIBB", body, 22
                         )
-                        assert ot_params == 0x44000002 and to_params == 0x4400025A
+                        expected_input = 0x4600025E if mode == "large-variable-input" else 0x4400025A
+                        assert ot_params == 0x44000002 and to_params == expected_input
                         path_offset = 40
                     else:
                         assert service == 0x54
@@ -250,7 +261,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0):
                             "<IHIHBB", body, 22
                         )
                         assert ot_params & 0xE3FF == (0x4008 if owner else 0x4002)
-                        assert to_params & 0xE3FF == (0x400A if owner else 0x4006)
+                        expected_input = 0x4212 if mode == "variable-input" else (0x400A if owner else 0x4006)
+                        assert to_params & 0xE3FF == expected_input
                         path_offset = 36
                     assert transport == 1
                     assert len(body[path_offset:]) == path_words * 2
@@ -320,7 +332,7 @@ def main():
         "stall-close-reject", "qualify-close-reject",
         "slow-input", "pause-different-api",
         "identity-then-owner",
-        "explicit", "large-keyed", "routed",
+        "explicit", "large-keyed", "routed", "variable-input", "large-variable-input",
         "delayed-start", "split-udp",
     ))
     parser.add_argument("--address", type=IPv4Address, default=IPv4Address(IP))
