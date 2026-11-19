@@ -50,6 +50,8 @@ The integration receive path copies into a bounded queue and wakes its dispatche
 
 For HTTP diagnostics, connect a read-only source to the feed once when each Class 1 generation starts. Retain only the latest two sources. These references have no publisher back-reference. The HTTP worker copies the existing published diagnostics and serializes its own response after releasing the scanner locks.
 
+The HTTP accept worker admits connections into a bounded queue. Four request workers release the queue lock before reading or writing sockets. The header deadline includes queue wait. The accept worker sends a best-effort 503 in nonblocking mode when the queue is full. Closing the accept worker drops the sender and releases readers waiting on the queue.
+
 Connection::start_with_publisher accepts an optional integration Publisher. The blocking scanner::run_input runner drives both CLI capture and serve, collects the final diagnostics for each connection generation, and calls the caller's stop predicate while receiving or waiting to retry. The CLI owns the writer and feed lifetimes. The GUI uses the per-connection methods from its event loop.
 
 Keep automatic reconnect restricted to verified input-only profiles. The retry identity includes serial. Output staging and write authorization belong to the existing GUI/application controls. Preserve the requested/actual/observed interval distinction and the separate Forward_Close result.

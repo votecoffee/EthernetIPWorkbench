@@ -431,6 +431,12 @@ The Windows localhost check queried `GET /v1/connection` during headless `serve`
 
 The headless GUI backend check queried the endpoint during a loopback capture and verified a 1 ms requested input interval, a 1.5 ms returned interval, and a 96 ms watchdog with timeout code 4. The saved run report recorded the same intervals and watchdog. The tests also exercised the loopback Host allowlist, GET-only behavior and the existing status response.
 
+## Concurrent HTTP readers
+
+A Windows localhost comparison used the same HTTP-only `serve` profile, 8 ms requested and negotiated in both directions, and five trials per build. Each trial left a valid status request's headers open while a second client asked for connection diagnostics. On commit `3148e32`, the second request waited until the first request completed in all five trials. Its median latency was 141.3 ms. With four request workers, the diagnostics request finished while the first request was still open in all five trials. The median was 11.0 ms and the range was 9.3–20.6 ms. The fixture delivered 501 baseline inputs and 500 candidate inputs with zero sequence gaps or export queue drops. Both runs confirmed Forward_Close.
+
+A separate check within the candidate run filled the pending queue, observed HTTP 503 on the excess connection and received HTTP 200 again after the waiting clients closed. The HTTP, MQTT, shared-memory and CSV regression checks also exercised concurrent readers during a reconnect.
+
 ## Headless feeds without CSV
 
 The Windows localhost fixture exercised `serve` with HTTP, MQTT, and shared memory all enabled at an 8 ms requested and negotiated interval in both directions. The five-second run accepted 467 input packets across a forced I/O timeout and a serial-pinned reconnect. HTTP history and the shared-memory reader kept their sample indexes across generations. MQTT resumed after a deliberate broker disconnect. The report counted zero export queue drops and separated the broker error from shared-memory lock misses. Both I/O generations confirmed Forward_Close. No CSV file or capture directory was created.

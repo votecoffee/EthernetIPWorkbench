@@ -259,6 +259,8 @@ Omit any transport to leave it disabled. The sample index starts at 1 for each s
 
 `GET /v1/connection` reports the identity, state, requested and negotiated intervals, observed timing, watchdog, and close outcome for the latest Class 1 generation. The response also retains the preceding generation through a reconnect. [Connection diagnostics contract](docs/OPERATIONS.md#inspect-a-live-class-1-connection)
 
+The HTTP feed serves up to four readers concurrently and keeps a bounded queue for bursts. Clients can retry a busy response with their usual backoff. [HTTP reader limits](docs/OPERATIONS.md#use-concurrent-http-readers)
+
 **MQTT** publishes the same sample JSON to the configured topic. At each configured period it takes the latest new sample from the active generation. It uses MQTT 3.1.1 over TCP with QoS 0 and retain disabled. Use a trusted listener, such as a local broker that bridges to remote consumers over TLS. Treat the publish rate as an upper bound. Compare indexes for freshness and use CSV or the HTTP cursor when you need every available packet.
 
 **Shared memory** is a Windows snapshot of the latest raw input. Open `Local\EthernetIPWorkbench.bench.data` with read access and `Local\EthernetIPWorkbench.bench.lock` with synchronization and mutex release access. Replace `bench` with the configured name. Acquire the mutex, copy the 573-byte view, and release it promptly. If the wait reports an abandoned mutex, release it and discard that snapshot. Reopen the objects after a manual session ends and close old handles before restarting the scanner with the same name. Check timestamps for freshness if the scanner exits unexpectedly. `tools/test_integration.py` includes an independent Python reader.

@@ -296,7 +296,7 @@ impl Integration {
             .set(service.workers[0].thread().clone())
             .expect("new dispatcher");
         if let Some(listener) = listener {
-            service.spawn("integration-http", move |feed| http::serve(&feed, listener))?;
+            http::start(&mut service, listener)?;
         }
         if let Some(mqtt) = options.mqtt.clone() {
             service.spawn("integration-mqtt", move |feed| mqtt::publish(&feed, mqtt))?;

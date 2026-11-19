@@ -1,16 +1,23 @@
-use super::{Feed, IDLE, counters};
+use super::{Feed, IDLE, Integration, counters};
 use crate::scanner::DiagnosticsSource;
 use serde_json::{Value, json};
 use std::{
     io::{self, Read, Write},
     net::{TcpListener, TcpStream},
-    sync::{Arc, atomic::Ordering::Relaxed},
+    sync::{
+        Arc, Mutex,
+        atomic::Ordering::Relaxed,
+        mpsc::{self, SyncSender, TrySendError},
+    },
     thread,
     time::{Duration, Instant},
 };
 
 const REQUEST_TIMEOUT: Duration = Duration::from_millis(250);
 const MAX_BATCH: usize = 64;
+const READERS: usize = 4;
+const PENDING_CLIENTS: usize = 8;
+const BUSY_RESPONSE: &[u8] = b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n";
 
 struct TrackedConnection {
     generation: u64,
@@ -92,29 +99,74 @@ fn connections_json(feed: &Feed) -> Value {
     })
 }
 
-pub(super) fn serve(feed: &Feed, listener: TcpListener) {
+struct PendingClient {
+    stream: TcpStream,
+    header_deadline: Instant,
+}
+
+pub(super) fn start(service: &mut Integration, listener: TcpListener) -> Result<(), String> {
     let port = listener.local_addr().expect("bound listener").port();
     let mut hosts = vec![format!("127.0.0.1:{port}"), format!("localhost:{port}")];
     if port == 80 {
         hosts.extend(["127.0.0.1".into(), "localhost".into()]);
     }
+    let hosts = Arc::new(hosts);
+    let (sender, pending) = mpsc::sync_channel(PENDING_CLIENTS);
+    let pending = Arc::new(Mutex::new(pending));
+    for _ in 0..READERS {
+        let pending = Arc::clone(&pending);
+        let hosts = Arc::clone(&hosts);
+        service.spawn("integration-http-reader", move |feed| {
+            while !feed.stop.load(Relaxed) {
+                // Release the queue lock before reading or writing the socket.
+                let client = pending.lock().unwrap().recv();
+                let Ok(client) = client else { break };
+                if feed.stop.load(Relaxed) {
+                    break;
+                }
+                let _ = respond(&feed, client, &hosts);
+            }
+        })?;
+    }
+    service.spawn("integration-http-accept", move |feed| {
+        accept(&feed, listener, sender)
+    })
+}
+
+fn accept(feed: &Feed, listener: TcpListener, sender: SyncSender<PendingClient>) {
     while !feed.stop.load(Relaxed) {
         match listener.accept() {
             Ok((stream, _)) => {
-                let _ = respond(feed, stream, &hosts);
+                let client = PendingClient {
+                    stream,
+                    header_deadline: Instant::now() + REQUEST_TIMEOUT,
+                };
+                match sender.try_send(client) {
+                    Ok(()) => {}
+                    Err(TrySendError::Full(mut client)) => {
+                        // A busy response is best effort. Never wait on a client here.
+                        if client.stream.set_nonblocking(true).is_ok() {
+                            let _ = client.stream.write(BUSY_RESPONSE);
+                        }
+                    }
+                    Err(TrySendError::Disconnected(_)) => break,
+                }
             }
             Err(_) => thread::park_timeout(IDLE),
         }
     }
 }
 
-fn respond(feed: &Feed, mut stream: TcpStream, hosts: &[String]) -> io::Result<()> {
+fn respond(feed: &Feed, client: PendingClient, hosts: &[String]) -> io::Result<()> {
+    let PendingClient {
+        mut stream,
+        header_deadline,
+    } = client;
     stream.set_nonblocking(false)?;
-    let deadline = Instant::now() + REQUEST_TIMEOUT;
     let mut request = [0; 2048];
     let mut used = 0;
     let response = loop {
-        let remaining = deadline.saturating_duration_since(Instant::now());
+        let remaining = header_deadline.saturating_duration_since(Instant::now());
         if used == request.len() || remaining.is_zero() {
             return Ok(());
         }

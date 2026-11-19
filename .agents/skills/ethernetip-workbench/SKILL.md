@@ -28,6 +28,7 @@ Use the profile and installed EDS supplied for the task. Ask for device identity
 - Use GUI profiles for manual operation and authorized output staging. Start a headless fixture for testing rather than opening the desktop application during unattended work.
 - Attach software consumers to the existing connection. CLI serve starts one identity-checked read-only session with the configured feeds and no CSV writer. HTTP offers bounded history. MQTT and shared memory offer latest samples. They do not provide remote output control. C# can consume those interfaces or supervise the CLI. A native C ABI is still a proposed extension.
 - Use HTTP GET /v1/connection for live state, requested and negotiated intervals, packet timing and the preceding generation's timeout and close result.
+- Retry HTTP 503 or a closed request with backoff while the feed is running. Keep the last successful history cursor across reader retries.
 
 ## Preserve meaning and authorization
 

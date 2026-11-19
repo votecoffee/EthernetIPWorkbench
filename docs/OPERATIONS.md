@@ -216,6 +216,12 @@ Each generation reports the Identity Object, connection state, accepted packet a
 
 The endpoint lives for the feed's lifetime. Use the final GUI run report or CLI receipt for a durable record after shutdown.
 
+### Use concurrent HTTP readers
+
+Each feed can process four HTTP requests concurrently and queue up to eight accepted connections. The 250 ms deadline for complete request headers starts at accept time and includes time in the queue. Each response has its own 250 ms write deadline. At capacity, the listener attempts an HTTP 503 response and closes the extra connection. A connection that exceeds its deadline may close before a response arrives.
+
+On a busy or closed connection, retry with backoff if the feed is still running. For `/v1/samples`, keep the last successfully read cursor and check `oldest_sample_index` on retry.
+
 ### Run feeds headlessly
 
 Save an input-only or listen-only profile with at least one enabled `[app.integration]` feed. Use the verified decimal identity of the target. For a software adapter configured with the sample loopback identity, run:

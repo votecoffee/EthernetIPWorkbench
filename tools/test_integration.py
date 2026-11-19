@@ -1,6 +1,7 @@
 """Verify all read-only exports against independent localhost clients on Windows."""
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 import ctypes
 from ctypes import wintypes
@@ -33,6 +34,30 @@ def get(port, path, method="GET", host=None):
         return response.status, json.loads(response.read())
     finally:
         connection.close()
+
+
+def measure_reader_overlap(port):
+    def request_diagnostics():
+        started = time.perf_counter_ns()
+        status, response = get(port, "/v1/connection")
+        elapsed_ms = (time.perf_counter_ns() - started) / 1e6
+        assert status == 200 and response["connection"]["state"] == "Receiving"
+        return elapsed_ms
+
+    with ThreadPoolExecutor(max_workers=1) as clients:
+        with socket.create_connection(("127.0.0.1", port), timeout=1) as slow:
+            slow.sendall(f"GET /v1/status HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n".encode())
+            time.sleep(0.04)
+            fast = clients.submit(request_diagnostics)
+            time.sleep(0.14)
+            completed_during_slow_request = fast.done()
+            slow.sendall(b"\r\n")
+            response = http.client.HTTPResponse(slow)
+            response.begin()
+            assert response.status == 200
+            response.read()
+            response.close()
+        return completed_during_slow_request, fast.result(timeout=1)
 
 
 def wait_for_connection(port, generation, actual):
@@ -277,6 +302,9 @@ period_ms = 25
                 assert previous["accepted"] >= first_connection["connection"]["accepted"]
                 assert first_connection["stream_start_utc_us"] == second_connection["stream_start_utc_us"]
                 (root / "connection-2.json").write_text(json.dumps(second_connection, indent=2), encoding="utf-8")
+                fast_completed, latency_ms = measure_reader_overlap(http_port)
+                assert fast_completed, f"Slow request blocked a second HTTP reader for {latency_ms:.1f} ms"
+                print(f"Second HTTP reader completed in {latency_ms:.1f} ms while a request was still open.")
                 kernel, lock, _ = memory
                 assert kernel.WaitForSingleObject(lock, 1000) == 0
                 try:
