@@ -28,6 +28,25 @@ impl Device {
             self.writes_confirmed = false;
         }
         self.typed_outputs(ui);
+        let variable = self.settings.output_min_size.is_some();
+        let staged_length = if let Some(min) = self.settings.output_min_size {
+            match self.settings.output() {
+                Ok(bytes) => {
+                    ui.label(format!(
+                        "Staged length · {} bytes · Allowed {min}–{}",
+                        bytes.len(),
+                        self.settings.output_size
+                    ));
+                    true
+                }
+                Err(error) => {
+                    ui.colored_label(RED, error);
+                    false
+                }
+            }
+        } else {
+            true
+        };
         if let Some(c) = &self.connection {
             if !self.settings.input_only {
                 ui.checkbox(
@@ -39,6 +58,7 @@ impl Device {
                 .add_enabled(
                     !self.settings.input_only
                         && self.status.state == "Receiving"
+                        && staged_length
                         && self.writes_confirmed,
                     egui::Button::new("Apply staged outputs"),
                 )
@@ -58,8 +78,12 @@ impl Device {
                 }
             }
             let applied = c.output_bytes();
-            if !applied.is_empty() {
-                ui.label(format!("Transmitting buffer · {}", model::hex(&applied)));
+            if variable || !applied.is_empty() {
+                ui.label(format!(
+                    "Active output buffer · {} bytes · {}",
+                    applied.len(),
+                    model::hex(&applied)
+                ));
             }
         }
     }
@@ -74,7 +98,7 @@ impl Device {
             ui.small("Stage edits the hex buffer. Use Apply staged outputs to send it on an open connection.");
             let mut staged = self.settings.output();
             if staged.is_err() {
-                ui.label("Enter a full hex buffer or initialize it explicitly.");
+                ui.label("Enter a hex buffer within the allowed length or initialize it to the maximum size.");
                 if self.settings.output_size as usize <= model::MAX_LARGE_ASSEMBLY_BYTES
                     && ui.button("Stage zero-filled buffer").clicked()
                 {
@@ -91,10 +115,12 @@ impl Device {
                 for index in 0..self.settings.output_fields.len() {
                     let field = &self.settings.output_fields[index];
                     ui.label(&field.name);
-                    ui.monospace(field.selection.decode(&bytes).map_or_else(|| "—".into(), |v| v.to_string()));
+                    let decoded = field.selection.decode(&bytes);
+                    let fits = decoded.is_some();
+                    ui.monospace(decoded.map_or_else(|| "Unavailable at staged length".into(), |v| v.to_string()));
                     ui.push_id(index, |ui| {
                         ui.add(egui::TextEdit::singleline(&mut self.output_entries[index]).desired_width(100.0));
-                        if ui.button("Stage").clicked() {
+                        if ui.add_enabled(fits, egui::Button::new("Stage")).clicked() {
                             let name = self.settings.output_fields[index].name.clone();
                             match self.settings.stage_output(index, &self.output_entries[index]) {
                                 Ok(()) => {

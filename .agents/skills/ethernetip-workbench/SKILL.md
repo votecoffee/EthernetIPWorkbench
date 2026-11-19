@@ -34,6 +34,8 @@ Use zero-based byte offsets for mappings. Apply the profile's actual endian and 
 
 For variable-size T→O profiles, verify the maximum `input_size` and local `input_min_size` against the adapter documentation. Validate all input mappings at the minimum. Check the actual payload length in the input view or export before reporting a readback.
 
+For variable-size O→T, verify the documented `output_size` maximum and local `output_min_size` before staging. The staged hex length is the payload length that an authorized owner session will send. Review the exact bytes and length before connecting or applying outputs.
+
 For multicast T→O profiles, verify the selected NIC, the returned group and receive port in `cyclic_io`, and the Forward_Close result. O→T stays unicast and the usual ownership rules apply.
 
 For listen-only, verify the adapter's distinct heartbeat connection point and an existing controlling multicast connection. Keep output and configuration payloads empty and O→T Run/Idle disabled. The listener uses manual reconnect.

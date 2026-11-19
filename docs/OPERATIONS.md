@@ -61,6 +61,7 @@ Start from a generic sample and use the device's EDS and manual to establish eac
 | local_udp_port | 0 requests an ephemeral port, otherwise bind the required local port |
 | input_instance, input_size | Adapter-to-scanner assembly and payload bytes |
 | output_instance, output_size | Scanner-to-adapter assembly or heartbeat connection point |
+| output_min_size | Optional local lower bound for variable-size owner output |
 | config_instance, config_size, config_hex | Optional configuration path and bytes sent in Forward_Open |
 | output_hex | Full staged output payload |
 | input_rpi_us, output_rpi_us | Separate requested intervals in microseconds |
@@ -75,11 +76,19 @@ Set the root TOML key `large_forward_open = true` when the adapter supports serv
 
 ### Configure variable-size input
 
-In **Device**, set the maximum T→O payload in the assembly grid, enable **Variable-size input (T->O)** and set **Minimum input bytes**. In TOML, `input_size` is the maximum and `input_min_size` enables variable-size input and sets the inclusive lower bound. For example, `input_size = 12` and `input_min_size = 4` accept 4 through 12 payload bytes. The adapter sees only the maximum and the variable-size flag in Forward_Open. O→T retains its fixed size. The local minimum and maximum exclude sequence and Run/Idle bytes.
+In **Device**, set the maximum T→O payload in the assembly grid, enable **Variable-size input (T->O)** and set **Minimum input bytes**. In TOML, `input_size` is the maximum and `input_min_size` enables variable-size input and sets the inclusive lower bound. For example, `input_size = 12` and `input_min_size = 4` accept 4 through 12 payload bytes. The adapter sees the maximum and the variable-size flag in Forward_Open. The local minimum and maximum exclude sequence and Run/Idle bytes.
 
 All input mappings must fit the shortest accepted packet. Shorter or oversized packets increment the invalid-packet counter. Missing accepted sequence numbers also appear as sequence gaps. The live input view, offline decoder and software feeds use actual payload lengths. CSV retains its existing columns. On-change capture compares the selected values, so a change in an unmapped tail or its length alone adds no row.
 
 When an EDS profile requires variable T→O, the importer enables it and initially sets the minimum equal to the imported maximum. Review and enter the documented minimum before connecting. If the EDS allows both fixed and variable input, the importer selects fixed. Omit `input_min_size` to retain fixed-size behavior.
+
+### Configure variable-size output
+
+Select **Exclusive owner** in **Device**. Set the documented maximum O→T payload in the assembly grid, then enable **Variable-size output (O->T)** under **Configuration and advanced timing** and set the minimum. In TOML, `output_size` is the maximum and `output_min_size` enables variable-size output and sets the inclusive lower bound. Use assembly byte counts with headers excluded. The scanner sends the maximum plus the required headers in Forward_Open.
+
+A variable-only O→T EDS profile sets the initial minimum equal to the imported maximum. Verify the device's accepted range and update the minimum. If the EDS offers both modes, the importer selects fixed. Omit `output_min_size` for fixed-size output.
+
+In **Outputs**, enter the exact payload as hex. Changing the number of staged bytes changes the length you will apply. Typed output fields can edit bytes present in the staged buffer. Connect review shows the initial length and output ownership. For an open owner session, review the staged bytes and length, authorize them, then use **Apply staged outputs**. The active buffer shows the length currently supplied to the cyclic producer.
 
 ### Configure multicast input
 

@@ -60,6 +60,8 @@ pub struct Report {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub listen_only: bool,
     pub asserts_run: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub staged_output_bytes: Option<usize>,
     pub configuration_assembly: Option<u16>,
     pub configuration_bytes: u16,
     pub large_forward_open: bool,
@@ -212,13 +214,23 @@ pub fn inspect(
                 imported.large_forward_open.to_string(),
             );
         }
-        if settings.input_min_size.is_some() || imported.input_min_size.is_some() {
-            let mode = |min: Option<u16>| if min.is_some() { "Variable" } else { "Fixed" };
-            compare(
+        for (field, min, imported_min) in [
+            (
                 "T->O size mode",
-                mode(settings.input_min_size).into(),
-                mode(imported.input_min_size).into(),
-            );
+                settings.input_min_size,
+                imported.input_min_size,
+            ),
+            (
+                "O->T size mode",
+                settings.output_min_size,
+                imported.output_min_size,
+            ),
+        ] {
+            if min.is_none() && imported_min.is_none() {
+                continue;
+            }
+            let mode = |min: Option<u16>| if min.is_some() { "Variable" } else { "Fixed" };
+            compare(field, mode(min).into(), mode(imported_min).into());
         }
         if settings.input_multicast || imported.input_multicast {
             let mode = |enabled| if enabled { "Multicast" } else { "Unicast" };
@@ -245,6 +257,9 @@ pub fn inspect(
         requests_output_ownership: !settings.input_only,
         listen_only: settings.listen_only,
         asserts_run: settings.output_run_idle,
+        staged_output_bytes: settings
+            .output_min_size
+            .and_then(|_| settings.output().ok().map(|bytes| bytes.len())),
         configuration_assembly: settings.config_instance,
         configuration_bytes: settings.config_size,
         large_forward_open: settings.large_forward_open,
@@ -264,7 +279,7 @@ pub fn inspect(
         output: Direction {
             assembly: settings.output_instance,
             payload_bytes: settings.output_size,
-            minimum_payload_bytes: None,
+            minimum_payload_bytes: settings.output_min_size,
             requested_rpi_us: settings.output_rpi_us,
             run_idle_header: settings.output_run_idle,
             priority: settings.output_priority,

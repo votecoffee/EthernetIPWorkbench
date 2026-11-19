@@ -426,6 +426,82 @@ fn matching_pin_allows_separately_authorized_owner_connection() {
     assert!(device.status.forward_close.as_ref().unwrap().is_confirmed());
 }
 
+fn exercise_variable_owner(max: u16, run_idle: bool) {
+    let mut device = Device::new(1, None);
+    let settings = &mut device.settings;
+    settings.set_role(model::ConnectionRole::ExclusiveOwner);
+    settings.output_instance = 100;
+    settings.output_size = max;
+    settings.output_min_size = Some(2);
+    settings.output_hex = "10 20".into();
+    settings.input_run_idle = true;
+    settings.output_run_idle = run_idle;
+    settings.large_forward_open = max > model::MAX_ASSEMBLY_BYTES as u16;
+    settings.config_size = 3;
+    settings.config_hex = "AA BB CC".into();
+    settings.input_rpi_us = 8_000;
+    settings.output_rpi_us = 8_000;
+
+    device.connect(&[]);
+    assert!(device.connection.is_none());
+    assert!(
+        device
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("output permission")
+    );
+
+    device.writes_confirmed = true;
+    device.connect(&[]);
+    poll_until(&mut device, |device| device.status.valid >= 8);
+    let connection = device.connection.as_ref().unwrap();
+    assert!(connection.apply_output(vec![0]).is_err());
+    assert!(
+        connection
+            .apply_output(vec![0; usize::from(max) + 1])
+            .is_err()
+    );
+    assert_eq!(connection.output_bytes(), [0x10, 0x20]);
+
+    for payload in [
+        vec![0xA5; usize::from(max)],
+        vec![0x5B; 5],
+        vec![0xCA, 0xFE],
+    ] {
+        device.settings.output_hex = model::hex(&payload);
+        let connection = device.connection.as_ref().unwrap();
+        assert_ne!(connection.output_bytes(), payload);
+        connection
+            .apply_output(device.settings.output().unwrap())
+            .unwrap();
+        assert_eq!(connection.output_bytes(), payload);
+        let target = device.status.valid + 8;
+        poll_until(&mut device, |device| device.status.valid >= target);
+    }
+    assert_eq!(device.status.actual, Some((8_000, 8_000)));
+    assert_eq!(
+        device.status.invalid + device.status.gaps + device.status.timeouts,
+        0
+    );
+    device.disconnect();
+    poll_until(&mut device, |device| !device.link_busy());
+    assert_eq!(device.status.state, "Closed");
+    assert!(device.status.forward_close.as_ref().unwrap().is_confirmed());
+}
+
+#[test]
+#[ignore = "requires tools/loopback_adapter.py --mode variable-output on localhost"]
+fn standard_open_resizes_cyclic_owner_payload_with_run_idle() {
+    exercise_variable_owner(12, true);
+}
+
+#[test]
+#[ignore = "requires tools/loopback_adapter.py --mode large-variable-output on localhost"]
+fn large_open_resizes_modeless_cyclic_owner_payload() {
+    exercise_variable_owner(600, false);
+}
+
 #[test]
 #[ignore = "requires tools/loopback_adapter.py --mode different-api on localhost"]
 fn run_report_uses_the_final_loopback_connection() {

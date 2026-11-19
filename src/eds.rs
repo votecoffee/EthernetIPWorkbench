@@ -265,11 +265,19 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
             let mask = number(get(1)).unwrap_or(0);
             // EDS connection-parameter bits 0/1 describe fixed/variable O->T,
             // and bits 2/3 describe fixed/variable T->O.
+            let variable_output = mask & 0x03 == 0x02;
             let variable_input = mask & 0x0c == 0x08;
-            if mask & 0x0004_0001 != 0x0004_0001 || mask & 0x0060_0000 == 0 || mask & 0x0c == 0 {
+            if mask & 0x0004_0000 == 0
+                || mask & 0x03 == 0
+                || mask & 0x0060_0000 == 0
+                || mask & 0x0c == 0
+            {
                 issues.push(
-                    "Profile requires fixed-size point-to-point O->T and point-to-point or multicast T->O".into(),
+                    "Profile requires point-to-point O->T and point-to-point or multicast T->O with a supported size mode in each direction".into(),
                 );
+            }
+            if variable_output && s.input_only {
+                issues.push("Variable-size O->T requires an exclusive-owner profile".into());
             }
             if mask & 0x0060_0000 == 0x0020_0000 {
                 s.input_multicast = true;
@@ -390,6 +398,10 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
             if !origin.contains_key("O->T size") {
                 issues.push("Unresolved O->T size; verify it in manual mode".into());
             }
+            if variable_output {
+                s.output_min_size = Some(s.output_size);
+                origin.insert("O->T size mode".into(), "Variable; review minimum output bytes".into());
+            }
             if variable_input {
                 // The EDS defines the configured maximum, not a reliable local
                 // lower bound. Keep the conservative boundary until reviewed.
@@ -434,6 +446,25 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn imports_required_variable_output_and_prefers_fixed_when_available() {
+        let sample = include_str!("../samples/loopback.eds")
+            .replace("0x02010002", "0x04010002")
+            .replace("0x22440305", "0x22440406")
+            .replace("Param1,0,,", "Param1,12,,")
+            .replace("2C FE", "2C 64");
+        let profiles = parse(&sample).unwrap();
+        let profile = &profiles[0];
+        assert!(profile.unsupported.is_empty(), "{:?}", profile.unsupported);
+        assert_eq!(profile.settings.output_size, 12);
+        assert_eq!(profile.settings.output_min_size, Some(12));
+        assert!(profile.settings.output_run_idle);
+        assert!(profile.fields.contains_key("O->T size mode"));
+        let dual_mode = sample.replace("0x22440406", "0x22440407");
+        assert_eq!(parse(&dual_mode).unwrap()[0].settings.output_min_size, None);
+    }
+
     #[test]
     fn sample_and_unresolved_path() {
         let sample = include_str!("../samples/loopback.eds");

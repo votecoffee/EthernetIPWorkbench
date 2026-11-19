@@ -106,7 +106,7 @@ impl Device {
             });
             let s = &mut self.settings;
             let write_settings = |s: &Settings| (
-                s.role(), s.output_instance, s.output_size, s.output_run_idle,
+                s.role(), s.output_instance, (s.output_size, s.output_min_size), s.output_run_idle,
                 s.config_instance, s.config_size, s.timeout_multiplier_code,
                 s.large_forward_open, s.electronic_key,
                 s.input_size, s.input_min_size,
@@ -126,6 +126,9 @@ impl Device {
                 });
             if role != prior_role {
                 s.set_role(role);
+                if s.input_only {
+                    s.output_min_size = None;
+                }
                 if matches!(role, model::ConnectionRole::ListenOnly) || matches!(prior_role, model::ConnectionRole::ListenOnly) {
                     // An adapter distinguishes the roles by their connection points.
                     s.output_instance = 0;
@@ -139,7 +142,11 @@ impl Device {
                 ui.label("Connection point");
                 ui.add(egui::DragValue::new(&mut s.input_instance));
                 ui.add(egui::DragValue::new(&mut s.output_instance)); ui.end_row();
-                ui.label(if s.input_min_size.is_some() { "Max input / fixed output bytes" } else { "Assembly bytes" });
+                ui.label(if s.input_min_size.is_some() || s.output_min_size.is_some() {
+                    "Assembly bytes (max if variable)"
+                } else {
+                    "Assembly bytes"
+                });
                 ui.add(egui::DragValue::new(&mut s.input_size));
                 ui.add(egui::DragValue::new(&mut s.output_size)); ui.end_row();
                 ui.label("Requested RPI (µs)");
@@ -164,6 +171,18 @@ impl Device {
                 }
             });
             ui.collapsing("Configuration and advanced timing", |ui| {
+                if !s.input_only || s.output_min_size.is_some() {
+                    ui.horizontal_wrapped(|ui| {
+                        let mut variable = s.output_min_size.is_some();
+                        if ui.checkbox(&mut variable, "Variable-size output (O->T)").changed() {
+                            s.output_min_size = variable.then_some(s.output_size);
+                        }
+                        if let Some(min) = &mut s.output_min_size {
+                            ui.label("Minimum output bytes");
+                            ui.add(egui::DragValue::new(min).range(0..=s.output_size).clamp_existing_to_range(false));
+                        }
+                    });
+                }
                 ui.checkbox(&mut s.large_forward_open, "Use Large Forward_Open");
                 let mut keyed = s.electronic_key.is_some();
                 if ui.checkbox(&mut keyed, "Use electronic key (exact mode)").changed() {
@@ -271,6 +290,15 @@ impl Device {
             ));
         }
         if !self.settings.input_only {
+            if let Some(min) = self.settings.output_min_size {
+                ui.label(format!(
+                    "Variable O->T · {min}–{} payload bytes",
+                    self.settings.output_size
+                ));
+                if let Ok(bytes) = self.settings.output() {
+                    ui.label(format!("Initial output length · {} bytes", bytes.len()));
+                }
+            }
             ui.label(format!("Staged outputs · {}", self.settings.output_hex));
         }
         if self.settings.config_size != 0 {
@@ -396,6 +424,9 @@ impl Device {
         }
         if report.requests_output_ownership {
             ui.colored_label(AMBER, "Connecting requests output ownership");
+        }
+        if let Some(length) = report.staged_output_bytes {
+            ui.label(format!("Staged output length · {length} bytes"));
         }
         if report.asserts_run {
             ui.colored_label(AMBER, "Connecting asserts Run in the O->T header");

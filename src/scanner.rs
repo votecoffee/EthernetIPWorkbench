@@ -12,6 +12,7 @@ use ethernetip_core::{cpf, error::EipError};
 use std::{
     io,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket},
+    ops::RangeInclusive,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering::Relaxed},
@@ -146,7 +147,7 @@ pub struct Connection {
     stop: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
     requested: (u32, u32),
-    writable_size: Option<usize>,
+    writable_lengths: Option<RangeInclusive<usize>>,
 }
 impl Connection {
     /// Start an identity-checked input-only or listen-only session without a recorder or publisher.
@@ -183,10 +184,18 @@ impl Connection {
         self.output.lock().unwrap().clone()
     }
 
-    /// Replace exactly the configured payload on an authorized owner session.
+    /// Replace the payload within the configured length bounds on an authorized owner session.
     pub fn apply_output(&self, bytes: Vec<u8>) -> std::result::Result<(), String> {
-        if self.writable_size != Some(bytes.len()) {
-            return Err("Output requires an authorized owner session and exactly the configured assembly size".into());
+        let lengths = self
+            .writable_lengths
+            .as_ref()
+            .ok_or("Output requires an authorized owner session")?;
+        if !lengths.contains(&bytes.len()) {
+            return Err(format!(
+                "Applied output length must be within {}–{} bytes",
+                lengths.start(),
+                lengths.end()
+            ));
         }
         if self.stop.load(Relaxed) || self.status.lock().unwrap().state != "Receiving" {
             return Err("Output session is not receiving".into());
@@ -297,8 +306,11 @@ impl Connection {
             publisher,
         };
         let requested = (settings.output_rpi_us, settings.input_rpi_us);
-        let writable_size =
-            (permit_writes && !settings.input_only).then_some(settings.output_size as usize);
+        let writable_lengths = if permit_writes && !settings.input_only {
+            Some(settings.output_lengths()?)
+        } else {
+            None
+        };
         let connection = shared.clone();
         let worker = thread::Builder::new()
             .name("class1-session".into())
@@ -351,7 +363,7 @@ impl Connection {
             input_times: connection.input_times,
             worker: Some(worker),
             requested,
-            writable_size,
+            writable_lengths,
         })
     }
     pub fn first_input_at(&self) -> Option<Instant> {
@@ -549,7 +561,7 @@ fn run(
             cfg.output_size,
             cfg.output_run_idle,
             cfg.output_priority,
-            false,
+            cfg.output_min_size.is_some(),
             false,
         ),
         t_to_o_rpi_us: cfg.input_rpi_us,
@@ -647,15 +659,7 @@ fn run(
         }
         thread::scope(|scope| {
             let sender = scope.spawn(|| {
-                let result = produce(
-                    &udp,
-                    peer,
-                    cfg.output_run_idle,
-                    &reply,
-                    open_completed,
-                    shared,
-                    schedule,
-                );
+                let result = produce(&udp, peer, cfg, &reply, open_completed, shared, schedule);
                 if result.is_err() {
                     shared.stop.store(true, Relaxed);
                 }

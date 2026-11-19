@@ -45,6 +45,8 @@ struct ConnectionReport {
     input_min_bytes: Option<u16>,
     output_assembly: u16,
     output_bytes: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_min_bytes: Option<u16>,
     configuration_bytes: u16,
     input_only: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -132,6 +134,7 @@ impl Device {
             input_min_bytes: active.input_min_size,
             output_assembly: active.output_instance,
             output_bytes: active.output_size,
+            output_min_bytes: active.output_min_size,
             configuration_bytes: active.config_size,
             input_only: active.input_only,
             listen_only: active.listen_only,

@@ -21,22 +21,20 @@ fn publish_send_status(shared: &Shared, spacing: &Histogram, timing: SendTiming)
 pub(super) fn produce(
     udp: &UdpSocket,
     peer: SocketAddr,
-    header: bool,
+    cfg: &Settings,
     reply: &ForwardOpenResponse,
     open_completed: Instant,
     shared: &Shared,
     schedule: Schedule,
 ) -> Result<()> {
     let period = Duration::from_micros(reply.o_to_t_actual_rpi_us.into());
-    let size = shared.output.lock().unwrap().len();
-    let data_start = 20 + 4 * usize::from(header);
-    let mut packet = vec![0; data_start + size];
+    let lengths = cfg.output_lengths().map_err(protocol)?;
+    let data_start = 20 + 4 * usize::from(cfg.output_run_idle);
+    let mut packet = vec![0; data_start + lengths.end()];
     packet[0..6].copy_from_slice(&[2, 0, 2, 0x80, 8, 0]);
     packet[6..10].copy_from_slice(&reply.o_to_t_connection_id.to_le_bytes());
     packet[14..16].copy_from_slice(&0x00b1u16.to_le_bytes());
-    let connected_len = (packet.len() - 18) as u16;
-    packet[16..18].copy_from_slice(&connected_len.to_le_bytes());
-    if header {
+    if cfg.output_run_idle {
         packet[20] = 1;
     }
     let mut sequence = 0u32;
@@ -57,9 +55,21 @@ pub(super) fn produce(
         sequence = sequence.wrapping_add(1);
         packet[10..14].copy_from_slice(&sequence.to_le_bytes());
         packet[18..20].copy_from_slice(&(sequence as u16).to_le_bytes());
-        packet[data_start..].copy_from_slice(&shared.output.lock().unwrap());
+        let end = {
+            let output = shared.output.lock().unwrap();
+            if !lengths.contains(&output.len()) {
+                return Err(protocol(
+                    "Cyclic output buffer is outside the configured size range",
+                ));
+            }
+            let end = data_start + output.len();
+            packet[data_start..end].copy_from_slice(&output);
+            end
+        };
+        let connected_len = (end - 18) as u16;
+        packet[16..18].copy_from_slice(&connected_len.to_le_bytes());
         let call_start = Instant::now();
-        let result = udp.send_to(&packet, peer);
+        let result = udp.send_to(&packet[..end], peer);
         let stamp = Instant::now();
         let call_time = stamp - call_start;
         timing.max_send_call_us = timing.max_send_call_us.max(call_time.as_micros() as u64);

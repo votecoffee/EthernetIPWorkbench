@@ -186,7 +186,8 @@ mod tests {
         device.device = "192.0.2.10".into();
         device.local = "192.0.2.11".into();
         device.settings.input_only = false;
-        device.settings.output_size = 2;
+        device.settings.output_size = 12;
+        device.settings.output_min_size = Some(2);
         device.settings.output_hex = "11 22".into();
         device.settings.config_size = 3;
         device.settings.config_hex = "AA BB CC".into();
@@ -198,6 +199,8 @@ mod tests {
         for expected in [
             "Review connection",
             "Staged outputs · 11 22",
+            "Variable O->T · 2–12 payload bytes",
+            "Initial output length · 2 bytes",
             "Configuration bytes · AA BB CC",
             "Connecting requests output ownership and sends the staged output bytes.",
             "Connecting applies the staged configuration bytes.",

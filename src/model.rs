@@ -52,6 +52,9 @@ pub struct Settings {
     pub input_min_size: Option<u16>,
     pub output_instance: u16,
     pub output_size: u16,
+    /// Presence requests variable-size O->T with output_size as the maximum.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_min_size: Option<u16>,
     pub config_instance: Option<u16>,
     pub config_size: u16,
     pub config_hex: String,
@@ -127,6 +130,7 @@ impl Default for Settings {
             input_min_size: None,
             output_instance: 254,
             output_size: 0,
+            output_min_size: None,
             config_instance: Some(1),
             config_size: 0,
             config_hex: String::new(),
@@ -185,7 +189,11 @@ impl Settings {
     }
 
     pub fn input_only_without_writes(&self) -> bool {
-        self.input_only && self.output_size == 0 && self.config_size == 0 && !self.output_run_idle
+        self.input_only
+            && self.output_size == 0
+            && self.output_min_size.is_none()
+            && self.config_size == 0
+            && !self.output_run_idle
     }
 
     pub fn role(&self) -> ConnectionRole {
@@ -217,6 +225,26 @@ impl Settings {
         if min == 0 || min > max || max > MAX_LARGE_ASSEMBLY_BYTES {
             return Err(format!(
                 "Input requires 1 ≤ minimum bytes ≤ maximum bytes ≤ {MAX_LARGE_ASSEMBLY_BYTES}"
+            ));
+        }
+        Ok(min..=max)
+    }
+
+    /// Allowed O->T application byte counts, excluding connected I/O headers.
+    pub fn output_lengths(&self) -> Result<RangeInclusive<usize>, String> {
+        let max = usize::from(self.output_size);
+        let Some(min) = self.output_min_size.map(usize::from) else {
+            return Ok(max..=max);
+        };
+        if self.input_only || max == 0 {
+            return Err(
+                "Variable-size output requires an owner connection and nonzero maximum bytes"
+                    .into(),
+            );
+        }
+        if min > max || max > MAX_LARGE_ASSEMBLY_BYTES {
+            return Err(format!(
+                "Output requires 0 ≤ minimum bytes ≤ maximum bytes ≤ {MAX_LARGE_ASSEMBLY_BYTES}"
             ));
         }
         Ok(min..=max)
@@ -395,9 +423,18 @@ impl Settings {
     }
 
     pub fn output(&self) -> Result<Vec<u8>, String> {
+        let lengths = self.output_lengths()?;
         let data = parse_hex(&self.output_hex)?;
-        if data.len() != self.output_size as usize {
-            return Err("Output bytes do not match the declared output size".into());
+        if !lengths.contains(&data.len()) {
+            return Err(if self.output_min_size.is_some() {
+                format!(
+                    "Staged output requires {}–{} bytes",
+                    lengths.start(),
+                    lengths.end()
+                )
+            } else {
+                "Output bytes do not match the declared output size".into()
+            });
         }
         Ok(data)
     }

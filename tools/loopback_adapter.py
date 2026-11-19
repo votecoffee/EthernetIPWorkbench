@@ -14,6 +14,7 @@ IP = "127.0.0.1"
 SESSION = 0xABCD0123
 OT_ID = 0x1234ABCD
 VARIABLE_INPUT_MAX = {"variable-input": 12, "large-variable-input": 600}
+VARIABLE_OUTPUT_MAX = {"variable-output": 12, "large-variable-output": 600}
 MULTICAST_GROUP = "239.255.92.44"
 
 
@@ -69,7 +70,12 @@ def spacing(stamps):
 def udp_loop(udp, source, endpoint, connection, api, mode, value_base, stop, report, multicast=None):
     sent, received = [], []
     output_values = set()
-    owner = mode == "owner"
+    output_max = VARIABLE_OUTPUT_MAX.get(mode)
+    owner = mode == "owner" or output_max is not None
+    output_header = owner and mode != "large-variable-output"
+    output_start = 24 if output_header else 20
+    output_lengths = range(2, (output_max or 2) + 1) if owner else range(1)
+    length_transitions = []
     variable_max = VARIABLE_INPUT_MAX.get(mode)
     prior_sequence = last_sent_sequence = None
     missed = invalid = skipped = 0
@@ -87,20 +93,24 @@ def udp_loop(udp, source, endpoint, connection, api, mode, value_base, stop, rep
             if multicast and not endpoint[1] and peer[0] == endpoint[0]:
                 endpoint = peer
                 report["cyclic_io"]["local_udp"] = f"{peer[0]}:{peer[1]}"
-            if peer != endpoint or len(packet) != (26 if owner else 20):
+            output_length = len(packet) - output_start
+            if peer != endpoint or output_length not in output_lengths:
                 invalid += 1
                 continue
             count, addr_type, addr_size, cid, sequence, dtype, size, cip = struct.unpack_from(
                 "<HHHIIHHH", packet
             )
             if (count, addr_type, addr_size, cid, dtype, size, cip) != (
-                2, 0x8002, 8, OT_ID, 0xB1, (8 if owner else 2), sequence & 0xFFFF
+                2, 0x8002, 8, OT_ID, 0xB1, len(packet) - 18, sequence & 0xFFFF
             ):
                 invalid += 1
                 continue
-            if owner:
+            if output_header:
                 assert packet[20:24] == b"\x01\x00\x00\x00"
-                output_values.add(packet[24:].hex())
+            if owner:
+                output_values.add(packet[output_start:].hex())
+            if output_max is not None and (not length_transitions or output_length != length_transitions[-1]):
+                length_transitions.append(output_length)
             if prior_sequence is not None:
                 missed += (sequence - prior_sequence - 1) & 0xFFFFFFFF
             prior_sequence = sequence
@@ -156,6 +166,8 @@ def udp_loop(udp, source, endpoint, connection, api, mode, value_base, stop, rep
         "to_last_gap_us": (sent[-1] - sent[-2]) // 1000 if len(sent) >= 2 else None,
         "to_send_spacing": spacing(sent), "to_skipped_deadline_slots": skipped, "output_values": sorted(output_values),
     })
+    if output_max is not None:
+        report["output_length_transitions"] = length_transitions
 
 
 def routed_reply(cip, attrs, report):
@@ -191,7 +203,7 @@ def routed_reply(cip, attrs, report):
 def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     stop = threading.Event()
     io = None
-    owner = mode == "owner"
+    owner = mode == "owner" or mode in VARIABLE_OUTPUT_MAX
     multicast = mode.startswith("multicast")
     udp_mode = "stall" if mode == "stall-close-reject" else mode
     adapter_ip = tcp.getsockname()[0]
@@ -254,20 +266,26 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                 elif service in (0x54, 0x5B) and object_class == 6:
                     assert io is None
                     _, to, serial, vendor, origin = struct.unpack_from("<IIHHI", body, 2)
-                    if mode in ("large-keyed", "large-variable-input"):
+                    if mode in ("large-keyed", "large-variable-input", "large-variable-output"):
                         assert service == 0x5B
                         ot_rpi, ot_params, to_rpi, to_params, transport, path_words = struct.unpack_from(
                             "<IIIIBB", body, 22
                         )
-                        expected_input = 0x4600025E if mode == "large-variable-input" else 0x4400025A
-                        assert ot_params == 0x44000002 and to_params == expected_input
+                        expected_input = {
+                            "large-variable-input": 0x4600025E,
+                            "large-variable-output": 0x4400000A,
+                            "large-keyed": 0x4400025A,
+                        }[mode]
+                        expected_output = 0x4600025A if mode == "large-variable-output" else 0x44000002
+                        assert ot_params == expected_output and to_params == expected_input
                         path_offset = 40
                     else:
                         assert service == 0x54
                         ot_rpi, ot_params, to_rpi, to_params, transport, path_words = struct.unpack_from(
                             "<IHIHBB", body, 22
                         )
-                        assert ot_params & 0xE3FF == (0x4008 if owner else 0x4002)
+                        expected_output = 0x4212 if mode == "variable-output" else 0x4008 if owner else 0x4002
+                        assert ot_params & 0xE3FF == expected_output
                         expected_input = (0x2006 if multicast else 0x4212 if mode == "variable-input"
                                           else 0x400A if owner else 0x4006)
                         assert to_params & 0xE3FF == expected_input
@@ -361,6 +379,7 @@ def main():
         "slow-input", "pause-different-api",
         "identity-then-owner",
         "explicit", "large-keyed", "routed", "variable-input", "large-variable-input",
+        "variable-output", "large-variable-output",
         "multicast", "multicast-missing", "multicast-unicast",
         "delayed-start", "split-udp",
     ))
