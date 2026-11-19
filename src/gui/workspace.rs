@@ -4,6 +4,7 @@ use super::*;
 pub(super) enum Tab {
     #[default]
     Device,
+    Explore,
     Inputs,
     Outputs,
     Logging,
@@ -70,6 +71,7 @@ mod tests {
                     "Record CSV…",
                     "Profiles…",
                     "Device",
+                    "Explore",
                     "Inputs",
                     "Outputs",
                     "Logging",
@@ -92,6 +94,7 @@ mod tests {
                 }
                 for (page, heading) in [
                     (Tab::Device, "Device setup"),
+                    (Tab::Explore, "Explore EtherNet/IP"),
                     (Tab::Inputs, "Live inputs"),
                     (Tab::Outputs, "Stage and apply outputs"),
                     (Tab::Logging, "CSV logging"),
@@ -212,8 +215,9 @@ mod tests {
 }
 
 impl Tab {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 8] = [
         Self::Device,
+        Self::Explore,
         Self::Inputs,
         Self::Outputs,
         Self::Logging,
@@ -225,6 +229,7 @@ impl Tab {
     fn label(self) -> &'static str {
         match self {
             Self::Device => "Device",
+            Self::Explore => "Explore",
             Self::Inputs => "Inputs",
             Self::Outputs => "Outputs",
             Self::Logging => "Logging",
@@ -298,6 +303,7 @@ impl Device {
                         }
                         match self.tab {
                             Tab::Device => self.setup(ui),
+                            Tab::Explore => self.explore(ui),
                             Tab::Inputs => {
                                 self.input_health(ui);
                                 self.inputs(ui);

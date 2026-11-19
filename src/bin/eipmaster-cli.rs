@@ -1,6 +1,7 @@
 use assembly_scanner::{
     capture::{Capture, FieldSummary, MAX_CAPTURE_SECONDS, Options, Slot},
-    eds,
+    discovery, eds,
+    explicit::{self, ReadPath, Reader},
     integration::{self, Integration},
     model::{ConnectionTimeout, Settings, parse_hex},
     preflight,
@@ -35,6 +36,9 @@ Usage:
   eipmaster-cli validate <settings.toml> [<vendor.eds> <ConnectionN>]
   eipmaster-cli decode-input <settings.toml> \"<assembly hex bytes>\"
   eipmaster-cli identity <adapter-ipv4> <local-ipv4>
+  eipmaster-cli discover <local-ipv4> [<destination-ipv4>]
+  eipmaster-cli read <adapter-ipv4> <local-ipv4> <class> <instance> <attribute|all>
+  eipmaster-cli read-saved <settings.toml> <name>
   eipmaster-cli capture <settings.toml> <new-output-dir> <seconds> <vendor:type:product[:serial]>
   eipmaster-cli qualify <settings.toml> <new-output-dir> <direct|switched|loopback> <vendor:type:product:serial> [<loopback-seconds>]
 
@@ -71,6 +75,55 @@ fn main() -> ExitCode {
 
 fn run(args: &[OsString]) -> Result<bool, String> {
     match args {
+        [command, local, target @ ..] if command == "discover" => {
+            let destination = match target {
+                [] => std::net::Ipv4Addr::BROADCAST,
+                [address] => address
+                    .to_string_lossy()
+                    .parse()
+                    .map_err(|_| "Invalid discovery destination IPv4 address")?,
+                _ => return Err(USAGE.into()),
+            };
+            let local = local
+                .to_string_lossy()
+                .parse()
+                .map_err(|_| "Invalid local IPv4 address")?;
+            let report = discovery::discover(local, destination).map_err(|e| e.to_string())?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?
+            );
+            Ok(true)
+        }
+        [command, adapter, local, class, instance, attribute] if command == "read" => {
+            let adapter = adapter
+                .to_string_lossy()
+                .parse()
+                .map_err(|_| "Invalid adapter IPv4 address")?;
+            let local = local
+                .to_string_lossy()
+                .parse()
+                .map_err(|_| "Invalid local IPv4 address")?;
+            let path = ReadPath {
+                class: explicit::parse_id(&class.to_string_lossy())?,
+                instance: explicit::parse_id(&instance.to_string_lossy())?,
+                attribute: if attribute == "all" {
+                    None
+                } else {
+                    Some(explicit::parse_id(&attribute.to_string_lossy())?)
+                },
+            };
+            print_read(adapter, local, path)
+        }
+        [command, profile, name] if command == "read-saved" => {
+            let (settings, app) = settings_file::load_profile(Path::new(profile))?;
+            let reads = app.unwrap_or_default().cip_reads;
+            let read = reads
+                .iter()
+                .find(|read| read.name == name.to_string_lossy())
+                .ok_or_else(|| format!("No saved CIP read named {:?}", name))?;
+            print_read(settings.device_ip, settings.local_ip, read.path)
+        }
         [command, path] if command == "eds" => {
             let result = EdsReport {
                 profiles: eds::load(Path::new(path))?
@@ -188,6 +241,29 @@ fn run(args: &[OsString]) -> Result<bool, String> {
         }
         _ => Err(USAGE.into()),
     }
+}
+
+fn print_read(
+    adapter: std::net::Ipv4Addr,
+    local: std::net::Ipv4Addr,
+    path: ReadPath,
+) -> Result<bool, String> {
+    path.validate()?;
+    let result = Reader::connect(adapter, local).and_then(|mut reader| reader.read(path));
+    let report = match &result {
+        Ok(bytes) => {
+            serde_json::json!({"path": path, "data_hex": assembly_scanner::model::hex(bytes), "bytes": bytes.len(), "decoded": path.describe(bytes)})
+        }
+        Err(explicit::EipError::Cip { status, ext }) => {
+            serde_json::json!({"path": path, "general_status": status, "extended_status": ext})
+        }
+        Err(error) => return Err(error.to_string()),
+    };
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+    );
+    Ok(result.is_ok())
 }
 
 #[derive(Clone, Copy)]
@@ -352,21 +428,13 @@ struct Attempt {
 
 impl Attempt {
     fn finish(connection: Connection) -> Self {
-        let status = connection.status.clone();
-        let tx = connection.tx.clone();
-        let skipped = connection.skipped.clone();
-        let send_spacing = connection.tx_spacing.clone();
-        let send_timing = connection.send_timing.clone();
-        connection.join();
-        let status = status.lock().unwrap().clone();
-        let send_spacing = *send_spacing.lock().unwrap();
-        let send_timing = *send_timing.lock().unwrap();
+        let result = connection.finish();
         Self {
-            status,
-            sent: tx.load(Relaxed),
-            skipped: skipped.load(Relaxed),
-            send_spacing,
-            send_timing,
+            status: result.status,
+            sent: result.sent,
+            skipped: result.skipped,
+            send_spacing: result.send_spacing,
+            send_timing: result.send_timing,
         }
     }
 

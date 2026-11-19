@@ -1,4 +1,4 @@
-use crate::model::{Settings, hex};
+use crate::model::{ElectronicKey, MAX_ASSEMBLY_BYTES, Settings, hex};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
@@ -41,6 +41,24 @@ impl Profile {
 
 pub fn load(path: &Path) -> Result<Vec<Profile>, String> {
     let bytes = std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    if bytes.starts_with(&[0xff, 0xfe]) || bytes.starts_with(&[0xfe, 0xff]) {
+        let little = bytes[0] == 0xff;
+        let units = bytes[2..].chunks_exact(2);
+        if !units.remainder().is_empty() {
+            return Err("Truncated UTF-16 EDS file".into());
+        }
+        let units: Vec<_> = units
+            .map(|pair| {
+                let pair = [pair[0], pair[1]];
+                if little {
+                    u16::from_le_bytes(pair)
+                } else {
+                    u16::from_be_bytes(pair)
+                }
+            })
+            .collect();
+        return parse(&String::from_utf16(&units).map_err(|_| "Invalid UTF-16 EDS file")?);
+    }
     parse(&String::from_utf8_lossy(&bytes))
 }
 fn fields(text: &str) -> Vec<String> {
@@ -82,8 +100,24 @@ fn path_bytes(text: &str, param_byte: impl Fn(&str) -> Option<u8>) -> Option<Vec
         .collect()
 }
 
-fn assembly_path(bytes: &[u8]) -> Option<(Option<u16>, u16, u16)> {
-    let mut rest = bytes.strip_prefix(&[0x20, 4])?;
+fn assembly_path(mut rest: &[u8]) -> Option<(Option<ElectronicKey>, Option<u16>, u16, u16)> {
+    let key = if rest.starts_with(&[0x34, 4]) {
+        let (segment, path) = rest.split_at_checked(10)?;
+        let key = ElectronicKey {
+            vendor: u16::from_le_bytes([segment[2], segment[3]]),
+            device_type: u16::from_le_bytes([segment[4], segment[5]]),
+            product: u16::from_le_bytes([segment[6], segment[7]]),
+            major: segment[8],
+            minor: segment[9],
+        };
+        if key.vendor == 0 || !(1..=127).contains(&key.major) {
+            return None;
+        }
+        rest = path;
+        Some(key)
+    } else {
+        None
+    };
     let mut next = |tag: u8| -> Option<u16> {
         match rest {
             [code, n, tail @ ..] if *code == tag => {
@@ -97,10 +131,13 @@ fn assembly_path(bytes: &[u8]) -> Option<(Option<u16>, u16, u16)> {
             _ => None,
         }
     };
+    if next(0x20)? != 4 {
+        return None;
+    }
     let config = next(0x24);
     let output = next(0x2c)?;
     let input = next(0x2c)?;
-    rest.is_empty().then_some((config, output, input))
+    rest.is_empty().then_some((key, config, output, input))
 }
 pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
     let mut cleaned = String::new();
@@ -266,8 +303,18 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
                 }
             }
             if let Some(bytes) = path_bytes(get(14), parameter_byte)
-                && let Some((config, output, input)) = assembly_path(&bytes)
+                && let Some((key, config, output, input)) = assembly_path(&bytes)
             {
+                s.electronic_key = key;
+                if let Some(key) = key {
+                    origin.insert(
+                        "Electronic key".into(),
+                        format!(
+                            "{}:{}:{} {}.{}",
+                            key.vendor, key.device_type, key.product, key.major, key.minor
+                        ),
+                    );
+                }
                 s.config_instance = config;
                 s.output_instance = output;
                 s.input_instance = input;
@@ -326,6 +373,16 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
             }
             if !origin.contains_key("O->T size") {
                 issues.push("Unresolved O->T size; verify it in manual mode".into());
+            }
+            if usize::from(s.input_size) + 4 * usize::from(s.input_run_idle) > MAX_ASSEMBLY_BYTES
+                || usize::from(s.output_size) + 4 * usize::from(s.output_run_idle)
+                    > MAX_ASSEMBLY_BYTES
+            {
+                s.large_forward_open = true;
+                origin.insert(
+                    "Large Forward_Open".into(),
+                    "Required by imported connection size".into(),
+                );
             }
             let size1 = if get(8).is_empty() && get(9).is_empty() {
                 Some(0)

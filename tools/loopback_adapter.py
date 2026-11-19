@@ -110,6 +110,8 @@ def udp_loop(udp, source, endpoint, connection, api, mode, value_base, stop, rep
             drop = mode == "no-input" or (mode == "stall" and seq > 75) or (mode == "faults" and seq == 60)
             if not drop:
                 value = struct.pack("<I", value_base + seq // 16)
+                if mode == "large-keyed":
+                    value += bytes(592) + struct.pack("<I", 0xA1B2C3D4)
                 if mode == "invalid-input":
                     value = value[:-1]
                 packet = io_packet(connection, seq, (bytes((1, 0, 0, 0)) if owner else b"") + value)
@@ -152,6 +154,13 @@ def serve(tcp, udp, source, mode, report, serial_delta=0):
     value_base = (adapter_index % 1000) * 100_000
     report.update(serial_number=serial_number, value_base=value_base)
     path = bytes.fromhex("20 04 24 01 2C 64 2C 65" if owner else "20 04 24 01 2C FE 2C 65")
+    if mode == "large-keyed":
+        path = bytes.fromhex("34 04 01 00 0C 00 01 00 01 00") + path
+    name = b"Loopback Adapter"
+    attrs = [b"", struct.pack("<H", 1 if mode == "large-keyed" else 0),
+             struct.pack("<H", 12), struct.pack("<H", 1), b"\x01\x00",
+             struct.pack("<H", 0x0060), struct.pack("<I", serial_number),
+             bytes([len(name)]) + name]
     try:
         while True:
             cmd, length, handle, status, ctx, options = struct.unpack(
@@ -168,24 +177,49 @@ def serve(tcp, udp, source, mode, report, serial_delta=0):
             elif cmd == 0x6F:
                 assert handle == SESSION
                 items = rr_items(request)
-                service, words, cls, object_class, inst, instance = items[0xB2][:6]
+                cip = items[0xB2]
+                service, words = cip[:2]
+                if mode == "explicit" and service == 0x0e:
+                    assert len(cip) == 2 + words * 2
+                    path_bytes = cip[2:]
+                    if len(path_bytes) == 6 and path_bytes[:5] == b"\x20\x01\x24\x01\x30" and 1 <= path_bytes[5] <= 7:
+                        attr = path_bytes[5]
+                        result = bytes.fromhex("8E 00 00 00") + attrs[attr]
+                    elif path_bytes == bytes.fromhex("21 00 34 12 26 00 78 56 34 12 30 07"):
+                        result = bytes.fromhex("8E 00 00 00 CA FE")
+                    else:
+                        assert path_bytes == bytes.fromhex("20 01 24 01 30 7F")
+                        result = bytes.fromhex("8E 00 14 01 02 03")
+                    response = rr_reply(result)
+                    tcp.sendall(struct.pack("<HHII8sI", cmd, len(response), SESSION, 0, ctx, 0) + response)
+                    continue
+                _, _, cls, object_class, inst, instance = cip[:6]
                 assert (words, cls, inst, instance) == (2, 0x20, 0x24, 1)
-                body = items[0xB2][6:]
+                body = cip[6:]
                 if service == 1 and object_class == 1:
-                    name = b"Loopback Adapter"
-                    reply = struct.pack("<HHHBBHIB", 0, 12, 1, 1, 0, 0x0060, serial_number, len(name)) + name
-                    response = rr_reply(b"\x81\0\0\0" + reply)
-                elif service == 0x54 and object_class == 6:
+                    response = rr_reply(bytes.fromhex("81 00 08 00") if mode == "explicit"
+                                        else b"\x81\0\0\0" + b"".join(attrs))
+                elif service in (0x54, 0x5B) and object_class == 6:
                     assert io is None
                     _, to, serial, vendor, origin = struct.unpack_from("<IIHHI", body, 2)
-                    ot_rpi, ot_params, to_rpi, to_params, transport, path_words = struct.unpack_from(
-                        "<IHIHBB", body, 22
-                    )
+                    if mode == "large-keyed":
+                        assert service == 0x5B
+                        ot_rpi, ot_params, to_rpi, to_params, transport, path_words = struct.unpack_from(
+                            "<IIIIBB", body, 22
+                        )
+                        assert ot_params == 0x44000002 and to_params == 0x4400025A
+                        path_offset = 40
+                    else:
+                        assert service == 0x54
+                        ot_rpi, ot_params, to_rpi, to_params, transport, path_words = struct.unpack_from(
+                            "<IHIHBB", body, 22
+                        )
+                        assert ot_params & 0xE3FF == (0x4008 if owner else 0x4002)
+                        assert to_params & 0xE3FF == (0x400A if owner else 0x4006)
+                        path_offset = 36
                     assert transport == 1
-                    assert len(body[36:]) == path_words * 2
-                    assert body[36:] == path + (bytes.fromhex("80 02 AA BB CC 00") if owner else b"")
-                    assert ot_params & 0xE3FF == (0x4008 if owner else 0x4002)
-                    assert to_params & 0xE3FF == (0x400A if owner else 0x4006)
+                    assert len(body[path_offset:]) == path_words * 2
+                    assert body[path_offset:] == path + (bytes.fromhex("80 02 AA BB CC 00") if owner else b"")
                     family, port, address = struct.unpack(">HH4s8x", items[0x8001])
                     assert family == 2 and socket.inet_ntoa(address) == scanner_ip and port != 0
                     assert body[18] <= 7 and body[19:22] == bytes(3)
@@ -200,7 +234,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0):
                         reply = struct.pack("<IIHHIIIBB", OT_ID, to, serial, vendor, origin,
                                             ot_api, to_api, 0, 0)
                         adapter_port = udp.getsockname()[1]
-                        response = rr_reply(b"\xD4\0\0\0" + reply,
+                        response = rr_reply(bytes([service | 0x80, 0, 0, 0]) + reply,
                                             (0x8000, sockaddr(adapter_ip, adapter_port)))
                         report["cyclic_io"] = {
                             "local_udp": f"{scanner_ip}:{port}",
@@ -251,6 +285,7 @@ def main():
         "stall-close-reject", "qualify-close-reject",
         "slow-input", "pause-different-api",
         "identity-then-owner",
+        "explicit", "large-keyed",
         "delayed-start", "split-udp",
     ))
     parser.add_argument("--address", type=IPv4Address, default=IPv4Address(IP))

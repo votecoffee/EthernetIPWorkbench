@@ -437,6 +437,14 @@ The desktop workspace now groups Device, Inputs, Outputs, Logging, Mappings, Int
 
 The five existing GUI backend adapter checks passed for report saving with a live HTTP sample, reconnect history, timed recording, identity mismatch before writes and a separately authorized simulated owner connection. These checks ran without a native desktop window.
 
+## Discovery, explicit reads and keyed large I/O
+
+The Windows localhost fixture verified UDP ListIdentity response matching, deduplication, malformed-response rejection and identity/state decoding. The TCP tests verified Get_Attribute_Single, Get_Attributes_All, 16- and 32-bit logical path segments, numeric CIP rejection status, saved requests and fallback to single attributes when Get_Attributes_All is unsupported. A UTF-16 EDS with a leading format 4 key and a 16-bit Assembly class imported with the large connection format selected.
+
+At an 8 ms requested and negotiated RPI, a separate fixture accepted the keyed Large Forward_Open parameters, returned a 600-byte assembly and confirmed Forward_Close. The CLI wrote 126 CSV rows with a mapped value at byte offset 596, zero sequence gaps and zero buffer overruns. The independent [OpENer adapter](https://github.com/EIPStackGroup/OpENer/tree/0e1ab7ee5c272950c0dc8daf7793008d7a518912) answered discovery and a product-name read. It also completed standard and keyed large input-only sessions at 30 ms, each with 101 rows, confirmed close, zero sequence gaps and zero buffer overruns.
+
+The release tests covered the eighth tab at the existing headless window sizes, named profile persistence for saved requests, and the five GUI backend fixture cases. The library and CLI checked successfully with the GUI feature disabled. All tests here used localhost. Physical interoperability and broadcast discovery on a bench NIC remain open.
+
 ## Physical bench acceptance
 
 Physical-device measurements require a connected bench adapter and verified device settings. First verify the Identity Object and the intended profile, preferably input-only. Confirm output ownership and write permissions before using a profile that owns outputs, asserts Run or sends configuration bytes. Then run the Windows GUI and logger with the requested RPIs and record the Forward_Open actual intervals separately from socket spacing percentiles, longest gap, sequence gaps, timeouts, missed send slots and capture losses. Use a capture at the NIC or switch if wire-level timestamps are required.

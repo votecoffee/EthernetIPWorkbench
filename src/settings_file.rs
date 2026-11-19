@@ -19,6 +19,8 @@ pub struct Preferences {
     pub auto_reconnect: bool,
     #[serde(skip_serializing_if = "integration::Options::is_disabled")]
     pub integration: integration::Options,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub cip_reads: Vec<crate::explicit::SavedRead>,
 }
 
 impl Default for Preferences {
@@ -32,6 +34,7 @@ impl Default for Preferences {
             schedule: Schedule::Deadline,
             auto_reconnect: false,
             integration: integration::Options::default(),
+            cip_reads: Vec::new(),
         }
     }
 }
@@ -52,6 +55,10 @@ pub fn load_profile(path: &Path) -> Result<(Settings, Option<Preferences>), Stri
     let read = || -> Result<_, Box<dyn std::error::Error>> {
         let mut table: toml::Table = toml::from_str(&fs::read_to_string(path)?)?;
         let preferences = table.remove("app").map(toml::Value::try_into).transpose()?;
+        if let Some(app) = &preferences {
+            let app: &Preferences = app;
+            crate::explicit::validate_saved_reads(&app.cip_reads)?;
+        }
         Ok((toml::Value::Table(table).try_into()?, preferences))
     };
     read().map_err(|error| format!("{}: {error}", path.display()))
@@ -59,7 +66,8 @@ pub fn load_profile(path: &Path) -> Result<(Settings, Option<Preferences>), Stri
 
 pub fn profile_text(settings: &Settings, preferences: &Preferences) -> Result<String, String> {
     settings.validate()?;
-    preferences.integration.validate()?;
+    preferences.integration.validate_for(settings)?;
+    crate::explicit::validate_saved_reads(&preferences.cip_reads)?;
     if preferences.directory.trim().is_empty() {
         return Err("Enter a capture directory".into());
     }

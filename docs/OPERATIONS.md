@@ -18,6 +18,23 @@ Start in Device to choose an EDS/manual connection and read identity. Connect…
 
 Use Mappings for field definitions and CSV column selection, Outputs for staged writes, Integration for software feeds and Diagnostics for packet timing and errors. Profiles… opens saved TOML setups. Manage devices… holds rename/remove actions. Raw input bytes and advanced settings expand within their relevant tabs.
 
+## Discover and read
+
+Set the NIC address in Device. In Explore, enter a unicast or broadcast destination and select Discover. The scan sends one ListIdentity request and waits up to 2.2 seconds. It deduplicates replies and shows the number of invalid datagrams. The CLI also includes each responder's advertised endpoint. Broadcast discovery depends on the NIC, local firewall and adapter. Use the responder's source IP and verify the Identity Object before connecting.
+
+Select a known attribute in the CIP browser or enter a documented class, instance and attribute. The browser uses Get_Attribute_Single or Get_Attributes_All over direct TCP. The manual paths support 8-, 16- and 32-bit IDs. Discovery and reads run independently of cyclic I/O and the CSV writer. The saved entry contains only a name and object path. It uses the device and NIC from the enclosing profile when executed.
+
+~~~toml
+[[app.cip_reads]]
+name = "Serial number"
+[app.cip_reads.path]
+class = 1
+instance = 1
+attribute = 6
+~~~
+
+Omit `attribute` for Get_Attributes_All. Add this table to a named profile, or use Save / update read in Explore and then save the profile. Run `eipmaster-cli read-saved <settings.toml> "Serial number"` against that profile.
+
 ## Start offline
 
 ~~~powershell
@@ -49,6 +66,10 @@ Start from a generic sample and use the device's EDS and manual to establish eac
 | timeout_multiplier_code | CIP code 0–7, default 3 for older profiles |
 
 Sizes exclude the Class 1 sequence and optional Run/Idle header. Standard Forward_Open supports at most 509 payload plus Run/Idle bytes per direction here. The code accepts requested intervals from 1,000 to 10,000,000 microseconds.
+
+Set the root TOML key `large_forward_open = true` when the adapter supports service 0x5B. Large Forward_Open allows up to 1,400 payload plus Run/Idle bytes here. CSV, live views, HTTP and MQTT support the larger payloads. The existing EIPWB001 shared memory format keeps its 509-byte limit. The app rejects a larger input when shared memory is enabled.
+
+Configure the optional `[electronic_key]` table with decimal `vendor`, `device_type`, `product`, `major` and `minor` fields. The EDS importer handles a supported leading format 4 electronic key, UTF-16 with a BOM, and 16-bit Assembly class segments. Review the imported Large Forward_Open setting when the declared size exceeds the standard limit. Device payload and supported services still need checking against the adapter.
 
 In the GUI, import the EDS, choose a connection profile, review provenance and edit overrides. Use Manual settings when entering the connection directly. Read identity and verify vendor, device type, product code and serial before connecting. A successful identity read pins the next manual connection to that unit. Changing the addresses or loading a profile clears the pin.
 

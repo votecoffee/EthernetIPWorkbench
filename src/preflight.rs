@@ -56,6 +56,8 @@ pub struct Report {
     pub asserts_run: bool,
     pub configuration_assembly: Option<u16>,
     pub configuration_bytes: u16,
+    pub large_forward_open: bool,
+    pub electronic_key: Option<crate::model::ElectronicKey>,
     pub connection_timeout: ConnectionTimeout,
     pub connection_errors: Vec<String>,
     pub capture_errors: Vec<String>,
@@ -71,7 +73,8 @@ pub fn inspect(
     profile: Option<&eds::Profile>,
 ) -> Report {
     let mut connection_errors: Vec<_> = settings.validate().err().into_iter().collect();
-    connection_errors.extend(preferences.integration.validate().err());
+    connection_errors.extend(preferences.integration.validate_for(settings).err());
+    connection_errors.extend(crate::explicit::validate_saved_reads(&preferences.cip_reads).err());
     let mut capture_errors: Vec<_> = settings.csv_fields().err().into_iter().collect();
     if !(1..=1_000_000).contains(&preferences.capacity) {
         capture_errors.push("Capture capacity must be between 1 and 1,000,000 samples".into());
@@ -173,6 +176,31 @@ pub fn inspect(
             config(settings.config_instance),
             config(imported.config_instance),
         );
+        let key = |key: Option<crate::model::ElectronicKey>| {
+            key.map_or_else(
+                || "None".into(),
+                |key| {
+                    format!(
+                        "{}:{}:{} {}.{}",
+                        key.vendor, key.device_type, key.product, key.major, key.minor
+                    )
+                },
+            )
+        };
+        if settings.electronic_key.is_some() || imported.electronic_key.is_some() {
+            compare(
+                "Electronic key",
+                key(settings.electronic_key),
+                key(imported.electronic_key),
+            );
+        }
+        if settings.large_forward_open || imported.large_forward_open {
+            compare(
+                "Large Forward_Open",
+                settings.large_forward_open.to_string(),
+                imported.large_forward_open.to_string(),
+            );
+        }
         compare(
             "Timeout multiplier code",
             settings.timeout_multiplier_code.to_string(),
@@ -190,6 +218,8 @@ pub fn inspect(
         asserts_run: settings.output_run_idle,
         configuration_assembly: settings.config_instance,
         configuration_bytes: settings.config_size,
+        large_forward_open: settings.large_forward_open,
+        electronic_key: settings.electronic_key,
         connection_timeout: settings.connection_timeout(None),
         connection_errors,
         capture_errors,

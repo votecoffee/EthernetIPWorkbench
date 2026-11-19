@@ -1,5 +1,6 @@
 use crate::{
     capture::Slot,
+    explicit::{Session, identity},
     integration::Publisher,
     model::{self, Settings, Value},
 };
@@ -7,17 +8,11 @@ use ethernetip_connections::forward_open::{
     ForwardCloseRequest, ForwardCloseResponse, ForwardOpenRequest, ForwardOpenResponse,
     NetworkConnectionParameters,
 };
-use ethernetip_core::{
-    cip::ReplyHeader,
-    cpf::{self, Envelope, Item, item_type},
-    encap::{self, Command, HEADER_LEN, Header},
-    error::EipError,
-};
+use ethernetip_core::{cpf, error::EipError};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::{
-    fmt,
-    io::{self, Read, Write},
-    net::{SocketAddr, TcpStream, UdpSocket},
+    io,
+    net::{SocketAddr, UdpSocket},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering::Relaxed},
@@ -27,43 +22,12 @@ use std::{
 };
 
 const OT_SOCKET: u16 = 0x8000;
-const TO_SOCKET: u16 = 0x8001;
 type Result<T> = std::result::Result<T, EipError>;
-fn protocol(message: impl Into<String>) -> EipError {
+pub(crate) fn protocol(message: impl Into<String>) -> EipError {
     EipError::Protocol(message.into())
 }
 
-#[derive(Clone, Debug, serde::Serialize)]
-pub struct Identity {
-    pub vendor: u16,
-    pub device_type: u16,
-    pub code: u16,
-    pub major: u8,
-    pub minor: u8,
-    pub status: u16,
-    pub serial: u32,
-    pub name: String,
-}
-pub type IdentityKey = (u16, u16, u16);
-
-impl Identity {
-    pub fn key(&self) -> IdentityKey {
-        (self.vendor, self.device_type, self.code)
-    }
-
-    pub fn pin(&self) -> IdentityPin {
-        IdentityPin {
-            key: self.key(),
-            serial: self.serial,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct IdentityPin {
-    pub key: IdentityKey,
-    pub serial: u32,
-}
+pub use crate::explicit::{Identity, IdentityKey, IdentityPin};
 
 pub enum ExpectedIdentity {
     Model(IdentityKey),
@@ -133,241 +97,13 @@ impl Reconnect {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
-pub struct Spacing {
-    pub intervals: u64,
-    pub span_us: u64,
-    pub observed_packets_per_second: Option<f64>,
-    pub percent_of_negotiated_rate: Option<f64>,
-    pub p50_us: u64,
-    pub p95_us: u64,
-    pub p99_us: u64,
-    pub max_us: u64,
-    pub intervals_at_or_over_2x_rpi: u64,
-    pub intervals_at_or_over_4x_rpi: u64,
-}
-struct Histogram {
-    bins: Vec<u64>,
-    rpi_us: u64,
-    count: u64,
-    span: Duration,
-    max: u64,
-    at_or_over_2x: u64,
-    at_or_over_4x: u64,
-}
-impl Histogram {
-    // Exact microsecond buckets through 32,767 µs, then 256 buckets per doubling.
-    const EXACT_BITS: u32 = 15;
-    const PRECISION_BITS: u32 = 8;
-    const EXACT_BINS: usize = 1 << Self::EXACT_BITS;
-    const BINS_PER_OCTAVE: usize = 1 << Self::PRECISION_BITS;
-    const TOTAL_BINS: usize =
-        Self::EXACT_BINS + (u64::BITS - Self::EXACT_BITS) as usize * Self::BINS_PER_OCTAVE;
-
-    fn new(actual_rpi_us: u32) -> Self {
-        Self {
-            bins: vec![0; Self::TOTAL_BINS],
-            rpi_us: u64::from(actual_rpi_us),
-            count: 0,
-            span: Duration::ZERO,
-            max: 0,
-            at_or_over_2x: 0,
-            at_or_over_4x: 0,
-        }
-    }
-    fn bucket(us: u64) -> usize {
-        if us < Self::EXACT_BINS as u64 {
-            return us as usize;
-        }
-        let octave = us.ilog2();
-        let shift = octave - Self::PRECISION_BITS;
-        let offset = (us >> shift) as usize - Self::BINS_PER_OCTAVE;
-        Self::EXACT_BINS + (octave - Self::EXACT_BITS) as usize * Self::BINS_PER_OCTAVE + offset
-    }
-
-    fn bucket_upper(index: usize) -> u64 {
-        if index < Self::EXACT_BINS {
-            return index as u64;
-        }
-        let coarse = index - Self::EXACT_BINS;
-        let octave = Self::EXACT_BITS + (coarse / Self::BINS_PER_OCTAVE) as u32;
-        let shift = octave - Self::PRECISION_BITS;
-        let mantissa = (Self::BINS_PER_OCTAVE + coarse % Self::BINS_PER_OCTAVE) as u64;
-        (mantissa << shift) | ((1u64 << shift) - 1)
-    }
-
-    fn add(&mut self, gap: Duration) {
-        let us = gap.as_micros().min(u64::MAX.into()) as u64;
-        self.bins[Self::bucket(us)] += 1;
-        self.count += 1;
-        self.span += gap;
-        self.max = self.max.max(us);
-        self.at_or_over_2x += u64::from(us >= self.rpi_us * 2);
-        self.at_or_over_4x += u64::from(us >= self.rpi_us * 4);
-    }
-    fn snapshot(&self) -> Spacing {
-        let mut values = [0; 3];
-        let targets = [50, 95, 99].map(|pct| (self.count * pct).div_ceil(100));
-        let mut cumulative = 0;
-        let mut i = 0;
-        for (index, n) in self.bins.iter().enumerate() {
-            cumulative += n;
-            while i < 3 && cumulative >= targets[i] {
-                values[i] = Self::bucket_upper(index).min(self.max);
-                i += 1;
-            }
-            if i == 3 {
-                break;
-            }
-        }
-        let observed_packets_per_second =
-            (!self.span.is_zero()).then(|| self.count as f64 / self.span.as_secs_f64());
-        let negotiated_packets_per_second = 1_000_000.0 / self.rpi_us as f64;
-        Spacing {
-            intervals: self.count,
-            span_us: self.span.as_micros().min(u64::MAX.into()) as u64,
-            observed_packets_per_second,
-            percent_of_negotiated_rate: observed_packets_per_second
-                .map(|rate| 100.0 * rate / negotiated_packets_per_second),
-            p50_us: values[0],
-            p95_us: values[1],
-            p99_us: values[2],
-            max_us: self.max,
-            intervals_at_or_over_2x_rpi: self.at_or_over_2x,
-            intervals_at_or_over_4x_rpi: self.at_or_over_4x,
-        }
-    }
-}
-
-/// Terminal receive timing. The silence includes the interval after the last valid packet.
-#[derive(Clone, Copy, Debug, serde::Serialize)]
-pub struct ReceiveTimeout {
-    pub waiting_for_first_input: bool,
-    pub limit_us: u64,
-    pub valid_input_silence_us: u64,
-    pub last_udp_age_us: Option<u64>,
-    pub last_sequence: Option<u32>,
-    /// Successful sends observed by the receiver since its last accepted input.
-    pub ot_sends_during_silence: u64,
-    /// Gaps between the timestamps used for the receive watchdog checks.
-    pub last_check_gap_us: u64,
-    pub longest_check_gap_us: u64,
-}
-
-#[derive(Clone, Debug, serde::Serialize)]
-#[serde(tag = "outcome", rename_all = "snake_case")]
-pub enum CloseOutcome {
-    Confirmed,
-    Rejected {
-        general_status: u8,
-        extended_status: Vec<u16>,
-    },
-    Unconfirmed {
-        error: String,
-    },
-}
-
-impl CloseOutcome {
-    pub fn is_confirmed(&self) -> bool {
-        matches!(self, Self::Confirmed)
-    }
-}
-
-impl fmt::Display for CloseOutcome {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Confirmed => f.write_str("confirmed"),
-            Self::Rejected {
-                general_status,
-                extended_status,
-            } => {
-                write!(f, "rejected (CIP general 0x{general_status:02X}")?;
-                for word in extended_status {
-                    write!(f, ", extended 0x{word:04X}")?;
-                }
-                f.write_str(")")
-            }
-            Self::Unconfirmed { error } => write!(f, "unconfirmed ({error})"),
-        }
-    }
-}
-
-#[derive(Clone, Default)]
-pub struct Status {
-    pub state: &'static str,
-    pub identity: Option<Identity>,
-    pub identity_error: Option<String>,
-    pub network_error: Option<String>,
-    pub cip_error: Option<String>,
-    pub actual: Option<(u32, u32)>,
-    pub cyclic_io: Option<CyclicIo>,
-    pub forward_open_exchange_us: Option<u64>,
-    pub first_udp_after_open_us: Option<u64>,
-    pub first_input_after_open_us: Option<u64>,
-    pub last_input: Option<Instant>,
-    pub input: Vec<u8>,
-    pub value: Option<Value>,
-    pub input_run: Option<bool>,
-    pub valid: u64,
-    pub gaps: u64,
-    pub duplicates: u64,
-    pub late: u64,
-    pub invalid: u64,
-    pub timeouts: u64,
-    pub receive_timeout: Option<ReceiveTimeout>,
-    pub forward_close: Option<CloseOutcome>,
-    pub retryable: bool,
-    pub spacing: Spacing,
-}
-
-/// Socket endpoints and connection IDs used by an accepted Forward_Open.
-#[derive(Clone, Copy, Debug, serde::Serialize)]
-pub struct CyclicIo {
-    pub local_udp: SocketAddr,
-    pub output_destination: SocketAddr,
-    pub first_input_source: Option<SocketAddr>,
-    pub ot_connection_id: u32,
-    pub to_connection_id: u32,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Schedule {
-    Deadline,
-    DeadlineAboveNormal,
-    Tokio,
-}
-
-/// Wall-clock timing measured on the cyclic producer thread.
-#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
-pub struct SendTiming {
-    pub above_normal_applied: Option<bool>,
-    pub max_dispatch_lateness_us: Option<u64>,
-    pub max_send_call_us: u64,
-    pub send_calls_at_or_over_rpi: u64,
-    #[serde(skip)]
-    pub first_send_after_open_us: Option<u64>,
-}
-
-/// Monotonic host timings for the explicit exchange and the start of cyclic I/O.
-#[derive(Clone, Copy, Debug, serde::Serialize)]
-pub struct StartupTiming {
-    pub forward_open_exchange_us: u64,
-    pub first_send_after_open_us: Option<u64>,
-    pub first_udp_after_open_us: Option<u64>,
-    pub first_input_after_open_us: Option<u64>,
-}
-
-impl Status {
-    pub fn startup_timing(&self, send_timing: SendTiming) -> Option<StartupTiming> {
-        Some(StartupTiming {
-            forward_open_exchange_us: self.forward_open_exchange_us?,
-            first_send_after_open_us: send_timing.first_send_after_open_us,
-            first_udp_after_open_us: self.first_udp_after_open_us,
-            first_input_after_open_us: self.first_input_after_open_us,
-        })
-    }
-}
+pub use crate::explicit::read_identity;
+mod cyclic;
+mod diagnostics;
+use cyclic::{produce, receive};
+#[cfg(test)]
+use diagnostics::Histogram;
+pub use diagnostics::*;
 
 struct InputTimes {
     origin: Instant,
@@ -408,9 +144,57 @@ pub struct Connection {
     pub send_timing: Arc<Mutex<SendTiming>>,
     input_times: Arc<InputTimes>,
     stop: Arc<AtomicBool>,
-    worker: JoinHandle<()>,
+    worker: Option<JoinHandle<()>>,
+    requested: (u32, u32),
+    writable_size: Option<usize>,
 }
 impl Connection {
+    /// Start an identity-checked input-only session without a recorder or publisher.
+    pub fn start_input(
+        settings: Settings,
+        expected: ExpectedIdentity,
+    ) -> std::result::Result<Self, String> {
+        Self::start_with_publisher(
+            settings,
+            Slot::default(),
+            1,
+            Schedule::Deadline,
+            false,
+            Some(expected),
+            None,
+        )
+    }
+
+    /// Read the latest diagnostics without holding any internal locks.
+    pub fn diagnostics(&self) -> Diagnostics {
+        Diagnostics {
+            requested_ot_us: self.requested.0,
+            requested_to_us: self.requested.1,
+            status: self.status.lock().unwrap().clone(),
+            sent: self.tx.load(Relaxed),
+            skipped: self.skipped.load(Relaxed),
+            send_spacing: *self.tx_spacing.lock().unwrap(),
+            send_timing: *self.send_timing.lock().unwrap(),
+        }
+    }
+
+    /// Copy the current output buffer for display or inspection.
+    pub fn output_bytes(&self) -> Vec<u8> {
+        self.output.lock().unwrap().clone()
+    }
+
+    /// Replace exactly the configured payload on an authorized owner session.
+    pub fn apply_output(&self, bytes: Vec<u8>) -> std::result::Result<(), String> {
+        if self.writable_size != Some(bytes.len()) {
+            return Err("Output requires an authorized owner session and exactly the configured assembly size".into());
+        }
+        if self.stop.load(Relaxed) || self.status.lock().unwrap().state != "Receiving" {
+            return Err("Output session is not receiving".into());
+        }
+        *self.output.lock().unwrap() = bytes;
+        Ok(())
+    }
+
     pub fn start(
         settings: Settings,
         slot: Slot,
@@ -512,6 +296,9 @@ impl Connection {
             input_times: Arc::new(InputTimes::new()),
             publisher,
         };
+        let requested = (settings.output_rpi_us, settings.input_rpi_us);
+        let writable_size =
+            (permit_writes && !settings.input_only).then_some(settings.output_size as usize);
         let connection = shared.clone();
         let worker = thread::Builder::new()
             .name("class1-session".into())
@@ -557,7 +344,9 @@ impl Connection {
             tx_spacing: connection.tx_spacing,
             send_timing: connection.send_timing,
             input_times: connection.input_times,
-            worker,
+            worker: Some(worker),
+            requested,
+            writable_size,
         })
     }
     pub fn first_input_at(&self) -> Option<Instant> {
@@ -572,10 +361,31 @@ impl Connection {
         self.stop.store(true, Relaxed);
     }
     pub fn finished(&self) -> bool {
-        self.worker.is_finished()
+        self.worker.as_ref().is_none_or(JoinHandle::is_finished)
     }
+
+    /// Wait for the worker to finish and return its final diagnostics.
+    pub fn finish(mut self) -> Diagnostics {
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+        self.diagnostics()
+    }
+
+    /// Request stop, wait for Forward_Close, then return final diagnostics.
+    pub fn shutdown(self) -> Diagnostics {
+        self.stop();
+        self.finish()
+    }
+
     pub fn join(self) {
-        let _ = self.worker.join();
+        self.finish();
+    }
+}
+
+impl Drop for Connection {
+    fn drop(&mut self) {
+        self.stop();
     }
 }
 #[derive(Clone)]
@@ -591,138 +401,22 @@ struct Shared {
     publisher: Option<Publisher>,
 }
 
-struct Session {
-    tcp: TcpStream,
-    handle: u32,
-    context: u64,
+fn forward_close(session: &mut Session, request: &ForwardCloseRequest) -> Result<()> {
+    let (body, _) = session.cip(0x4e, 6, &request.encode(), None)?;
+    let reply = ForwardCloseResponse::decode(&body)?;
+    if reply.connection_serial != request.connection_serial
+        || reply.originator_vendor != request.originator_vendor
+        || reply.originator_serial != request.originator_serial
+    {
+        return Err(protocol("Mismatched Forward_Close connection identifiers"));
+    }
+    Ok(())
 }
-impl Session {
-    fn open(cfg: &Settings) -> Result<Self> {
-        let tcp = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
-        tcp.bind(&SocketAddr::from((cfg.local_ip, 0)).into())?;
-        tcp.connect_timeout(
-            &SocketAddr::from((cfg.device_ip, 44818)).into(),
-            Duration::from_secs(2),
-        )?;
-        let tcp: TcpStream = tcp.into();
-        tcp.set_read_timeout(Some(Duration::from_secs(2)))?;
-        tcp.set_write_timeout(Some(Duration::from_secs(2)))?;
-        tcp.set_nodelay(true)?;
-        let mut session = Self {
-            tcp,
-            handle: 0,
-            context: 0,
-        };
-        let (header, body) = session.exchange(Command::RegisterSession, &[1, 0, 0, 0])?;
-        if header.session_handle == 0 || body != [1, 0, 0, 0] {
-            return Err(protocol("Invalid RegisterSession reply"));
-        }
-        session.handle = header.session_handle;
-        Ok(session)
-    }
-    fn exchange(&mut self, cmd: Command, payload: &[u8]) -> Result<(Header, Vec<u8>)> {
-        self.context += 1;
-        let context = self.context.to_le_bytes();
-        self.tcp
-            .write_all(&encap::encode_frame(cmd, self.handle, context, payload))?;
-        let mut raw = [0; HEADER_LEN];
-        self.tcp.read_exact(&mut raw)?;
-        let header = Header::parse(&raw)?;
-        let mut body = vec![0; header.length as usize];
-        self.tcp.read_exact(&mut body)?;
-        if header.command != cmd.as_u16()
-            || header.sender_context != context
-            || (self.handle != 0 && header.session_handle != self.handle)
-            || header.status != 0
-        {
-            return Err(protocol(format!(
-                "Invalid encapsulation reply to {cmd:?}, status 0x{:08X}",
-                header.status
-            )));
-        }
-        Ok((header, body))
-    }
-    fn cip(
-        &mut self,
-        service: u8,
-        class: u8,
-        body: &[u8],
-        endpoint: Option<SocketAddr>,
-    ) -> Result<(Vec<u8>, Envelope)> {
-        let mut request = vec![service, 2, 0x20, class, 0x24, 1];
-        request.extend_from_slice(body);
-        let mut items = vec![
-            Item::null_address(),
-            Item::new(item_type::UNCONNECTED_DATA, request),
-        ];
-        if let Some(addr) = endpoint {
-            items.push(Item::new(TO_SOCKET, cpf::encode_sockaddr_in_v4(addr)?));
-        }
-        let (_, reply) = self.exchange(Command::SendRRData, &cpf::encode_envelope(0, 5, &items))?;
-        let envelope = Envelope::parse(&reply)?;
-        let item = envelope
-            .find(item_type::UNCONNECTED_DATA)
-            .ok_or_else(|| protocol("No CIP reply item"))?;
-        let header = ReplyHeader::parse(&item.data)?;
-        if item.data[0] != (service | 0x80) {
-            return Err(protocol("Unexpected CIP reply service"));
-        }
-        if header.general_status != 0 {
-            return Err(EipError::Cip {
-                status: header.general_status,
-                ext: header.extended_status,
-            });
-        }
-        Ok((item.data[header.body_offset..].to_vec(), envelope))
-    }
 
-    fn forward_close(&mut self, request: &ForwardCloseRequest) -> Result<()> {
-        let (body, _) = self.cip(0x4e, 6, &request.encode(), None)?;
-        let reply = ForwardCloseResponse::decode(&body)?;
-        if reply.connection_serial != request.connection_serial
-            || reply.originator_vendor != request.originator_vendor
-            || reply.originator_serial != request.originator_serial
-        {
-            return Err(protocol("Mismatched Forward_Close connection identifiers"));
-        }
-        Ok(())
-    }
-}
-impl Drop for Session {
-    fn drop(&mut self) {
-        if self.handle != 0 {
-            let _ = self.tcp.write_all(&encap::encode_frame(
-                Command::UnRegisterSession,
-                self.handle,
-                [0; 8],
-                &[],
-            ));
-        }
-    }
-}
-pub fn read_identity(cfg: &Settings) -> std::result::Result<Identity, String> {
-    identity(&mut Session::open(cfg).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
-}
-fn identity(session: &mut Session) -> Result<Identity> {
-    let (body, _) = session.cip(1, 1, &[], None)?;
-    if body.len() < 15 || body.len() < 15 + body[14] as usize {
-        return Err(protocol("Short Identity Object reply"));
-    }
-    Ok(Identity {
-        vendor: le16(&body, 0),
-        device_type: le16(&body, 2),
-        code: le16(&body, 4),
-        major: body[6],
-        minor: body[7],
-        status: le16(&body, 8),
-        serial: le32(&body, 10),
-        name: String::from_utf8_lossy(&body[15..15 + body[14] as usize]).into_owned(),
-    })
-}
-fn le16(raw: &[u8], at: usize) -> u16 {
+pub(crate) fn le16(raw: &[u8], at: usize) -> u16 {
     u16::from_le_bytes(raw[at..at + 2].try_into().unwrap())
 }
-fn le32(raw: &[u8], at: usize) -> u32 {
+pub(crate) fn le32(raw: &[u8], at: usize) -> u32 {
     u32::from_le_bytes(raw[at..at + 4].try_into().unwrap())
 }
 
@@ -735,7 +429,15 @@ fn segment(path: &mut Vec<u8>, code: u8, value: u16) {
     }
 }
 fn path(cfg: &Settings) -> Vec<u8> {
-    let mut path = vec![0x20, 4];
+    let mut path = Vec::new();
+    if let Some(key) = cfg.electronic_key {
+        path.extend([0x34, 4]);
+        path.extend(key.vendor.to_le_bytes());
+        path.extend(key.device_type.to_le_bytes());
+        path.extend(key.product.to_le_bytes());
+        path.extend([key.major, key.minor]);
+    }
+    path.extend([0x20, 4]);
     if let Some(instance) = cfg.config_instance {
         segment(&mut path, 0x24, instance);
     }
@@ -752,6 +454,22 @@ fn params(size: u16, header: bool, priority: u8) -> NetworkConnectionParameters 
         size: size + 2 + 4 * u16::from(header),
     }
 }
+fn encode_large_open(open: &ForwardOpenRequest) -> Vec<u8> {
+    // The two network parameter words are the only fields that change width.
+    // Preserve the full sizes when widening; standard encoding masks to 9 bits.
+    fn large(params: NetworkConnectionParameters) -> [u8; 4] {
+        ((u32::from(params.encode() & 0xfe00) << 16) | u32::from(params.size)).to_le_bytes()
+    }
+    let standard = open.encode();
+    let mut body = Vec::with_capacity(standard.len() + 4);
+    body.extend(&standard[..26]);
+    body.extend(large(open.o_to_t_params));
+    body.extend(&standard[28..32]);
+    body.extend(large(open.t_to_o_params));
+    body.extend(&standard[34..]);
+    body
+}
+
 fn run(
     cfg: &Settings,
     slot: &Slot,
@@ -760,7 +478,7 @@ fn run(
     expected: Option<ExpectedIdentity>,
     shared: &mut Shared,
 ) -> Result<()> {
-    let mut session = Session::open(cfg)?;
+    let mut session = Session::open(cfg.device_ip, cfg.local_ip)?;
     {
         let id = identity(&mut session);
         let mut state = shared.status.lock().unwrap();
@@ -785,7 +503,7 @@ fn run(
             Err(e) => {
                 state.identity_error = Some(e.to_string());
                 drop(state);
-                session = Session::open(cfg)?;
+                session = Session::open(cfg.device_ip, cfg.local_ip)?;
             }
         }
     }
@@ -829,9 +547,13 @@ fn run(
         return Ok(());
     }
     let local_addr = udp.local_addr()?;
-    let request = open.encode();
+    let (service, request) = if cfg.large_forward_open {
+        (0x5b, encode_large_open(&open))
+    } else {
+        (0x54, open.encode())
+    };
     let open_started = Instant::now();
-    let open_result = session.cip(0x54, 6, &request, Some(local_addr));
+    let open_result = session.cip(service, 6, &request, Some(local_addr));
     let open_completed = Instant::now();
     shared.status.lock().unwrap().forward_open_exchange_us =
         Some((open_completed - open_started).as_micros() as u64);
@@ -904,7 +626,7 @@ fn run(
     if let Some(publisher) = &shared.publisher {
         publisher.set_active_generation(0);
     }
-    let close_result = session.forward_close(&close);
+    let close_result = forward_close(&mut session, &close);
     let mut status = shared.status.lock().unwrap();
     // A watchdog timeout remains the primary result. Preserve the existing
     // retry policy for explicit rejections and transport failures at close.
@@ -923,340 +645,6 @@ fn run(
         },
     });
     io_result
-}
-
-fn request_above_normal() -> bool {
-    #[cfg(windows)]
-    {
-        use windows_sys::Win32::System::Threading::{
-            GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL,
-        };
-        // SAFETY: The current thread pseudo-handle stays valid for the call.
-        unsafe { SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL) != 0 }
-    }
-    #[cfg(not(windows))]
-    false
-}
-
-fn publish_send_status(shared: &Shared, spacing: &Histogram, timing: SendTiming) {
-    *shared.tx_spacing.lock().unwrap() = spacing.snapshot();
-    *shared.send_timing.lock().unwrap() = timing;
-}
-
-fn produce(
-    udp: &UdpSocket,
-    peer: SocketAddr,
-    header: bool,
-    reply: &ForwardOpenResponse,
-    open_completed: Instant,
-    shared: &Shared,
-    schedule: Schedule,
-) -> Result<()> {
-    let period = Duration::from_micros(reply.o_to_t_actual_rpi_us.into());
-    let size = shared.output.lock().unwrap().len();
-    let data_start = 20 + 4 * usize::from(header);
-    let mut packet = vec![0; data_start + size];
-    packet[0..6].copy_from_slice(&[2, 0, 2, 0x80, 8, 0]);
-    packet[6..10].copy_from_slice(&reply.o_to_t_connection_id.to_le_bytes());
-    packet[14..16].copy_from_slice(&0x00b1u16.to_le_bytes());
-    let connected_len = (packet.len() - 18) as u16;
-    packet[16..18].copy_from_slice(&connected_len.to_le_bytes());
-    if header {
-        packet[20] = 1;
-    }
-    let mut sequence = 0u32;
-    let mut spacing = Histogram::new(reply.o_to_t_actual_rpi_us);
-    let mut last = None;
-    let mut publish = Instant::now();
-    let mut timing = SendTiming {
-        above_normal_applied: (schedule == Schedule::DeadlineAboveNormal)
-            .then(request_above_normal),
-        ..SendTiming::default()
-    };
-    let mut send = |lateness: Option<Duration>| -> Result<()> {
-        if let Some(lateness) = lateness {
-            let us = lateness.as_micros() as u64;
-            timing.max_dispatch_lateness_us =
-                Some(timing.max_dispatch_lateness_us.unwrap_or(0).max(us));
-        }
-        sequence = sequence.wrapping_add(1);
-        packet[10..14].copy_from_slice(&sequence.to_le_bytes());
-        packet[18..20].copy_from_slice(&(sequence as u16).to_le_bytes());
-        packet[data_start..].copy_from_slice(&shared.output.lock().unwrap());
-        let call_start = Instant::now();
-        let result = udp.send_to(&packet, peer);
-        let stamp = Instant::now();
-        let call_time = stamp - call_start;
-        timing.max_send_call_us = timing.max_send_call_us.max(call_time.as_micros() as u64);
-        timing.send_calls_at_or_over_rpi += u64::from(call_time >= period);
-        result?;
-        timing
-            .first_send_after_open_us
-            .get_or_insert_with(|| (stamp - open_completed).as_micros() as u64);
-        if let Some(prior) = last.replace(stamp) {
-            spacing.add(stamp - prior);
-        }
-        if stamp - publish >= Duration::from_millis(100) {
-            publish_send_status(shared, &spacing, timing);
-            publish = stamp;
-        }
-        shared.tx.fetch_add(1, Relaxed);
-        Ok(())
-    };
-    if schedule == Schedule::Tokio {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_time()
-            .build()?;
-        let result = runtime.block_on(async {
-            let mut interval = tokio::time::interval(period);
-            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-            while !shared.stop.load(Relaxed) {
-                tokio::select! {
-                    _ = interval.tick() => if !shared.stop.load(Relaxed) { send(None)?; },
-                    _ = tokio::time::sleep(Duration::from_millis(25)) => {},
-                }
-            }
-            Ok(())
-        });
-        publish_send_status(shared, &spacing, timing);
-        return result;
-    }
-    let mut waiter = crate::deadline_wait::DeadlineWait::new();
-    let mut deadline = Instant::now();
-    let spin = Duration::from_micros(150).min(period / 4);
-    let result = loop {
-        if shared.stop.load(Relaxed) {
-            break Ok(());
-        }
-        let now = Instant::now();
-        if now < deadline {
-            let remaining = deadline - now;
-            if remaining > spin {
-                waiter.wait((remaining - spin).min(Duration::from_millis(10)));
-            } else {
-                std::hint::spin_loop();
-            }
-            continue;
-        }
-        let lateness = now - deadline;
-        let missed = lateness.as_nanos() / period.as_nanos();
-        if missed != 0 {
-            shared.skipped.fetch_add(missed as u64, Relaxed);
-        }
-        deadline =
-            now + (period - Duration::from_nanos((lateness.as_nanos() % period.as_nanos()) as u64));
-        if let Err(error) = send(Some(lateness)) {
-            break Err(error);
-        }
-    };
-    publish_send_status(shared, &spacing, timing);
-    result
-}
-
-fn parse_packet(
-    packet: &[u8],
-    connection: u32,
-    header: bool,
-    size: u16,
-) -> Option<(u32, u16, Option<bool>, &[u8])> {
-    let start = 20 + 4 * usize::from(header);
-    if packet.len() != start + size as usize
-        || packet[..6] != [2, 0, 2, 0x80, 8, 0]
-        || le32(packet, 6) != connection
-        || le16(packet, 14) != 0xb1
-        || le16(packet, 16) as usize != packet.len() - 18
-    {
-        return None;
-    }
-    Some((
-        le32(packet, 10),
-        le16(packet, 18),
-        header.then(|| le32(packet, 20) & 1 != 0),
-        &packet[start..],
-    ))
-}
-#[cfg(windows)]
-fn wait_for_udp(udp: &UdpSocket) -> io::Result<bool> {
-    use std::{os::windows::io::AsRawSocket, ptr::null_mut};
-    use windows_sys::Win32::Networking::WinSock::{
-        FD_SET, SOCKET_ERROR, TIMEVAL, WSAGetLastError, select,
-    };
-
-    let mut readable = FD_SET {
-        fd_count: 1,
-        ..FD_SET::default()
-    };
-    readable.fd_array[0] = udp.as_raw_socket() as usize;
-    let timeout = TIMEVAL {
-        tv_sec: 0,
-        tv_usec: 2_000,
-    };
-    // SAFETY: The arguments stay valid for this call, and the borrowed socket stays open.
-    let result = unsafe { select(0, &mut readable, null_mut(), null_mut(), &timeout) };
-    if result == SOCKET_ERROR {
-        Err(io::Error::from_raw_os_error(unsafe { WSAGetLastError() }))
-    } else {
-        Ok(result != 0)
-    }
-}
-
-fn receive_datagram(udp: &UdpSocket, packet: &mut [u8]) -> io::Result<Option<(usize, SocketAddr)>> {
-    // Wait for readiness so an idle interval never cancels a Windows recvfrom.
-    #[cfg(windows)]
-    if !wait_for_udp(udp)? {
-        return Ok(None);
-    }
-    match udp.recv_from(packet) {
-        Ok(packet) => Ok(Some(packet)),
-        Err(error)
-            if matches!(
-                error.kind(),
-                io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
-            ) =>
-        {
-            Ok(None)
-        }
-        Err(error) => Err(error),
-    }
-}
-
-fn receive(
-    udp: &UdpSocket,
-    cfg: &Settings,
-    reply: &ForwardOpenResponse,
-    open_completed: Instant,
-    slot: &Slot,
-    generation: u64,
-    shared: &Shared,
-) -> Result<()> {
-    let started = Instant::now();
-    let first_timeout = Duration::from_secs(2).max(Duration::from_micros(
-        u64::from(reply.t_to_o_actual_rpi_us) * 2,
-    ));
-    let watchdog = Duration::from_micros(
-        cfg.connection_timeout(Some(reply.t_to_o_actual_rpi_us))
-            .receive_watchdog_us
-            .expect("validated timeout code and actual input interval"),
-    );
-    let mut packet = [0; 65_536];
-    let mut last_seq: Option<u32> = None;
-    let mut last_udp = None;
-    let mut sent_at_last_input = 0;
-    let mut previous_check = started;
-    let mut longest_check_gap = Duration::ZERO;
-    let mut seen = 0u64;
-    let mut status = shared.status.lock().unwrap().clone();
-    let mut spacing = Histogram::new(reply.t_to_o_actual_rpi_us);
-    let mut publish = started;
-    let result = loop {
-        if shared.stop.load(Relaxed) {
-            break Ok(());
-        }
-        let result = receive_datagram(udp, &mut packet);
-        let stamp = Instant::now();
-        let check_gap = stamp - previous_check;
-        previous_check = stamp;
-        longest_check_gap = longest_check_gap.max(check_gap);
-        match result {
-            Ok(Some((length, addr))) => {
-                if last_udp.replace(stamp).is_none() {
-                    status.first_udp_after_open_us =
-                        Some((stamp - open_completed).as_micros() as u64);
-                }
-                match parse_packet(
-                    &packet[..length],
-                    reply.t_to_o_connection_id,
-                    cfg.input_run_idle,
-                    cfg.input_size,
-                )
-                .filter(|_| addr.ip() == cfg.device_ip)
-                {
-                    Some((seq, cip, run, bytes)) => {
-                        let delta = last_seq.map_or(1, |previous| seq.wrapping_sub(previous));
-                        if delta == 0 {
-                            status.duplicates += 1;
-                        } else if delta >= 0x8000_0000 {
-                            let distance = last_seq.unwrap().wrapping_sub(seq);
-                            if distance < 64 && seen & (1 << distance) != 0 {
-                                status.duplicates += 1;
-                            } else {
-                                status.late += 1;
-                            }
-                        } else {
-                            status.gaps += u64::from(delta - 1);
-                            last_seq = Some(seq);
-                            seen = seen.checked_shl(delta).unwrap_or(0) | 1;
-                            if let Some(last) = status.last_input {
-                                spacing.add(stamp - last);
-                            }
-                            status.last_input = Some(stamp);
-                            sent_at_last_input = shared.tx.load(Relaxed);
-                            longest_check_gap = Duration::ZERO;
-                            let first = status.valid == 0;
-                            if first {
-                                status.first_input_after_open_us =
-                                    Some((stamp - open_completed).as_micros() as u64);
-                                if let Some(cyclic_io) = &mut status.cyclic_io {
-                                    cyclic_io.first_input_source = Some(addr);
-                                }
-                            }
-                            shared.input_times.record(stamp, first);
-                            status.state = "Receiving";
-                            status.valid += 1;
-                            status.input.clear();
-                            status.input.extend_from_slice(bytes);
-                            status.input_run = run;
-                            if let Some(publisher) = &shared.publisher {
-                                publisher.record(stamp, generation, seq, cip, bytes);
-                            }
-                            if let Some(sink) = &*slot.read().unwrap() {
-                                sink.record(stamp, generation, seq, cip, bytes);
-                            }
-                        }
-                    }
-                    None => status.invalid += 1,
-                }
-            }
-            Ok(None) => {}
-            Err(e) => break Err(e.into()),
-        }
-        let (since, limit) = status
-            .last_input
-            .map_or((started, first_timeout), |last| (last, watchdog));
-        let silence = stamp - since;
-        if silence >= limit {
-            status.receive_timeout = Some(ReceiveTimeout {
-                waiting_for_first_input: status.last_input.is_none(),
-                limit_us: limit.as_micros() as u64,
-                valid_input_silence_us: silence.as_micros() as u64,
-                last_udp_age_us: last_udp.map(|last| (stamp - last).as_micros() as u64),
-                last_sequence: last_seq,
-                ot_sends_during_silence: shared.tx.load(Relaxed) - sent_at_last_input,
-                last_check_gap_us: check_gap.as_micros() as u64,
-                longest_check_gap_us: longest_check_gap.as_micros() as u64,
-            });
-            status.timeouts += 1;
-            status.retryable = true;
-            status.state = "Timed out";
-            break Ok(());
-        }
-        if stamp - publish >= Duration::from_millis(100) {
-            status.spacing = spacing.snapshot();
-            publish_receive_status(shared, &mut status, cfg.selection);
-            publish = stamp;
-        }
-    };
-    status.spacing = spacing.snapshot();
-    publish_receive_status(shared, &mut status, cfg.selection);
-    result
-}
-
-fn publish_receive_status(shared: &Shared, status: &mut Status, selection: model::Selection) {
-    status.value = selection.decode(&status.input).map(Value::into_owned);
-    let mut latest = shared.status.lock().unwrap();
-    status.identity.clone_from(&latest.identity);
-    status.identity_error.clone_from(&latest.identity_error);
-    latest.clone_from(status);
 }
 
 #[cfg(test)]

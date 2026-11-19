@@ -6,19 +6,22 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 
 | File | Owns |
 |---|---|
-| src/model.rs | Connection settings, mapping validation, endian/swap decoding and output staging |
+| src/model.rs and src/model/mapping.rs | Settings, mapping validation, typed endian/swap decoding and output staging |
 | src/eds.rs | Supported EDS connection profiles and provenance |
 | src/preflight.rs | Effective configuration, EDS comparisons and offline validation |
 | src/settings_file.rs | Named profiles, workspace migration, preferences and file replacement |
-| src/scanner.rs | Identity, TCP session, Forward_Open/Close, cyclic workers and per-connection diagnostics |
+| src/explicit.rs and src/discovery.rs | Registered TCP exchange, identity, CIP reads and UDP ListIdentity |
+| src/scanner.rs and src/scanner/ | Session lifecycle, Forward_Open/Close, cyclic workers and diagnostics |
 | src/deadline_wait.rs | Windows deadline wait resource |
 | src/capture.rs and src/capture/field_summary.rs | Bounded sample queue, CSV writer, rotation and summaries |
 | src/integration.rs | Common export queue/history, sample indexes, lifecycle and counters |
 | src/integration/http.rs | Loopback read API and bounded history batches |
 | src/integration/mqtt.rs | Latest-sample publisher and broker reconnect |
 | src/integration/shared_memory.rs | Windows mapping/mutex and binary snapshot |
-| src/gui.rs and src/gui/run_report.rs | Device sessions, workflow controls and final capture reports |
+| src/gui.rs and src/gui/device.rs | GUI entry point and per-device lifecycle |
 | src/gui/workspace.rs | Tabs, persistent actions, review/profile windows and headless layout checks |
+| src/gui/app.rs, src/gui/setup.rs and src/gui/explore.rs | Device list, setup, discovery and explicit reader UI |
+| src/gui/{mapping,monitor,outputs,logging,software,run_report}.rs | Focused workflow views and capture reporting |
 | src/bin/eipmaster-cli.rs | Headless commands and capture supervision |
 | src/bin/eipmaster-cli/qualification.rs | Four-run qualification sequence |
 | src/bin/eipmaster-cli/interrupt.rs | Windows console stop handling |
@@ -33,9 +36,17 @@ The CSV queue is preallocated and bounded. Samples retain sequence, monotonic ti
 
 The integration receive path copies into a bounded queue and wakes its dispatcher. Serialization, network I/O and mapped-memory access occur in export workers. History retention, queue drops, MQTT publish errors and shared-memory contention have separate meanings. Preserve the versioned JSON and EIPWB001 binary contracts when updating consumers.
 
-Connection::start_with_publisher accepts an optional integration Publisher. Existing start methods delegate with no publisher. Rust callers that own a Connection stop and join its worker explicitly. Integration owners keep the service alive across automatic reconnect and then shut down workers. The GUI and CLI each supervise their own sessions.
+Connection::start_with_publisher accepts an optional integration Publisher. Integration owners keep the service alive across automatic reconnect and then shut down workers. The GUI and CLI each supervise their own sessions.
 
 Keep automatic reconnect restricted to verified input-only profiles. The retry identity includes serial. Output staging and write authorization belong to the existing GUI/application controls. Preserve the requested/actual/observed interval distinction and the separate Forward_Close result.
+
+## Use the core from Rust
+
+Depend on the `assembly-scanner` library with `default-features = false` to omit eframe. Build the standalone CLI that way with `cargo build --locked --no-default-features --bin eipmaster-cli`.
+
+- Load a profile with `settings_file::load_profile`. Call `Settings::input_mapping` for validated named fields, then `field.selection.decode(payload)` for a typed value. `Settings::preview_input` adds raw bytes, display values and CSV inclusion for inspections.
+- Start a readback with `Connection::start_input(settings, ExpectedIdentity::Device(pin))`. It creates a session without a recorder or exporter. Use `Connection::diagnostics()` for current status and raw input, requested and negotiated intervals, and send/receive measurements. `shutdown()` requests stop and returns the final diagnostics after Forward_Close. Dropping a handle requests stop. Use `shutdown()` when teardown must finish before continuing.
+- Use `discovery::discover(local, destination)` for ListIdentity. Use `explicit::Reader::connect(adapter, local)` and `reader.read(ReadPath { class, instance, attribute })` for direct explicit reads. CIP errors retain numeric status and extended words.
 
 ## Build and choose checks
 
@@ -52,6 +63,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 | Change | Headless check |
 |---|---|
 | Profiles, mapping, CLI and capture | python tools/test_cli.py target/release/eipmaster-cli.exe .local/cli-check-01 |
+| Discovery, saved reads, identity fallback, keyed large I/O | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
 | Reconnect, concurrent capture and writer failure | python tools/test_recovery.py target/release/eipmaster-cli.exe .local/recovery-check-01 |
 | HTTP, MQTT and shared memory | python tools/test_integration.py target/release/eipmaster-cli.exe .local/integration-check-01 |
 | Qualification supervisor | python tools/test_cli.py target/release/eipmaster-cli.exe .local/qualify-check-01 --qualification |
@@ -59,6 +71,8 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 | Independent OpENer interoperability | python tools/test_opener.py target/release/eipmaster-cli.exe .local/opener-upstream .local/opener-check-01 |
 
 The CLI check defaults to 8 ms. --rpi-us 1000 exercises the same cases at 1 ms. A timing failure must retain its receipt and unchanged watchdog configuration for diagnosis. Failed trials remain evidence alongside any later success.
+
+Add `--explore --seconds 3` to the OpENer check for a short interoperability run covering discovery, a direct CIP read and keyed Large Forward_Open after the standard connection.
 
 The workspace tests render egui in memory at 900×580 and 1240×860 and simulate pointer events without a native window. They check workflow isolation, visible connection controls, write-review content and capture-stop behavior.
 

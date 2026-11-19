@@ -50,11 +50,12 @@ Launch the executable from the repository root so the sample paths resolve. For 
 
 ### Navigate the workbench
 
-Each device has one workspace with seven tabs. Connection state, Connect/Disconnect, Profiles and capture-stop controls are above the tabs. Switching devices restores that device's current tab.
+Each device has its own tabbed workspace. Connection state, Connect/Disconnect, Profiles and capture-stop controls are above the tabs. Switching devices restores that device's current tab.
 
 | Tab | Workflow |
 |---|---|
 | Device | Import an EDS, review network/assembly settings and read identity |
+| Explore | Discover adapters, browse common CIP attributes and manage saved reads |
 | Inputs | Primary value, named live readbacks and optional raw bytes |
 | Outputs | Stage typed or raw output values, authorize and apply the buffer |
 | Logging | Capture directory, duration, selected-column summary and CSV controls |
@@ -65,6 +66,20 @@ Each device has one workspace with seven tabs. Connection state, Connect/Disconn
 **Connect…** opens a review window with the selected identity, staged output/configuration bytes and required authorizations. A successful connection selects Inputs. **Record CSV…** opens Logging, where capture can be armed before connecting. **Stop capture and flush** is also available above every tab.
 
 Use **Profiles…** to load/save a named TOML setup. Use **Manage devices…** to rename or remove a setup. Configuration and advanced timing, raw input bytes, and buffer/file rotation expand only when needed.
+
+### Discover adapters and read CIP objects
+
+Set the local NIC IPv4 address in **Device**, then open **Explore**. **Discover** sends one UDP ListIdentity request to the selected destination. Use the default broadcast or enter a known adapter address for a unicast probe. Select **Use adapter** to copy the responder's address into the current setup. Verify it with **Read identity** before opening cyclic I/O.
+
+For a direct explicit read, choose a common attribute or enter a class, instance and attribute as decimal or `0x` hex. Use instance zero for class attributes and enter `all` for Get_Attributes_All where the adapter implements it. The result shows raw bytes and decodes supported standard attributes. Save frequently used paths by name. Saved reads travel with the device's autosaved settings and exported TOML. Loading one fills the request form for review. **Read** runs it against the adapter shown on the page.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe discover 127.0.0.1 127.0.0.1
+.\target\release\eipmaster-cli.exe read 127.0.0.1 127.0.0.1 0x01 1 6
+.\target\release\eipmaster-cli.exe read-saved .local\device.toml "Serial number"
+~~~
+
+The commands return JSON. A CIP rejection returns its general and extended status words and a nonzero exit code. [Saved request format](docs/OPERATIONS.md#discover-and-read).
 
 ### Save and restore settings
 
@@ -104,7 +119,9 @@ A successful identity read pins the vendor, device type, product code, and seria
 
 Open **Offline profile check** to review the effective assemblies, requested intervals, validation errors, and whether connecting would request output ownership, assert Run, or send configuration bytes. For a selected EDS profile, the check labels imported values, overrides, and manual entries. A size taken from an EDS assembly definition is a layout width. Verify the actual payload configured on the device before connecting.
 
-The initial protocol scope is standard Forward_Open, fixed-size cyclic Class 1 unicast and direct assembly paths. Routed paths, electronic keys, multicast, listen-only, and Large Forward_Open are outside that scope. Keep device-specific presets, vendor files and raw captures in the Git-ignored `.local/` folder. The tracked [sample EDS](samples/loopback.eds) and [sample TOML](samples/loopback.toml) target the localhost fixture.
+For adapters requiring the large request format, enable **Use Large Forward_Open** under **Configuration and advanced timing**. It allows up to 1,400 assembly plus Run/Idle bytes per direction. Standard Forward_Open remains the default for saved profiles that omit this setting. The same section supports CIP electronic key format 4 with the compatibility bit clear. The adapter applies its key matching rules. The application identity pin additionally checks the unit serial number.
+
+The cyclic protocol scope is fixed-size Class 1 unicast with direct assembly paths. Routing, multicast, listen-only and variable-size I/O remain on the [roadmap](ROADMAP.md#04-adapter-compatibility). Keep device-specific presets, vendor files and raw captures in the Git-ignored `.local/` folder. The tracked [sample EDS](samples/loopback.eds) and [sample TOML](samples/loopback.toml) target the localhost fixture.
 
 Set **CIP timeout code** in the GUI or `timeout_multiplier_code` in the TOML profile. Codes 0 through 7 represent factors of 4 through 512 in powers of two. Profiles that omit the setting use code 3 (32 times the interval). The app sends the code in Forward_Open and uses the returned input interval times that factor for its local receive watchdog. Before the first valid input, the scanner waits for the larger of two seconds and two returned input intervals. Preflight shows the watchdog calculated from the requested interval. Capture reports also show the local watchdog calculated from the interval the adapter returned.
 

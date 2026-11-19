@@ -7,8 +7,17 @@ description = "Windows EtherNet/IP Class 1 scanner and CSV assembly logger."
 license = "MIT"
 repository = "https://github.com/votecoffee/EthernetIPWorkbench"
 
+[features]
+default = ["gui"]
+gui = ["dep:eframe"]
+
+[[bin]]
+name = "assembly-scanner"
+path = "src/main.rs"
+required-features = ["gui"]
+
 [dependencies]
-eframe = { version = "0.31.1", default-features = false, features = ["glow", "default_fonts"] }
+eframe = { version = "0.31.1", default-features = false, features = ["glow", "default_fonts"], optional = true }
 ethernetip-connections = "=0.1.1"
 ethernetip-core = "=0.1.1"
 socket2 = "0.6"

@@ -2,6 +2,7 @@
 import argparse
 from contextlib import contextmanager
 from io import BytesIO
+import json
 from pathlib import Path
 import socket
 import subprocess
@@ -128,12 +129,44 @@ def check_capture(report, seconds):
     print(f"Send spacing (µs) {report['send_spacing']}")
 
 
+def check_explore(cli, adapter, root, identity, seconds):
+    root.mkdir()
+    keyed = root / "keyed-large.toml"
+    key = {
+        "vendor": identity["vendor"], "device_type": identity["device_type"],
+        "product": identity["code"], "major": identity["major"], "minor": identity["minor"],
+    }
+    keyed.write_text(
+        "large_forward_open = true\n" + PROFILE.read_text(encoding="utf-8") +
+        "\n[electronic_key]\n" + "".join(f"{field} = {value}\n" for field, value in key.items()),
+        encoding="utf-8",
+    )
+    with run_adapter(adapter, root):
+        for label, args in [
+            ("discovery", ["discover", "127.0.0.1", ADAPTER]),
+            ("read-product", ["read", ADAPTER, "127.0.0.1", "1", "1", "7"]),
+        ]:
+            result = subprocess.run([cli, *args], capture_output=True, check=True, timeout=6,
+                                    creationflags=subprocess.CREATE_NO_WINDOW)
+            (root / f"{label}.json").write_bytes(result.stdout)
+        expected = ":".join(str(identity[field]) for field in ("vendor", "device_type", "code", "serial"))
+        report = call(cli, root, "result", "capture", keyed, root / "capture",
+                      str(seconds), expected, timeout=seconds + 15)
+    discovery = json.loads((root / "discovery.json").read_bytes())
+    device, = discovery["devices"]
+    assert device["identity"]["serial"] == identity["serial"]
+    assert json.loads((root / "read-product.json").read_bytes())["decoded"] == identity["name"]
+    check_capture(report, seconds)
+    print("OpENer discovery, explicit product-name read and keyed Large Forward_Open passed.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path, help="Path to eipmaster-cli.exe")
     parser.add_argument("checkout", type=Path, help="OpENer Git checkout containing the pinned commit")
     parser.add_argument("directory", type=Path, help="New directory for the adapter build and capture")
     parser.add_argument("--seconds", type=int, default=60)
+    parser.add_argument("--explore", action="store_true", help="Also test discovery, explicit reads and keyed Large Forward_Open")
     args = parser.parse_args()
     if sys.platform != "win32" or not 2 <= args.seconds <= 300:
         parser.error("This fixture requires Windows and a duration from 2 to 300 seconds")
@@ -160,6 +193,8 @@ def main():
     assert report["identity"] == identity
     assert "ForwardClose: ConnSerNo" in log.read_text(encoding="utf-8", errors="replace")
     check_capture(report, args.seconds)
+    if args.explore:
+        check_explore(cli, adapter, root / "extended", identity, args.seconds)
 
 
 if __name__ == "__main__":

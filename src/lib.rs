@@ -1,6 +1,8 @@
 pub mod capture;
 mod deadline_wait;
+pub mod discovery;
 pub mod eds;
+pub mod explicit;
 pub mod integration;
 pub mod model;
 pub mod preflight;

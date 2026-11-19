@@ -5,7 +5,7 @@ mod mqtt;
 #[cfg(windows)]
 mod shared_memory;
 
-use crate::model::{MAX_ASSEMBLY_BYTES, Settings, hex};
+use crate::model::{MAX_ASSEMBLY_BYTES, MAX_LARGE_ASSEMBLY_BYTES, Settings, hex};
 use crossbeam_queue::ArrayQueue;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -43,6 +43,16 @@ pub struct MqttOptions {
 impl Options {
     pub fn is_disabled(&self) -> bool {
         self.http_port.is_none() && self.mqtt.is_none() && self.shared_memory.is_none()
+    }
+
+    pub fn validate_for(&self, settings: &Settings) -> Result<(), String> {
+        self.validate()?;
+        if self.shared_memory.is_some() && usize::from(settings.input_size) > MAX_ASSEMBLY_BYTES {
+            return Err(format!(
+                "EIPWB001 shared memory supports at most {MAX_ASSEMBLY_BYTES} input bytes"
+            ));
+        }
+        Ok(())
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -98,7 +108,7 @@ struct Frame {
     packet_sequence: u32,
     cip_sequence: u16,
     size: u16,
-    data: [u8; MAX_ASSEMBLY_BYTES],
+    data: [u8; MAX_LARGE_ASSEMBLY_BYTES],
 }
 
 impl Frame {
@@ -183,7 +193,13 @@ impl Publisher {
         bytes: &[u8],
     ) {
         let feed = &self.0;
-        let mut data = [0; MAX_ASSEMBLY_BYTES];
+        if bytes.len() != usize::from(self.0.settings.input_size)
+            || bytes.len() > MAX_LARGE_ASSEMBLY_BYTES
+        {
+            self.0.queue_drops.fetch_add(1, Relaxed);
+            return;
+        }
+        let mut data = [0; MAX_LARGE_ASSEMBLY_BYTES];
         data[..bytes.len()].copy_from_slice(bytes);
         let frame = Frame {
             index: feed.received.fetch_add(1, Relaxed) + 1,
@@ -217,7 +233,7 @@ pub struct Integration {
 
 impl Integration {
     pub fn start(options: &Options, settings: &Settings) -> Result<Option<Self>, String> {
-        options.validate()?;
+        options.validate_for(settings)?;
         if options.is_disabled() {
             return Ok(None);
         }

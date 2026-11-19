@@ -1,0 +1,324 @@
+use super::*;
+use assembly_scanner::{
+    discovery,
+    explicit::{self, ReadPath, Reader, SavedRead},
+};
+
+const PRESETS: [(&str, u32, u32); 9] = [
+    ("Identity · Vendor ID", 1, 1),
+    ("Identity · Device type", 1, 2),
+    ("Identity · Product code", 1, 3),
+    ("Identity · Revision", 1, 4),
+    ("Identity · Status", 1, 5),
+    ("Identity · Serial number", 1, 6),
+    ("Identity · Product name", 1, 7),
+    ("TCP/IP Interface · Status", 0xf5, 1),
+    ("Ethernet Link · Speed", 0xf6, 1),
+];
+
+enum Response {
+    Discovery(Ipv4Addr, discovery::Report),
+    Read(String, Option<String>, Vec<u8>),
+}
+
+pub(super) struct Explorer {
+    destination: String,
+    class: String,
+    instance: String,
+    attribute: String,
+    name: String,
+    read_result: Option<(String, Option<String>, Vec<u8>)>,
+    discovered: Option<(Ipv4Addr, discovery::Report)>,
+    work: Option<mpsc::Receiver<Result<Response, String>>>,
+    notice: Option<String>,
+}
+
+impl Default for Explorer {
+    fn default() -> Self {
+        Self {
+            destination: Ipv4Addr::BROADCAST.to_string(),
+            class: "0x01".into(),
+            instance: "1".into(),
+            attribute: "7".into(),
+            name: String::new(),
+            read_result: None,
+            discovered: None,
+            work: None,
+            notice: None,
+        }
+    }
+}
+
+impl Explorer {
+    pub(super) fn busy(&self) -> bool {
+        self.work.is_some()
+    }
+
+    fn start(&mut self, job: impl FnOnce() -> Result<Response, String> + Send + 'static) {
+        let (send, receive) = mpsc::channel();
+        self.notice = None;
+        match std::thread::Builder::new()
+            .name("eip-explore".into())
+            .spawn(move || {
+                let _ = send.send(job());
+            }) {
+            Ok(_) => self.work = Some(receive),
+            Err(error) => self.notice = Some(error.to_string()),
+        }
+    }
+
+    pub(super) fn poll(&mut self) {
+        let Some(work) = &self.work else { return };
+        match work.try_recv() {
+            Ok(Ok(Response::Discovery(nic, report))) => self.discovered = Some((nic, report)),
+            Ok(Ok(Response::Read(request, decoded, data))) => {
+                self.read_result = Some((request, decoded, data))
+            }
+            Ok(Err(error)) => self.notice = Some(error),
+            Err(mpsc::TryRecvError::Disconnected) => {
+                self.notice = Some("Explore request ended without a response".into())
+            }
+            Err(mpsc::TryRecvError::Empty) => return,
+        }
+        self.work = None;
+    }
+
+    fn path(&self) -> Result<ReadPath, String> {
+        let path = ReadPath {
+            class: explicit::parse_id(&self.class)?,
+            instance: explicit::parse_id(&self.instance)?,
+            attribute: if self.attribute.trim().eq_ignore_ascii_case("all") {
+                None
+            } else {
+                Some(explicit::parse_id(&self.attribute)?)
+            },
+        };
+        path.validate()?;
+        Ok(path)
+    }
+
+    fn load(&mut self, path: ReadPath) {
+        self.class = format!("0x{:X}", path.class);
+        self.instance = path.instance.to_string();
+        self.attribute = path
+            .attribute
+            .map_or("all".into(), |id| format!("0x{id:X}"));
+    }
+}
+
+impl Device {
+    pub(super) fn explore(&mut self, ui: &mut Ui) {
+        title(ui, "Explore EtherNet/IP");
+        let can_change_adapter =
+            !self.link_busy() && !self.capturing && self.identity_task.is_none();
+        let local = self.local.parse::<Ipv4Addr>();
+        let explorer = &mut self.explorer;
+        ui.heading("Discover adapters");
+        ui.label(format!("Local NIC · {} (set in Device)", self.local));
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Destination IPv4");
+            ui.text_edit_singleline(&mut explorer.destination);
+            if ui
+                .add_enabled(!explorer.busy(), egui::Button::new("Discover"))
+                .clicked()
+            {
+                let parsed = local
+                    .clone()
+                    .and_then(|nic| explorer.destination.parse().map(|target| (nic, target)));
+                match parsed {
+                    Ok((nic, target)) => {
+                        explorer.discovered = None;
+                        explorer.start(move || {
+                            discovery::discover(nic, target)
+                                .map(|report| Response::Discovery(nic, report))
+                                .map_err(|error| error.to_string())
+                        });
+                    }
+                    Err(_) => {
+                        explorer.notice =
+                            Some("Enter valid NIC and destination IPv4 addresses".into())
+                    }
+                }
+            }
+        });
+        let mut selected = None;
+        if let Some((nic, report)) = &explorer.discovered {
+            ui.small(format!(
+                "{} replies on {nic} · {} invalid{}",
+                report.devices.len(),
+                report.invalid_replies,
+                if report.limit_reached {
+                    " · Result limit reached"
+                } else {
+                    ""
+                }
+            ));
+            egui::ScrollArea::vertical()
+                .id_salt("discovered")
+                .max_height(160.0)
+                .show(ui, |ui| {
+                    for device in &report.devices {
+                        ui.horizontal_wrapped(|ui| {
+                            let id = &device.identity;
+                            ui.label(format!(
+                                "{} · {} · vendor:type:product {}:{}:{} · serial {:08X}",
+                                device.source.ip(),
+                                id.name,
+                                id.vendor,
+                                id.device_type,
+                                id.code,
+                                id.serial
+                            ));
+                            if ui
+                                .add_enabled(
+                                    can_change_adapter && local.as_ref() == Ok(nic),
+                                    egui::Button::new("Use adapter"),
+                                )
+                                .clicked()
+                            {
+                                selected = Some(*device.source.ip());
+                            }
+                        });
+                    }
+                });
+        }
+        ui.separator();
+        ui.heading("CIP object and attribute reads");
+        ui.label(format!("Adapter · {}", self.device));
+        egui::ComboBox::from_id_salt("cip-presets")
+            .selected_text("Common attributes")
+            .show_ui(ui, |ui| {
+                for (label, class, attribute) in PRESETS {
+                    if ui.selectable_label(false, label).clicked() {
+                        explorer.load(ReadPath {
+                            class,
+                            instance: 1,
+                            attribute: Some(attribute),
+                        });
+                        explorer.name = label.into();
+                    }
+                }
+                if ui.selectable_label(false, "Assembly · Data").clicked() {
+                    explorer.load(ReadPath {
+                        class: 4,
+                        instance: u32::from(self.settings.input_instance),
+                        attribute: Some(3),
+                    });
+                    explorer.name = "Input assembly data".into();
+                }
+            });
+        ui.horizontal_wrapped(|ui| {
+            for (label, field) in [
+                ("Class", &mut explorer.class),
+                ("Instance", &mut explorer.instance),
+                ("Attribute or all", &mut explorer.attribute),
+            ] {
+                ui.label(label);
+                ui.add(egui::TextEdit::singleline(field).desired_width(80.0));
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(!explorer.busy(), egui::Button::new("Read"))
+                .clicked()
+            {
+                explorer.read_result = None;
+                match (self.device.parse::<Ipv4Addr>(), &local, explorer.path()) {
+                    (Ok(adapter), Ok(nic), Ok(path)) => {
+                        let nic = *nic;
+                        explorer.start(move || {
+                            let address = format!(
+                                "{adapter} · class 0x{:X} · instance 0x{:X} · attribute {}",
+                                path.class,
+                                path.instance,
+                                path.attribute
+                                    .map_or("all".into(), |id| format!("0x{id:X}"))
+                            );
+                            Reader::connect(adapter, nic)
+                                .and_then(|mut reader| reader.read(path))
+                                .map(|bytes| {
+                                    Response::Read(address.clone(), path.describe(&bytes), bytes)
+                                })
+                                .map_err(|error| format!("{address} · {error}"))
+                        });
+                    }
+                    (_, _, Err(error)) => explorer.notice = Some(error),
+                    _ => {
+                        explorer.notice =
+                            Some("Set adapter and local NIC IPv4 addresses in Device".into())
+                    }
+                }
+            }
+            ui.label("Save as");
+            ui.add(egui::TextEdit::singleline(&mut explorer.name).desired_width(160.0));
+            if ui.button("Save / update read").clicked() {
+                match explorer.path() {
+                    Ok(path) => {
+                        let name = explorer.name.trim().to_owned();
+                        let mut reads = self.preferences.cip_reads.clone();
+                        let read = SavedRead { name, path };
+                        if let Some(prior) = reads.iter_mut().find(|prior| prior.name == read.name)
+                        {
+                            *prior = read;
+                        } else {
+                            reads.push(read);
+                        }
+                        match explicit::validate_saved_reads(&reads) {
+                            Ok(()) => {
+                                self.preferences.cip_reads = reads;
+                                explorer.notice = None;
+                            }
+                            Err(error) => explorer.notice = Some(error),
+                        }
+                    }
+                    Err(error) => explorer.notice = Some(error),
+                }
+            }
+        });
+        ui.collapsing("Saved reads", |ui| {
+            let mut remove = None;
+            for (index, read) in self.preferences.cip_reads.iter().enumerate() {
+                ui.push_id(index, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button(&read.name).clicked() {
+                            explorer.name.clone_from(&read.name);
+                            explorer.load(read.path);
+                        }
+                        if ui.small_button("Remove").clicked() {
+                            remove = Some(index);
+                        }
+                    })
+                });
+            }
+            if let Some(index) = remove {
+                self.preferences.cip_reads.remove(index);
+            }
+        });
+        if explorer.busy() {
+            ui.spinner();
+        }
+        if let Some(notice) = &explorer.notice {
+            ui.colored_label(AMBER, notice);
+        }
+        if let Some((address, decoded, bytes)) = &explorer.read_result {
+            ui.label(format!("{address} · {} bytes", bytes.len()));
+            if let Some(value) = decoded {
+                ui.monospace(value);
+            }
+            egui::ScrollArea::vertical()
+                .id_salt("cip-result")
+                .max_height(240.0)
+                .show(ui, |ui| {
+                    for (row, bytes) in bytes.chunks(16).enumerate() {
+                        ui.monospace(format!("{:04X}  {}", row * 16, model::hex(bytes)));
+                    }
+                });
+        }
+        if let Some(address) = selected {
+            self.device = address.to_string();
+            self.reset_endpoint_status();
+            self.bench_confirmed = false;
+            self.writes_confirmed = false;
+        }
+    }
+}
