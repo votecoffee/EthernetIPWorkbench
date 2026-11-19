@@ -157,17 +157,26 @@ def main():
     typed_eds.write_text(
         PROFILE.with_suffix(".eds").read_text(encoding="utf-8")
         .replace("[Assembly]", 'Param2 = 0,,,0,0xC3,2,"Net weight";\n[Assembly]')
-        .replace("32,;", "16,,16,Param2;"),
+        .replace("4, 0x0000,,,32,;", ", 0x0000,,,16,,,Param2;"),
         encoding="utf-8",
     )
     imported = subprocess.run([exe, "eds", typed_eds], capture_output=True, text=True,
                               timeout=5, creationflags=NO_WINDOW, check=True)
     typed_profile, = tomllib.loads(imported.stdout)["profiles"]
+    assert typed_profile["fields"]["T->O size"] == "4 bytes (Assem101 member widths)"
+    assert typed_profile["assembly_definition_sizes"] == ["T->O size"]
     layout = typed_profile["input_layout"]
     assert layout["format"] == "Assem101" and layout["skipped_members"] == 0
     assert layout["fields"] == [{
         "name": "Net_weight", "selection": {"offset": 2, "kind": "I16", "big_endian": False},
     }]
+    preflight = subprocess.run([exe, "validate", PROFILE, typed_eds, typed_profile["id"]],
+                               capture_output=True, text=True, timeout=5, creationflags=NO_WINDOW,
+                               check=True)
+    verified = tomllib.loads(preflight.stdout)
+    assert verified["connection_valid"] and verified["input"]["payload_bytes"] == 4
+    size = next(row for row in verified["origins"] if row["field"] == "T->O size")
+    assert size["state"] == "assembly_definition" and size["eds_size_is_layout"]
 
     def run(case, *command, mode="explicit"):
         result, peer = with_adapter(root, case, [exe, *command], mode)

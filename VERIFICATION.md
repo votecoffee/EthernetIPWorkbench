@@ -414,6 +414,12 @@ The Windows CLI resolved all 32 byte members in the pinned OpENer sample EDS's i
 
 Offline tests covered a signed integer after padding, a floating-point field after a skipped string, duplicate names, invalid member widths, malformed layouts, and mismatched connection sizes. A GUI mapping test verified that adding a suggestion preserves the previous CSV selection. These tests exercised the importer and decoder without an attached adapter.
 
+## EDS sizes from assembly members
+
+The Windows CLI imported a synthetic four-byte input layout with a blank assembly size and a signed 16-bit member whose width came from its `ParamN`. Preflight reported four bytes with `assembly_definition` provenance and placed the suggested input at byte offset 2. Rust tests covered both cyclic directions, bit padding, connection-size precedence, and rejection of widths that were partial, unresolved, or larger than the connection size field can represent.
+
+In a copy of the pinned OpENer sample EDS, removing the two cyclic assembly size declarations and using the byte parameters' natural widths produced 32-byte layouts for both directions of the owner profile. The input-only profile kept its explicit 32-byte input and zero-byte heartbeat. Its 32 suggested offsets still ran from 0 through 31. These checks used files and localhost. [Upstream OpENer sample EDS](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/data/opener_sample_app.eds)
+
 ## Read-only software integration
 
 The 8 ms Windows localhost check exercised the HTTP API, MQTT publisher and named shared memory simultaneously. HTTP and the memory mapping stayed open across scanner reconnect. An independent broker fixture dropped its first TCP connection and received fresh MQTT samples after reconnect. HTTP continued while a client held the shared-memory mutex. Shared memory continued while an HTTP client stalled mid-request. The CLI saved 468 CSV rows with zero capture or integration queue overruns. The headless GUI backend test also fetched a live API sample during capture.

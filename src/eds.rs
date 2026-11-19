@@ -37,7 +37,9 @@ impl Profile {
                 .and_then(|source| source.rsplit_once(" ("))
                 .and_then(|(_, name)| name.strip_suffix(')'))
                 .is_some_and(|name| {
-                    name.to_ascii_lowercase()
+                    name.strip_suffix(" member widths")
+                        .unwrap_or(name)
+                        .to_ascii_lowercase()
                         .strip_prefix("assem")
                         .is_some_and(|suffix| suffix.parse::<u16>().is_ok())
                 })
@@ -218,11 +220,10 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
         }
         u8::try_from(number(fields.get(11)?)?).ok()
     };
-    let assembly_size = |text: &str| {
-        entries
-            .get(&("assembly".into(), text.to_ascii_lowercase()))
-            .and_then(|p| p.get(2))
-            .and_then(|s| number(s))
+    let assembly_definition = |name: &str| {
+        let key = name.to_ascii_lowercase();
+        key.strip_prefix("assem")?.parse::<u32>().ok()?;
+        entries.get(&("assembly".into(), key))
     };
     Ok(connections
         .into_iter()
@@ -377,43 +378,40 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
                 (3, "O->T size", &mut s.output_size),
                 (6, "T->O size", &mut s.input_size),
             ] {
-                let size = resolve(get(idx)).or_else(|| {
-                    get(idx)
-                        .is_empty()
-                        .then(|| assembly_size(get(idx + 1)))
-                        .flatten()
-                });
-                if let Some(n) = size.and_then(|n| u16::try_from(n).ok()) {
+                let size_field = get(idx);
+                let size = if size_field.is_empty() {
+                    let format = get(idx + 1);
+                    assembly_definition(format)
+                        .and_then(|definition| assembly::payload_size(definition, parameter))
+                        .map(|(size, from_members)| {
+                            let source = if from_members {
+                                format!("{format} member widths")
+                            } else {
+                                format.to_owned()
+                            };
+                            (size, source)
+                        })
+                } else {
+                    resolve(size_field).map(|size| (size, size_field.to_owned()))
+                };
+                if let Some((size, source)) = size
+                    && let Ok(n) = u16::try_from(size)
+                {
                     *value = n;
-                    if get(idx).is_empty() {
+                    if size_field.is_empty() {
                         p.assembly_definition_sizes.push(label.into());
                     }
-                    origin.insert(
-                        label.into(),
-                        format!(
-                            "{n} bytes ({})",
-                            if get(idx).is_empty() {
-                                get(idx + 1)
-                            } else {
-                                get(idx)
-                            }
-                        ),
-                    );
+                    origin.insert(label.into(), format!("{n} bytes ({source})"));
                 }
             }
             if !origin.contains_key("O->T size") {
                 issues.push("Unresolved O->T size; verify it in manual mode".into());
             }
-            if origin.contains_key("T->O assembly") && origin.contains_key("T->O size") {
-                let format = get(7).to_ascii_lowercase();
-                if format
-                    .strip_prefix("assem")
-                    .is_some_and(|n| n.parse::<u32>().is_ok())
-                    && let Some(definition) = entries.get(&("assembly".into(), format))
-                {
-                    p.input_layout =
-                        assembly::input_layout(get(7), definition, s.input_size, parameter);
-                }
+            if origin.contains_key("T->O assembly")
+                && origin.contains_key("T->O size")
+                && let Some(definition) = assembly_definition(get(7))
+            {
+                p.input_layout = assembly::input_layout(get(7), definition, s.input_size, parameter);
             }
             if variable_output {
                 s.output_min_size = Some(s.output_size);
@@ -443,7 +441,8 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
             let size2 = if get(10).is_empty() && get(11).is_empty() {
                 Some(0)
             } else if get(10).is_empty() {
-                assembly_size(get(11))
+                entries.get(&("assembly".into(), get(11).to_ascii_lowercase()))
+                    .and_then(|definition| number(definition.get(2)?))
             } else {
                 resolve(get(10))
             };
@@ -504,6 +503,60 @@ mod tests {
         );
         let variant = sample.replace("2C 65", "2D 00 [Param2]");
         assert!(!parse(&variant).unwrap()[0].unsupported.is_empty());
+    }
+
+    #[test]
+    fn derives_cyclic_sizes_from_complete_assembly_members() {
+        let sample = include_str!("../samples/loopback.eds")
+            .replace(
+                "[Assembly]",
+                "Param2 = 0,,,0,0xC3,2,\"Temperature\";\n[Assembly]",
+            )
+            .replace(
+                "4, 0x0000,,,32,;",
+                ",,,,3,,5,,,Param2,8,;\nAssem102 = \"Output\", \"\", ,0x0001,,,32,;",
+            )
+            .replace("0x02010002", "0x04010002")
+            .replace("0x22440305", "0x22440405")
+            .replace("Param1,0,,", "Param1,,Assem102,")
+            .replace("2C FE", "2C 66");
+        let profiles = parse(&sample).unwrap();
+        let profile = &profiles[0];
+        assert!(profile.unsupported.is_empty(), "{:?}", profile.unsupported);
+        assert_eq!(profile.settings.input_size, 4);
+        assert_eq!(profile.settings.output_size, 4);
+        assert!(profile.settings.output_run_idle);
+        for (direction, format) in [("T->O", "Assem101"), ("O->T", "Assem102")] {
+            let field = format!("{direction} size");
+            assert!(profile.size_from_assembly_definition(&field));
+            assert_eq!(
+                profile.fields[&field],
+                format!("4 bytes ({format} member widths)")
+            );
+        }
+        let field = &profile.input_layout.as_ref().unwrap().fields[0];
+        assert_eq!(field.name, "Temperature");
+        assert_eq!(field.selection.offset, 1);
+        assert_eq!(field.selection.kind, crate::model::Kind::I16);
+
+        let override_size = sample.replace("Param1,,Assem101", "Param1,8,Assem101");
+        let profiles = parse(&override_size).unwrap();
+        assert_eq!(profiles[0].settings.input_size, 8);
+        assert!(!profiles[0].size_from_assembly_definition("T->O size"));
+        assert!(profiles[0].input_layout.is_none());
+
+        for invalid in [
+            sample.replace("3,,5,,,", "3,,4,,,"),
+            sample.replace(",Param2,8,", ",Param99,8,"),
+            sample.replace("0xC3,2,", "0xC3,4,"),
+            sample.replace("8,;", "8;"),
+            sample.replace("8,;", "524288,;"),
+            sample.replace("Param1,,Assem101", "Param1,unknown,Assem101"),
+        ] {
+            let profiles = parse(&invalid).unwrap();
+            assert!(!profiles[0].fields.contains_key("T->O size"));
+            assert!(profiles[0].input_layout.is_none());
+        }
     }
 
     #[test]

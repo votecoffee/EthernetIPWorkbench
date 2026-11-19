@@ -12,18 +12,34 @@ pub struct InputLayout {
     pub skipped_members: usize,
 }
 
+pub(super) fn payload_size<'a>(
+    definition: &[String],
+    parameter: impl Fn(&str) -> Option<&'a Vec<String>>,
+) -> Option<(u32, bool)> {
+    let size = definition.get(2)?;
+    if !size.is_empty() {
+        return Some((number(size)?, false));
+    }
+    let bits = member_pairs(definition)?
+        .iter()
+        .try_fold(0u32, |sum, [width, reference]| {
+            let bits = member_bits(width, reference, &parameter)?;
+            sum.checked_add(bits)
+        })?;
+    (bits != 0 && bits % 8 == 0).then_some((bits / 8, true))
+}
+
 pub(super) fn input_layout<'a>(
     format: &str,
     definition: &[String],
     input_size: u16,
     parameter: impl Fn(&str) -> Option<&'a Vec<String>>,
 ) -> Option<InputLayout> {
-    let (header, members) = definition.split_at_checked(6)?;
-    let size = number(&header[2])?;
-    // Restrict inference to a plain assembly with a known payload width.
-    if size != u32::from(input_size) || number(&header[3])? != 0 || members.is_empty() {
+    let (size, _) = payload_size(definition, &parameter)?;
+    if size != u32::from(input_size) {
         return None;
     }
+    let members = member_pairs(definition)?;
     let mut layout = InputLayout {
         format: format.into(),
         fields: Vec::new(),
@@ -35,13 +51,10 @@ pub(super) fn input_layout<'a>(
         .map(str::to_ascii_lowercase)
         .collect();
     let mut offset = 0u32;
-    for pair in members.chunks(2) {
-        let [width, reference] = pair else {
-            return None;
-        };
-        let bits = number(width)?;
+    for [width, reference] in members {
+        let bits = member_bits(width, reference, &parameter)?;
         let end = offset.checked_add(bits)?;
-        if bits == 0 || end > size * 8 {
+        if end > size * 8 {
             return None;
         }
         if !reference.is_empty() {
@@ -58,18 +71,67 @@ pub(super) fn input_layout<'a>(
     Some(layout)
 }
 
+fn member_pairs(definition: &[String]) -> Option<&[[String; 2]]> {
+    let (header, members) = definition.split_at_checked(6)?;
+    // Bit 0 allows editing constant values and leaves the width unchanged.
+    if (!header[3].is_empty() && !matches!(number(&header[3]), Some(0 | 1)))
+        || !header[4].is_empty()
+        || !header[5].is_empty()
+    {
+        return None;
+    }
+    let (pairs, trailing) = members.as_chunks::<2>();
+    (!pairs.is_empty() && trailing.is_empty()).then_some(pairs)
+}
+
+fn member_bits<'a>(
+    width: &str,
+    reference: &str,
+    parameter: &impl Fn(&str) -> Option<&'a Vec<String>>,
+) -> Option<u32> {
+    if width.is_empty() {
+        let (_, bytes) = parameter_type(parameter_definition(reference, parameter)?)?;
+        return Some(bytes * 8);
+    }
+    number(width).filter(|&bits| bits != 0)
+}
+
 fn parameter_field<'a>(
     reference: &str,
     offset: u32,
     bits: u32,
     parameter: &impl Fn(&str) -> Option<&'a Vec<String>>,
 ) -> Option<(String, Selection)> {
+    let definition = parameter_definition(reference, parameter)?;
+    let (kind, bytes) = parameter_type(definition)?;
+    if offset % 8 != 0 || bits != bytes * 8 {
+        return None;
+    }
+    let name = definition.get(6)?.trim();
+    let name = if name.is_empty() { reference } else { name };
+    Some((
+        name.to_owned(),
+        Selection {
+            offset: (offset / 8) as usize,
+            kind,
+            ..Selection::default()
+        },
+    ))
+}
+
+fn parameter_definition<'a>(
+    reference: &str,
+    parameter: &impl Fn(&str) -> Option<&'a Vec<String>>,
+) -> Option<&'a [String]> {
     reference
         .to_ascii_lowercase()
         .strip_prefix("param")?
         .parse::<u32>()
         .ok()?;
-    let definition = parameter(reference)?;
+    parameter(reference).map(Vec::as_slice)
+}
+
+fn parameter_type(definition: &[String]) -> Option<(Kind, u32)> {
     let (kind, bytes) = match number(definition.get(4)?)? {
         0xc2 => (Kind::I8, 1),
         0xc3 => (Kind::I16, 2),
@@ -83,19 +145,7 @@ fn parameter_field<'a>(
         0xcb => (Kind::F64, 8),
         _ => return None,
     };
-    if offset % 8 != 0 || bits != bytes * 8 || number(definition.get(5)?)? != bytes {
-        return None;
-    }
-    let name = definition.get(6)?.trim();
-    let name = if name.is_empty() { reference } else { name };
-    Some((
-        name.to_owned(),
-        Selection {
-            offset: (offset / 8) as usize,
-            kind,
-            ..Selection::default()
-        },
-    ))
+    (number(definition.get(5)?)? == bytes).then_some((kind, bytes))
 }
 
 fn mapping_name(name: &str, used: &mut HashSet<String>) -> String {
