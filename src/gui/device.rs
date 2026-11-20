@@ -20,6 +20,7 @@ impl Device {
             bench_confirmed: false,
             writes_confirmed: false,
             output_entries: Vec::new(),
+            configuration_entries: Vec::new(),
             preview_hex: String::new(),
             connection: None,
             integration: None,
@@ -161,6 +162,7 @@ impl Device {
                 }
                 self.selected = None;
                 self.output_entries.clear();
+                self.configuration_entries.clear();
                 self.preview_hex.clear();
                 self.bench_confirmed = false;
                 self.writes_confirmed = false;

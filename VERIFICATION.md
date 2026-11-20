@@ -444,6 +444,12 @@ Rust tests resolved an eight-byte layout with two levels of references, repeated
 
 The Windows CLI derived four-byte input and output layouts from a synthetic EDS with a nested BOOL. Preflight, raw payload decoding, and a two-second localhost CSV capture at 8 ms verified the final offsets. Every logged Boolean value matched the fixture's packet payload. The pinned OpENer sample EDS produced the same CLI report as the prior release. [Upstream OpENer sample EDS](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/data/opener_sample_app.eds)
 
+## EDS typed configuration staging
+
+The headless GUI staged an imported Boolean field into a complete local buffer, changing `A5 A0` to `A5 A1`. The read-only byte retained its value. The test covered a missing buffer, an overridden configuration instance, and clearing prior write authorization after staging. The model test rejected an out-of-range integer and a missing configuration instance without modifying the buffer.
+
+CLI import surfaced ten U8 fields at offsets 0 through 9 for the OpENer owner profile's `Assem151`. The other two profiles declared zero configuration bytes. A synthetic EDS verified read-only filtering, a nested Boolean offset, and a four-byte staged buffer in offline preflight. These were offline configuration checks. [Upstream OpENer sample EDS](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/data/opener_sample_app.eds)
+
 ## Read-only software integration
 
 The 8 ms Windows localhost check exercised the HTTP API, MQTT publisher and named shared memory simultaneously. HTTP and the memory mapping stayed open across scanner reconnect. An independent broker fixture dropped its first TCP connection and received fresh MQTT samples after reconnect. HTTP continued while a client held the shared-memory mutex. Shared memory continued while an HTTP client stalled mid-request. The CLI saved 468 CSV rows with zero capture or integration queue overruns. The headless GUI backend test also fetched a live API sample during capture.

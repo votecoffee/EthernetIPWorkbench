@@ -24,6 +24,8 @@ pub struct Profile {
     pub input_layout: Option<InputLayout>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_layout: Option<AssemblyLayout>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configuration_layout: Option<AssemblyLayout>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     assembly_definition_sizes: Vec<String>,
 }
@@ -279,6 +281,7 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
                 device: device.clone(),
                 input_layout: None,
                 output_layout: None,
+                configuration_layout: None,
                 assembly_definition_sizes: Vec::new(),
                 settings: Settings {
                     input_instance: 0,
@@ -497,6 +500,9 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
                 (Some(0), Some(n)) if n <= 490 => {
                     s.config_size = n as u16;
                     origin.insert("Config size".into(), n.to_string());
+                    if n > 0 && s.config_instance.is_some_and(|instance| instance != 0) {
+                        p.configuration_layout = layouts.configuration_layout(get(11), s.config_size);
+                    }
                 }
                 _ => issues.push("Configuration format or size requires manual review".into()),
             }

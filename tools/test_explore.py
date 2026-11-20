@@ -222,6 +222,35 @@ def main():
     }
     assert owner_profile["input_layout"] == layout
 
+    configuration_eds = root / "typed-configuration.eds"
+    configuration_eds.write_text(
+        typed_eds.read_text(encoding="utf-8")
+        .replace("[Assembly]", 'Param4 = 0,,,0x0010,0xC6,1,"Read only";\n[Assembly]')
+        .replace("[Connection Manager]", 'Assem201 = "Configuration", "", 4,0,,,8,Param4,8,Assem103,,Param2;\n'
+                                         '[Connection Manager]')
+        .replace("    0,,", "    ,Assem201,"),
+        encoding="utf-8",
+    )
+    imported = subprocess.run([exe, "eds", configuration_eds], capture_output=True, text=True,
+                              timeout=5, creationflags=NO_WINDOW, check=True)
+    configured_profile, = tomllib.loads(imported.stdout)["profiles"]
+    assert configured_profile["fields"]["Config size"] == "4"
+    configuration_layout = configured_profile["configuration_layout"]
+    assert configuration_layout["format"] == "Assem201" and configuration_layout["skipped_members"] == 1
+    assert configuration_layout["fields"] == [
+        {"name": "Ready", "selection": {"offset": 1, "kind": "Bool", "bit": 3, "big_endian": False}},
+        layout["fields"][1],
+    ]
+    configuration_toml = root / "staged-configuration.toml"
+    configuration_toml.write_text(
+        PROFILE.read_text(encoding="utf-8").replace("config_size = 0", "config_size = 4")
+        .replace('config_hex = ""', 'config_hex = "A5 08 D4 FE"'),
+        encoding="utf-8",
+    )
+    preflight = subprocess.run([exe, "validate", configuration_toml, configuration_eds, configured_profile["id"]],
+                               capture_output=True, text=True, timeout=5, creationflags=NO_WINDOW, check=True)
+    assert tomllib.loads(preflight.stdout)["configuration_bytes"] == 4
+
     def run(case, *command, mode="explicit"):
         result, peer = with_adapter(root, case, [exe, *command], mode)
         assert result.returncode == 0, (result.stdout, result.stderr)

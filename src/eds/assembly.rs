@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, hash_map::Entry};
 
 const CIP_BOOL: u32 = 0xc1;
+const READ_ONLY_PARAMETER: u32 = 1 << 4;
 const MAX_NESTING: usize = 32;
 
 /// Raw mapping candidates from the assembly format named by the connection.
@@ -25,6 +26,12 @@ struct Member<'a> {
     offset: u32,
     bits: u32,
     reference: &'a str,
+}
+
+struct Suggestions {
+    layout: AssemblyLayout,
+    names: HashMap<String, usize>,
+    accepts_parameter: fn(&[String]) -> bool,
 }
 
 impl<'a> LayoutReader<'a> {
@@ -69,29 +76,49 @@ impl<'a> LayoutReader<'a> {
         format: &str,
         payload_size: u16,
     ) -> Option<AssemblyLayout> {
+        self.read_layout(format, payload_size, |_| true)
+    }
+
+    pub(super) fn configuration_layout(
+        &mut self,
+        format: &str,
+        payload_size: u16,
+    ) -> Option<AssemblyLayout> {
+        self.read_layout(format, payload_size, |parameter| {
+            parameter
+                .get(3)
+                .and_then(|descriptor| number(descriptor))
+                .is_some_and(|descriptor| descriptor & READ_ONLY_PARAMETER == 0)
+        })
+    }
+
+    fn read_layout(
+        &mut self,
+        format: &str,
+        payload_size: u16,
+        accepts_parameter: fn(&[String]) -> bool,
+    ) -> Option<AssemblyLayout> {
         let (size, _) = self.payload_size(format)?;
         if size != u32::from(payload_size) {
             return None;
         }
-        let mut layout = AssemblyLayout {
+        let layout = AssemblyLayout {
             format: format.into(),
             fields: Vec::new(),
             skipped_members: 0,
         };
-        let mut names = CAPTURE_METADATA
+        let names = CAPTURE_METADATA
             .into_iter()
             .chain(["value"])
             .map(|name| (name.to_ascii_lowercase(), 2))
             .collect();
-        self.collect_fields(
-            format,
-            0,
-            size * 8,
-            &mut Vec::new(),
-            &mut layout,
-            &mut names,
-        )?;
-        Some(layout)
+        let mut suggestions = Suggestions {
+            layout,
+            names,
+            accepts_parameter,
+        };
+        self.collect_fields(format, 0, size * 8, &mut Vec::new(), &mut suggestions)?;
+        Some(suggestions.layout)
     }
 
     fn collect_fields(
@@ -100,8 +127,7 @@ impl<'a> LayoutReader<'a> {
         start: u32,
         bits: u32,
         ancestors: &mut Vec<String>,
-        layout: &mut AssemblyLayout,
-        names: &mut HashMap<String, usize>,
+        suggestions: &mut Suggestions,
     ) -> Option<()> {
         let key = numbered_key(format, "assem")?;
         if ancestors.len() >= MAX_NESTING || ancestors.contains(&key) {
@@ -120,23 +146,27 @@ impl<'a> LayoutReader<'a> {
             }
             let offset = start + member.offset;
             if let Some(parameter) = self.parameter(reference)
+                && (suggestions.accepts_parameter)(parameter)
                 && let Some((name, selection)) =
                     parameter_field(parameter, reference, offset, member.bits)
             {
-                let name = mapping_name(&name, names);
-                layout.fields.push(CaptureField { name, selection });
+                let name = mapping_name(&name, &mut suggestions.names);
+                suggestions
+                    .layout
+                    .fields
+                    .push(CaptureField { name, selection });
                 continue;
             }
             // The outer member's width accounts for any trailing padding.
             if let Some(nested_bits) = self.assembly_bits(reference, ancestors.len())
                 && nested_bits <= member.bits
                 && self
-                    .collect_fields(reference, offset, nested_bits, ancestors, layout, names)
+                    .collect_fields(reference, offset, nested_bits, ancestors, suggestions)
                     .is_some()
             {
                 continue;
             }
-            layout.skipped_members += 1;
+            suggestions.layout.skipped_members += 1;
         }
         ancestors.pop();
         Some(())

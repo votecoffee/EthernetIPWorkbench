@@ -332,6 +332,54 @@ mod tests {
         );
         assert!(device.connection.is_none() && device.verified_identity.is_none());
     }
+
+    #[test]
+    fn configuration_editor_stages_eds_boolean_locally() {
+        let source = include_str!("../../samples/loopback.eds")
+            .replace(
+                "[Assembly]",
+                concat!(
+                    "Param2 = 0,,,0x0010,0xC6,1,\"Reserved value\";\n",
+                    "Param3 = 0,,,0,0xC1,,\"Enable flag\";\n",
+                    "[Assembly]"
+                ),
+            )
+            .replace(
+                "[Connection Manager]",
+                "Assem201 = \"Configuration\", \"\", 2,0,,,8,Param2,1,Param3,7,;\n[Connection Manager]",
+            )
+            .replace("    0,,", "    ,Assem201,");
+        let mut device = Device::new(1, None);
+        device.profiles = eds::parse(&source).unwrap();
+        device.select_profile(Some(0));
+        let layout = device.profiles[0].configuration_layout.as_ref().unwrap();
+        assert_eq!(layout.fields.len(), 1);
+        assert_eq!(layout.skipped_members, 1);
+        assert!(device.settings.config_hex.is_empty());
+        let ctx = egui::Context::default();
+        let size = egui::vec2(1240.0, 1200.0);
+        click(&mut device, &ctx, size, "Configuration and advanced timing");
+        device.settings.config_instance = Some(2);
+        let labels = draw(&mut device, &ctx, size);
+        assert!(
+            !labels
+                .iter()
+                .any(|(text, _)| text == "Stage typed configuration values")
+        );
+        device.settings.config_instance = Some(1);
+        click(&mut device, &ctx, size, "Stage typed configuration values");
+        draw(&mut device, &ctx, size);
+        device.configuration_entries[0] = "true".into();
+        click(&mut device, &ctx, size, "Stage");
+        assert!(device.settings.config_hex.is_empty());
+        device.settings.config_hex = "A5 A0".into();
+        device.writes_confirmed = true;
+        click(&mut device, &ctx, size, "Stage");
+        assert_eq!(device.settings.config_hex, "A5 A1");
+        assert!(!device.writes_confirmed);
+        assert!(device.settings.output_hex.is_empty());
+        assert!(device.connection.is_none());
+    }
 }
 
 impl Tab {

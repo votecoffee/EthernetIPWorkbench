@@ -28,6 +28,8 @@ An EDS size with a `member widths` source was calculated from the assembly layou
 
 For nested `AssemN` members, review the final offsets and suffixed names in the mapping suggestions. Use a payload with distinct values in each repeated group when testing the mapping.
 
+For a supported target configuration layout, review the CLI `eds` report's `configuration_layout` and use **Device → Configuration and advanced timing → Stage typed configuration values**. Start from the complete configuration hex buffer and verify the exact staged bytes in connection review.
+
 ## Choose the entry point
 
 - Run CLI eds, validate or decode-input for offline work. validate returns connection validity and capture validity separately. Inspect both.

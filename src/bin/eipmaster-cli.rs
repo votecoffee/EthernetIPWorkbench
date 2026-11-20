@@ -165,6 +165,7 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                             assembly_definition_sizes,
                             input_layout: p.input_layout,
                             output_layout: p.output_layout,
+                            configuration_layout: p.configuration_layout,
                             fields: p.fields,
                         }
                     })
@@ -398,6 +399,8 @@ struct EdsProfile {
     input_layout: Option<eds::InputLayout>,
     #[serde(skip_serializing_if = "Option::is_none")]
     output_layout: Option<eds::AssemblyLayout>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    configuration_layout: Option<eds::AssemblyLayout>,
     fields: std::collections::BTreeMap<String, String>,
 }
 

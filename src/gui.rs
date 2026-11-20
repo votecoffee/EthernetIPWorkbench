@@ -22,6 +22,7 @@ use std::{
 
 mod app;
 mod benchmark;
+mod configuration;
 mod device;
 mod explore;
 mod logging;
@@ -125,6 +126,7 @@ struct Device {
     bench_confirmed: bool,
     writes_confirmed: bool,
     output_entries: Vec<String>,
+    configuration_entries: Vec<String>,
     preview_hex: String,
     connection: Option<Connection>,
     integration: Option<Integration>,

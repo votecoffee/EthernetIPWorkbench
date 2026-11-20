@@ -325,16 +325,7 @@ impl Settings {
                 "Input-only requires a heartbeat connection with zero output assembly bytes".into(),
             );
         }
-        if self.config_size > 490
-            || (self.config_size != 0 && self.config_instance.unwrap_or(0) == 0)
-        {
-            return Err(
-                "Configuration data requires an assembly instance and at most 490 bytes".into(),
-            );
-        }
-        if parse_hex(&self.config_hex)?.len() != self.config_size as usize {
-            return Err("Configuration bytes do not match the declared configuration size".into());
-        }
+        self.configuration()?;
         let segment_bytes = |value| if value <= 255 { 2 } else { 4 };
         let path_bytes = route
             .as_ref()
@@ -462,6 +453,29 @@ impl Settings {
         Ok(data)
     }
 
+    pub fn configuration(&self) -> Result<Vec<u8>, String> {
+        if self.config_size > 490
+            || (self.config_size != 0 && self.config_instance.unwrap_or(0) == 0)
+        {
+            return Err(
+                "Configuration data requires an assembly instance and at most 490 bytes".into(),
+            );
+        }
+        let bytes = parse_hex(&self.config_hex)?;
+        if bytes.len() != usize::from(self.config_size) {
+            return Err("Configuration bytes do not match the declared configuration size".into());
+        }
+        Ok(bytes)
+    }
+
+    /// Encode one field into the staged configuration bytes.
+    pub fn stage_configuration(&mut self, field: Selection, value: &str) -> Result<(), String> {
+        let mut bytes = self.configuration()?;
+        field.encode(value, &mut bytes)?;
+        self.config_hex = hex(&bytes);
+        Ok(())
+    }
+
     /// Encode one field into the staged buffer without sending any data.
     pub fn stage_output(&mut self, index: usize, value: &str) -> Result<(), String> {
         if self.input_only {
@@ -517,6 +531,30 @@ pub use mapping::*;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configuration_staging_validates_buffer_before_mutating() {
+        let mut settings = Settings {
+            config_instance: Some(1),
+            config_size: 3,
+            config_hex: "33 AA BB".into(),
+            ..Settings::default()
+        };
+        let selection = Selection {
+            offset: 1,
+            kind: Kind::I16,
+            ..Selection::default()
+        };
+        assert!(settings.stage_configuration(selection, "100000").is_err());
+        assert_eq!(settings.config_hex, "33 AA BB");
+        settings.stage_configuration(selection, "-300").unwrap();
+        assert_eq!(settings.config_hex, "33 D4 FE");
+        for instance in [None, Some(0)] {
+            settings.config_instance = instance;
+            assert!(settings.stage_configuration(selection, "0").is_err());
+            assert_eq!(settings.config_hex, "33 D4 FE");
+        }
+    }
 
     #[test]
     fn timeout_codes_use_negotiated_input_interval_and_support_legacy_profiles() {

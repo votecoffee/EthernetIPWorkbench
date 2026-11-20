@@ -248,6 +248,23 @@ impl Device {
                 {
                     self.writes_confirmed = false;
                 }
+                if let Some(profile) = self.selected.and_then(|index| self.profiles.get(index))
+                    && s.config_instance == profile.settings.config_instance
+                    && s.config_size == profile.settings.config_size
+                    && let Some(layout) = &profile.configuration_layout
+                    && let Some(result) = configuration::edit(
+                        ui, layout, s, &mut self.configuration_entries,
+                    )
+                {
+                    match result {
+                        Ok(name) => {
+                            self.writes_confirmed = false;
+                            self.notice = Some(format!("Staged configuration field {name}"));
+                            self.error = None;
+                        }
+                        Err(error) => self.error = Some(error),
+                    }
+                }
                 ui.label("Producer schedule");
                 ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut self.preferences.schedule, Schedule::Deadline, "Deadline");
@@ -388,6 +405,7 @@ impl Device {
         self.selected = i;
         self.writes_confirmed = false;
         self.output_entries.clear();
+        self.configuration_entries.clear();
         if let Some(i) = i {
             let mut settings = self.profiles[i].settings.clone();
             settings.selection = self.settings.selection;

@@ -601,7 +601,7 @@ fn run(
     getrandom::fill(&mut ids).map_err(|e| protocol(e.to_string()))?;
     let close_path = path(cfg, route.as_ref());
     let mut open_path = close_path.clone();
-    let config = model::parse_hex(&cfg.config_hex).map_err(protocol)?;
+    let config = cfg.configuration().map_err(protocol)?;
     if !config.is_empty() {
         open_path.extend([0x80, config.len().div_ceil(2) as u8]);
         open_path.extend(&config);
