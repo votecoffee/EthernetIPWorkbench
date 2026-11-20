@@ -404,6 +404,31 @@ def main():
     assert preflight["output"]["requested_rpi_us"] == 1_000_001
     assert preflight["output"]["eds_rpi"] == {**bounds, "status": "above_maximum"}
 
+    embedded = root / "embedded-eds.toml"
+    defaults, _, selection = PROFILE.read_text(encoding="utf-8").partition("[selection]\n")
+    embedded.write_text(rpi_override.read_text(encoding="utf-8") +
+                        '\n[eds_profile]\nid = "Connection1"\nname = "Loopback snapshot"\n'
+                        'unsupported = []\nassembly_definition_sizes = ["T->O size"]\n'
+                        '[eds_profile.fields]\n"T->O size" = "4 bytes (Assem101)"\n'
+                        '"T->O RPI" = "2000 us (Param1)"\n'
+                        '[eds_profile.input_rpi_range]\nparameter = "Param1"\nmin_us = 2000\nmax_us = 1000000\n'
+                        '[eds_profile.settings]\n' + defaults.replace("rpi_us = 1000", "rpi_us = 2000") +
+                        '[eds_profile.settings.selection]\n' + selection,
+                        encoding="utf-8")
+    report = tomllib.loads(subprocess.run([exe, "validate", embedded], check=True, capture_output=True,
+                                          text=True, timeout=5).stdout)
+    assert report["connection_valid"] and report["eds_profile"] == "Connection1"
+    assert report["input"]["requested_rpi_us"] == 1_000
+    assert report["input"]["eds_rpi"] == {**bounds, "status": "below_minimum"}
+    origins = {item["field"]: item for item in report["origins"]}
+    assert origins["T->O RPI"]["state"] == "override"
+    assert origins["T->O size"]["state"] == "assembly_definition"
+    checked = subprocess.run([exe, "validate", embedded, PROFILE.with_suffix(".eds"), "Connection1"],
+                             check=True, capture_output=True, text=True, timeout=5)
+    assert tomllib.loads(checked.stdout)["input"]["eds_rpi"]["status"] == "within_bounds"
+    subprocess.run([exe, "decode-input", embedded, "01 02 03 04"],
+                   check=True, capture_output=True, text=True, timeout=5)
+
     identity, adapter = with_adapter(root, "identity", [exe, "identity", "127.0.0.1", "127.0.0.1"])
     assert identity.returncode == 0, identity.stderr
     assert tomllib.loads(identity.stdout)["identity"]["name"] == "Loopback Adapter"

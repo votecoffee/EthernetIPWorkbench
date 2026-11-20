@@ -701,6 +701,42 @@ fn run_report_keeps_loopback_reconnect_attempts() {
 }
 
 #[test]
+fn named_profile_restores_imported_eds_and_preserves_overrides() {
+    let directory = temporary("named-eds");
+    fs::create_dir(&directory).unwrap();
+    let path = directory.join("profile.toml");
+    let imported = eds::parse(include_str!("../../samples/loopback.eds"))
+        .unwrap()
+        .remove(0);
+    let mut source = Device::new(1, None);
+    source.profiles.push(imported.clone());
+    source.select_profile(Some(0));
+    source.eds_path = "missing-vendor-source.eds".into();
+    source.toml_path = path.display().to_string();
+    source.settings.input_rpi_us = 8_000;
+    source.save_profile(None);
+    assert!(source.error.is_none(), "{:?}", source.error);
+    let text = fs::read_to_string(&path).unwrap();
+    assert!(!text.contains("missing-vendor-source.eds"));
+
+    let mut restored = Device::new(2, None);
+    restored.toml_path.clone_from(&source.toml_path);
+    restored.bench_confirmed = true;
+    restored.writes_confirmed = true;
+    restored.load_profile();
+    assert!(restored.error.is_none(), "{:?}", restored.error);
+    assert_eq!(restored.selected, Some(0));
+    assert_eq!(restored.profiles, vec![imported]);
+    assert_eq!(restored.settings.input_rpi_us, 8_000);
+    assert_eq!(restored.profiles[0].settings.input_rpi_us, 1_000);
+    assert!(restored.eds_path.is_empty());
+    assert!(!restored.bench_confirmed && !restored.writes_confirmed);
+    assert!(restored.verified_identity.is_none() && restored.connection.is_none());
+    fs::remove_file(path).unwrap();
+    fs::remove_dir(directory).unwrap();
+}
+
+#[test]
 fn named_profile_loads_preferences_and_requires_confirmation_to_replace() {
     let directory = temporary("profiles");
     fs::create_dir(&directory).unwrap();
@@ -730,6 +766,12 @@ fn named_profile_loads_preferences_and_requires_confirmation_to_replace() {
     app.save_profile(None);
     assert!(app.error.is_none());
     let original = fs::read(&path).unwrap();
+    assert!(
+        settings_file::load_named_profile(&path)
+            .unwrap()
+            .eds_profile
+            .is_none()
+    );
     app.preferences.capacity = 800;
     app.preferences.rotate_bytes = 4_096;
     app.save_profile(None);

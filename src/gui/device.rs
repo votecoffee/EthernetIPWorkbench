@@ -151,23 +151,30 @@ impl Device {
     pub(super) fn load_profile(&mut self) {
         self.replace_profile = None;
         self.notice = None;
-        match settings_file::load_profile(Path::new(&self.toml_path)) {
-            Ok((settings, preferences)) => {
+        match settings_file::load_named_profile(Path::new(&self.toml_path)) {
+            Ok(profile) => {
                 self.reset_endpoint_status();
-                self.device = settings.device_ip.to_string();
-                self.local = settings.local_ip.to_string();
-                self.settings = settings;
-                if let Some(preferences) = preferences {
+                self.device = profile.settings.device_ip.to_string();
+                self.local = profile.settings.local_ip.to_string();
+                self.settings = profile.settings;
+                if let Some(preferences) = profile.preferences {
                     self.preferences = preferences;
                 }
-                self.selected = None;
+                self.notice = if let Some(eds_profile) = profile.eds_profile {
+                    self.profiles = vec![eds_profile];
+                    self.selected = Some(0);
+                    self.eds_path.clear();
+                    Some("Loaded settings and their saved EDS profile".into())
+                } else {
+                    self.selected = None;
+                    Some("Loaded settings".into())
+                };
                 self.output_entries.clear();
                 self.configuration_entries.clear();
                 self.preview_hex.clear();
                 self.bench_confirmed = false;
                 self.writes_confirmed = false;
                 self.error = None;
-                self.notice = Some("Loaded settings".into());
             }
             Err(error) => self.error = Some(error),
         }
@@ -178,18 +185,15 @@ impl Device {
         let path = confirmed_path.unwrap_or_else(|| PathBuf::from(&self.toml_path));
         self.replace_profile = None;
         self.notice = None;
-        if self
-            .selected
-            .is_some_and(|index| !self.profiles[index].unsupported.is_empty())
-        {
+        let eds_profile = self.selected.map(|index| &self.profiles[index]);
+        if eds_profile.is_some_and(|profile| !profile.unsupported.is_empty()) {
             self.error =
                 Some("Resolve the listed EDS profile issues in Manual mode before saving".into());
             return;
         }
-        let text = match self
-            .current()
-            .and_then(|settings| settings_file::profile_text(&settings, &self.preferences))
-        {
+        let text = match self.current().and_then(|settings| {
+            settings_file::profile_text_with_eds(&settings, &self.preferences, eds_profile)
+        }) {
             Ok(text) => text,
             Err(error) => {
                 self.error = Some(error);

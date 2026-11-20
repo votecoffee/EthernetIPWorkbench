@@ -90,6 +90,8 @@ The Windows GUI automatically remembers the device list and selected device in `
 
 To keep a named setup, open Profiles… and enter a TOML path in **Settings TOML** and select **Save**. Enter a new path to save a separate profile, or select **Replace profile** to update an existing file. Select **Load** to switch to a saved profile while disconnected and with capture stopped. Older profiles still load. The optional `[app]` table stores the capture directory, buffer capacity, rotation limits, scheduler, and automatic reconnect preference.
 
+Saving with an EDS connection selected includes that profile’s imported values, identity, RPI limits, and mapping suggestions. The TOML reopens with your effective settings and works by itself. The CLI `validate` command uses the saved EDS metadata automatically. [Named profile format](docs/OPERATIONS.md#start-offline)
+
 ### Work with multiple adapters
 
 Choose **Add device**, give the setup a name, then enter its settings or load a named TOML profile. Use the **Devices** list to switch between setups while other connections and captures keep running. Each setup has its own identity, connection state, counters, staged bytes, write confirmation, and capture controls. Stop capture and disconnect the selected device before removing its setup.

@@ -584,3 +584,7 @@ The CLI imported OpENer Connection2 with a 30 ms default, a 20 ms minimum, and a
 ## Typed explicit reply fields
 
 The Windows localhost fixture returned `78 56 34 12` for both direct and routed saved reads. A routed U16 selection at offset 1 with big endian and byte swapping decoded as 13398 and retained the full reply. A two-byte selection at offset 3 returned the same raw bytes with a separate decode error. The CLI rejected a saved bit index of 8 when loading the profile. An older saved read still decoded the standard serial number as `0x12345678`. Headless GUI checks verified named-profile persistence and that loading a saved request restores the reply editor.
+
+## Named TOML with EDS metadata
+
+A headless save and load restored the selected loopback EDS profile from the TOML alone, including its original 1 ms RPI and typed layout alongside an 8 ms effective override. The source filename was absent from the TOML and the loaded profile required fresh bench confirmation and write approval. The CLI regression loaded an embedded profile for preflight, reported an input RPI override below the embedded minimum, and used the external EDS when explicitly supplied. Plain TOML and payload decoding also passed.

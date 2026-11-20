@@ -52,19 +52,46 @@ impl Preferences {
 }
 
 pub fn load_profile(path: &Path) -> Result<(Settings, Option<Preferences>), String> {
+    let profile = load_named_profile(path)?;
+    Ok((profile.settings, profile.preferences))
+}
+
+pub struct NamedProfile {
+    pub settings: Settings,
+    pub preferences: Option<Preferences>,
+    pub eds_profile: Option<eds::Profile>,
+}
+
+pub fn load_named_profile(path: &Path) -> Result<NamedProfile, String> {
     let read = || -> Result<_, Box<dyn std::error::Error>> {
         let mut table: toml::Table = toml::from_str(&fs::read_to_string(path)?)?;
-        let preferences = table.remove("app").map(toml::Value::try_into).transpose()?;
+        let preferences: Option<Preferences> =
+            table.remove("app").map(toml::Value::try_into).transpose()?;
+        let eds_profile = table
+            .remove("eds_profile")
+            .map(toml::Value::try_into)
+            .transpose()?;
         if let Some(app) = &preferences {
-            let app: &Preferences = app;
             crate::explicit::validate_saved_reads(&app.cip_reads)?;
         }
-        Ok((toml::Value::Table(table).try_into()?, preferences))
+        Ok(NamedProfile {
+            settings: toml::Value::Table(table).try_into()?,
+            preferences,
+            eds_profile,
+        })
     };
     read().map_err(|error| format!("{}: {error}", path.display()))
 }
 
 pub fn profile_text(settings: &Settings, preferences: &Preferences) -> Result<String, String> {
+    profile_text_with_eds(settings, preferences, None)
+}
+
+pub fn profile_text_with_eds(
+    settings: &Settings,
+    preferences: &Preferences,
+    eds_profile: Option<&eds::Profile>,
+) -> Result<String, String> {
     settings.validate()?;
     preferences.integration.validate_for(settings)?;
     crate::explicit::validate_saved_reads(&preferences.cip_reads)?;
@@ -82,10 +109,11 @@ pub fn profile_text(settings: &Settings, preferences: &Preferences) -> Result<St
     }
     let encode = || -> Result<_, toml::ser::Error> {
         let mut value = toml::Value::try_from(settings)?;
-        value
-            .as_table_mut()
-            .unwrap()
-            .insert("app".into(), toml::Value::try_from(preferences)?);
+        let table = value.as_table_mut().unwrap();
+        table.insert("app".into(), toml::Value::try_from(preferences)?);
+        if let Some(profile) = eds_profile {
+            table.insert("eds_profile".into(), toml::Value::try_from(profile)?);
+        }
         toml::to_string_pretty(&value)
     };
     encode().map_err(|error| error.to_string())

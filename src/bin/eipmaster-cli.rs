@@ -181,9 +181,9 @@ fn run(args: &[OsString]) -> Result<bool, String> {
             Ok(true)
         }
         [command, path, comparison @ ..] if command == "validate" => {
-            let (settings, preferences) = settings_file::load_profile(Path::new(path))?;
+            let saved = settings_file::load_named_profile(Path::new(path))?;
             let profile = match comparison {
-                [] => None,
+                [] => saved.eds_profile,
                 [eds_path, id] => Some(
                     eds::load(Path::new(eds_path))?
                         .into_iter()
@@ -193,8 +193,8 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                 _ => return Err(USAGE.into()),
             };
             let report = preflight::inspect(
-                &settings,
-                &preferences.unwrap_or_default(),
+                &saved.settings,
+                &saved.preferences.unwrap_or_default(),
                 profile.as_ref(),
             );
             print!(

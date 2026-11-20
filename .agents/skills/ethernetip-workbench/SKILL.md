@@ -28,6 +28,8 @@ An EDS size with a `member widths` source was calculated from the assembly layou
 
 Check the advertised O→T and T→O RPI bounds in **Offline profile check** or the CLI `validate` report's `eds_rpi` tables. Reimport older saved EDS profiles to refresh the bounds. Treat a bound warning as advisory and record Forward_Open actual intervals and observed packet spacing separately during bench qualification.
 
+A named TOML saved with an EDS connection selected includes that profile in `[eds_profile]`. Load it to restore the effective settings and the EDS comparison. Run `validate` with the TOML alone to use the snapshot, or pass the current EDS and connection ID to compare against a vendor update.
+
 For nested `AssemN` members, review the final offsets and suffixed names in the mapping suggestions. Use a payload with distinct values in each repeated group when testing the mapping.
 
 For a supported target configuration layout, review the CLI `eds` report's `configuration_layout` and use **Device → Configuration and advanced timing → Stage typed configuration values**. Start from the complete configuration hex buffer and verify the exact staged bytes in connection review.

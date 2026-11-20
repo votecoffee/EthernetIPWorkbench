@@ -40,6 +40,7 @@ The C# examples demonstrate HTTP and shared-memory latest values, retained HTTP 
 - Suggest output mappings from declared O→T layouts in Exclusive Owner profiles. The GUI adds reviewed field definitions for typed staging and the CLI reports the same definitions offline.
 - Suggest packed Boolean mappings from explicit one-bit BOOL members in EDS input and output layouts.
 - Compare the selected EDS device identity with the live adapter in GUI connection review and the CLI identity read.
+- Preserve the selected EDS metadata in named TOML exports so the GUI and CLI can compare effective settings offline from the TOML alone.
 - Resolve nested `AssemN` members for cyclic payload sizes and mapping suggestions. Repeated fields receive distinct names at their final payload offsets.
 - Stage typed configuration fields from a supported EDS target assembly using a complete local configuration buffer.
 - Resolve omitted cyclic payload sizes from complete EDS assembly member lists. The GUI and CLI identify the result as a layout width for bench review.
