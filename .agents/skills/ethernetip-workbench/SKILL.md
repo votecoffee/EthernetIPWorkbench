@@ -22,6 +22,8 @@ Use the profile and installed EDS supplied for the task. Ask for device identity
 
 Review **Mappings → EDS input mapping suggestions** or the CLI `eds` report's `input_layout` for raw typed members. Verify the proposed offsets, byte order and scaling with the device documentation. Adding suggestions in the GUI preserves the CSV columns until the operator selects the new fields.
 
+For an Exclusive Owner profile, review **EDS output mapping suggestions** or the CLI `eds` report's `output_layout` for typed output fields. Review output values through the existing staging and authorization workflow.
+
 An EDS size with a `member widths` source was calculated from the assembly layout. Confirm it against the device configuration before opening either cyclic direction.
 
 ## Choose the entry point

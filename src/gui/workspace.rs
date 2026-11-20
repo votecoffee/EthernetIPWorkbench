@@ -215,6 +215,62 @@ mod tests {
         assert!(!device.bench_confirmed && !device.writes_confirmed);
         assert!(device.connection.is_none() && device.capture.is_none());
     }
+
+    #[test]
+    fn adding_eds_outputs_preserves_staged_bytes_and_pending_values() {
+        let source = include_str!("../../samples/loopback.eds")
+            .replace(
+                "[Assembly]",
+                "Param2 = 0,,,0,0xC3,2,\"Command value\";\nParam3 = 0,,,0,0xC6,1,\"Mode\";\n[Assembly]",
+            )
+            .replace(
+                "[Connection Manager]",
+                "Assem102 = \"Outputs\", \"\", ,0x0001,,,8,Param3,8,,,Param2;\n[Connection Manager]",
+            )
+            .replace("0x02010002", "0x04010002")
+            .replace("0x22440305", "0x22440405")
+            .replace("Param1,0,,", "Param1,,Assem102,")
+            .replace("2C FE", "2C 66");
+        let mut device = Device::new(1, None);
+        device.profiles = eds::parse(&source).unwrap();
+        device.select_profile(Some(0));
+        device.settings.output_hex = "11 22 33 44".into();
+        device.settings.config_hex = "AA BB".into();
+        let existing = CaptureField {
+            name: "mode".into(),
+            selection: Selection {
+                kind: Kind::U8,
+                ..Selection::default()
+            },
+        };
+        device.settings.output_fields.push(existing.clone());
+        device.output_entries.push("17".into());
+        device.tab = Tab::Mappings;
+        let ctx = egui::Context::default();
+        let size = egui::vec2(1240.0, 860.0);
+
+        device.settings.output_instance = 103;
+        let labels = draw(&mut device, &ctx, size);
+        assert!(
+            !labels
+                .iter()
+                .any(|(text, _)| text == "EDS output mapping suggestions")
+        );
+        device.settings.output_instance = 102;
+        click(&mut device, &ctx, size, "EDS output mapping suggestions");
+        click(&mut device, &ctx, size, "Add to named outputs (1)");
+
+        assert_eq!(device.settings.output_fields.len(), 2);
+        assert_eq!(device.settings.output_fields[0], existing);
+        assert_eq!(device.settings.output_fields[1].name, "Command_value");
+        assert_eq!(device.output_entries, ["17"]);
+        assert_eq!(device.settings.output_hex, "11 22 33 44");
+        assert_eq!(device.settings.config_hex, "AA BB");
+        assert!(!device.writes_confirmed && !device.bench_confirmed);
+        assert!(device.connection.is_none());
+        device.settings.stage_output(1, "-300").unwrap();
+        assert_eq!(device.settings.output().unwrap(), [0x11, 0x22, 0xd4, 0xfe]);
+    }
 }
 
 impl Tab {

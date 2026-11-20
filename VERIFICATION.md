@@ -420,6 +420,12 @@ The Windows CLI imported a synthetic four-byte input layout with a blank assembl
 
 In a copy of the pinned OpENer sample EDS, removing the two cyclic assembly size declarations and using the byte parameters' natural widths produced 32-byte layouts for both directions of the owner profile. The input-only profile kept its explicit 32-byte input and zero-byte heartbeat. Its 32 suggested offsets still ran from 0 through 31. These checks used files and localhost. [Upstream OpENer sample EDS](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/data/opener_sample_app.eds)
 
+## EDS output mapping suggestions
+
+The CLI imported 32 uniquely named U8 fields from the upstream OpENer owner profile's `Assem150`, at payload offsets 0 through 31. The input-only and listen-only profiles had no output layout. A synthetic owner EDS also returned a signed I16 at byte offset 2 with a Run/Idle header declared separately. [Upstream OpENer sample EDS](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/data/opener_sample_app.eds)
+
+A headless GUI test clicked through the mapping workflow. It covered an overridden assembly instance, an existing name, a pending typed entry, staged output and configuration bytes, and the authorization flags. An explicit subsequent staging operation encoded `-300` into the two mapped bytes. The localhost owner regression also verified the 2, 12, 5 and 2-byte output length transitions with Run/Idle, zero invalid O→T packets, and confirmed Forward_Close.
+
 ## Read-only software integration
 
 The 8 ms Windows localhost check exercised the HTTP API, MQTT publisher and named shared memory simultaneously. HTTP and the memory mapping stayed open across scanner reconnect. An independent broker fixture dropped its first TCP connection and received fresh MQTT samples after reconnect. HTTP continued while a client held the shared-memory mutex. Shared memory continued while an HTTP client stalled mid-request. The CLI saved 468 CSV rows with zero capture or integration queue overruns. The headless GUI backend test also fetched a live API sample during capture.

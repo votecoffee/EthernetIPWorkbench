@@ -4,7 +4,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 mod assembly;
-pub use assembly::InputLayout;
+pub use assembly::AssemblyLayout;
+
+pub type InputLayout = AssemblyLayout;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -16,6 +18,8 @@ pub struct Profile {
     pub unsupported: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_layout: Option<InputLayout>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_layout: Option<AssemblyLayout>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     assembly_definition_sizes: Vec<String>,
 }
@@ -236,6 +240,7 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
                 fields: BTreeMap::new(),
                 unsupported: Vec::new(),
                 input_layout: None,
+                output_layout: None,
                 assembly_definition_sizes: Vec::new(),
                 settings: Settings {
                     input_instance: 0,
@@ -411,7 +416,15 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
                 && origin.contains_key("T->O size")
                 && let Some(definition) = assembly_definition(get(7))
             {
-                p.input_layout = assembly::input_layout(get(7), definition, s.input_size, parameter);
+                p.input_layout = assembly::mapping_layout(get(7), definition, s.input_size, parameter);
+            }
+            if origin.contains_key("Ownership")
+                && s.role() == ConnectionRole::ExclusiveOwner
+                && s.output_size > 0
+                && origin.contains_key("O->T assembly")
+                && let Some(definition) = assembly_definition(get(4))
+            {
+                p.output_layout = assembly::mapping_layout(get(4), definition, s.output_size, parameter);
             }
             if variable_output {
                 s.output_min_size = Some(s.output_size);

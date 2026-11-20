@@ -6,7 +6,7 @@ use std::collections::HashSet;
 /// Raw mapping candidates from the assembly format named by the connection.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct InputLayout {
+pub struct AssemblyLayout {
     pub format: String,
     pub fields: Vec<CaptureField>,
     pub skipped_members: usize,
@@ -29,18 +29,18 @@ pub(super) fn payload_size<'a>(
     (bits != 0 && bits % 8 == 0).then_some((bits / 8, true))
 }
 
-pub(super) fn input_layout<'a>(
+pub(super) fn mapping_layout<'a>(
     format: &str,
     definition: &[String],
     input_size: u16,
     parameter: impl Fn(&str) -> Option<&'a Vec<String>>,
-) -> Option<InputLayout> {
+) -> Option<AssemblyLayout> {
     let (size, _) = payload_size(definition, &parameter)?;
     if size != u32::from(input_size) {
         return None;
     }
     let members = member_pairs(definition)?;
-    let mut layout = InputLayout {
+    let mut layout = AssemblyLayout {
         format: format.into(),
         fields: Vec::new(),
         skipped_members: 0,

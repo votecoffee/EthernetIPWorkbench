@@ -147,7 +147,17 @@ impl Device {
                 && let Some(layout) = &profile.input_layout
             {
                 egui::CollapsingHeader::new("EDS input mapping suggestions").show(ui, |ui| {
-                    suggest_mappings(ui, layout, s, minimum);
+                    let primary = primary_mapping(s, minimum);
+                    if let Some(fields) = choose_suggestions(
+                        ui,
+                        layout,
+                        &s.capture_fields,
+                        minimum,
+                        model::MAX_MAPPED_FIELDS - usize::from(primary.is_some()),
+                        "input",
+                    ) {
+                        append_suggestions(s, primary, fields);
+                    }
                 });
             }
             egui::CollapsingHeader::new("Named inputs and CSV selection")
@@ -228,6 +238,24 @@ impl Device {
                     }
                 });
             if !s.input_only {
+                if let Some(profile) = profile
+                    && profile.settings.output_instance == s.output_instance
+                    && let Some(layout) = &profile.output_layout
+                {
+                    ui.collapsing("EDS output mapping suggestions", |ui| {
+                        ui.small("Add fields for typed staging in Outputs. This action only adds mappings.");
+                        if let Some(fields) = choose_suggestions(
+                            ui,
+                            layout,
+                            &s.output_fields,
+                            s.output_size,
+                            model::MAX_MAPPED_FIELDS,
+                            "output",
+                        ) {
+                            s.output_fields.extend(fields);
+                        }
+                    });
+                }
                 ui.collapsing("Named output mappings", |ui| {
                     if edit_fields(ui, "output", &mut s.output_fields, None, s.output_size) {
                         self.output_entries.clear();
@@ -239,7 +267,14 @@ impl Device {
     }
 }
 
-fn suggest_mappings(ui: &mut Ui, layout: &eds::InputLayout, settings: &mut Settings, minimum: u16) {
+fn choose_suggestions(
+    ui: &mut Ui,
+    layout: &eds::AssemblyLayout,
+    existing: &[CaptureField],
+    payload_size: u16,
+    max_fields: usize,
+    direction: &str,
+) -> Option<Vec<CaptureField>> {
     ui.small(format!(
         "{} · Raw CIP values. Review names, scaling, and byte order against the device manual.",
         layout.format
@@ -250,25 +285,23 @@ fn suggest_mappings(ui: &mut Ui, layout: &eds::InputLayout, settings: &mut Setti
             layout.skipped_members
         ));
     }
-    let primary = primary_mapping(settings, minimum);
-    let available = model::MAX_MAPPED_FIELDS
-        .saturating_sub(settings.capture_fields.len() + usize::from(primary.is_some()));
+    let available = max_fields.saturating_sub(existing.len());
     let candidates: Vec<_> = layout
         .fields
         .iter()
         .filter(|field| {
-            field.selection.validate(usize::from(minimum)).is_ok()
-                && !settings
-                    .capture_fields
+            field.selection.validate(usize::from(payload_size)).is_ok()
+                && !existing
                     .iter()
                     .any(|current| current.name.eq_ignore_ascii_case(&field.name))
         })
         .take(available)
-        .cloned()
         .collect();
     if candidates.is_empty() {
-        ui.small("No additional suggestions fit the current input mapping.");
-        return;
+        ui.small(format!(
+            "No additional suggestions fit the current {direction} mapping."
+        ));
+        return None;
     }
     egui::ScrollArea::vertical()
         .max_height(160.0)
@@ -281,11 +314,12 @@ fn suggest_mappings(ui: &mut Ui, layout: &eds::InputLayout, settings: &mut Setti
             }
         });
     if ui
-        .button(format!("Add {} named inputs", candidates.len()))
+        .button(format!("Add to named {direction}s ({})", candidates.len()))
         .clicked()
     {
-        append_suggestions(settings, primary, candidates);
+        return Some(candidates.into_iter().cloned().collect());
     }
+    None
 }
 
 fn primary_mapping(settings: &Settings, minimum: u16) -> Option<CaptureField> {

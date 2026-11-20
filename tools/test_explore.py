@@ -163,6 +163,7 @@ def main():
     imported = subprocess.run([exe, "eds", typed_eds], capture_output=True, text=True,
                               timeout=5, creationflags=NO_WINDOW, check=True)
     typed_profile, = tomllib.loads(imported.stdout)["profiles"]
+    assert "output_layout" not in typed_profile
     assert typed_profile["fields"]["T->O size"] == "4 bytes (Assem101 member widths)"
     assert typed_profile["assembly_definition_sizes"] == ["T->O size"]
     layout = typed_profile["input_layout"]
@@ -177,6 +178,26 @@ def main():
     assert verified["connection_valid"] and verified["input"]["payload_bytes"] == 4
     size = next(row for row in verified["origins"] if row["field"] == "T->O size")
     assert size["state"] == "assembly_definition" and size["eds_size_is_layout"]
+
+    owner_eds = root / "typed-owner.eds"
+    owner_eds.write_text(
+        typed_eds.read_text(encoding="utf-8")
+        .replace("[Connection Manager]", 'Assem102 = "Outputs", "", ,0x0001,,,16,,,Param2;\n[Connection Manager]')
+        .replace("0x02010002", "0x04010002")
+        .replace("0x22440305", "0x22440405")
+        .replace("Param1,0,,", "Param1,,Assem102,")
+        .replace("2C FE", "2C 66"),
+        encoding="utf-8",
+    )
+    imported = subprocess.run([exe, "eds", owner_eds], capture_output=True, text=True,
+                              timeout=5, creationflags=NO_WINDOW, check=True)
+    owner_profile, = tomllib.loads(imported.stdout)["profiles"]
+    assert owner_profile["supported"]
+    assert owner_profile["fields"]["O->T header"] == "32-bit Run/Idle"
+    assert owner_profile["output_layout"] == {
+        "format": "Assem102", "fields": layout["fields"], "skipped_members": 0,
+    }
+    assert owner_profile["input_layout"] == layout
 
     def run(case, *command, mode="explicit"):
         result, peer = with_adapter(root, case, [exe, *command], mode)
