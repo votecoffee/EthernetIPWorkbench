@@ -3,6 +3,7 @@ use assembly_scanner::{
     discovery,
     explicit::{self, ReadPath, Reader, Route, SavedRead, SavedReadBatch},
 };
+use std::sync::Arc;
 
 mod batch;
 
@@ -22,6 +23,7 @@ enum Response {
     Discovery(Ipv4Addr, discovery::Report),
     Read(ReadReply),
     Batch(SavedReadBatch),
+    SavedReport(PathBuf),
 }
 
 struct ReadReply {
@@ -39,7 +41,8 @@ pub(super) struct Explorer {
     name: String,
     selection: Option<Selection>,
     read_result: Option<ReadReply>,
-    saved_batch: Option<SavedReadBatch>,
+    saved_batch: Option<Arc<SavedReadBatch>>,
+    saved_report: Option<PathBuf>,
     discovered: Option<(Ipv4Addr, discovery::Report)>,
     work: Option<mpsc::Receiver<Result<Response, String>>>,
     notice: Option<String>,
@@ -57,6 +60,7 @@ impl Default for Explorer {
             selection: None,
             read_result: None,
             saved_batch: None,
+            saved_report: None,
             discovered: None,
             work: None,
             notice: None,
@@ -87,7 +91,8 @@ impl Explorer {
         match work.try_recv() {
             Ok(Ok(Response::Discovery(nic, report))) => self.discovered = Some((nic, report)),
             Ok(Ok(Response::Read(reply))) => self.read_result = Some(reply),
-            Ok(Ok(Response::Batch(batch))) => self.saved_batch = Some(batch),
+            Ok(Ok(Response::Batch(batch))) => self.saved_batch = Some(Arc::new(batch)),
+            Ok(Ok(Response::SavedReport(path))) => self.saved_report = Some(path),
             Ok(Err(error)) => self.notice = Some(error),
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.notice = Some("Explore request ended without a response".into())
@@ -342,6 +347,7 @@ impl Device {
                         let nic = *nic;
                         let reads = self.preferences.cip_reads.clone();
                         explorer.saved_batch = None;
+                        explorer.saved_report = None;
                         explorer.start(move || {
                             explicit::run_saved_reads(adapter, nic, reads).map(Response::Batch)
                         });
@@ -352,8 +358,20 @@ impl Device {
                     }
                 }
             }
-            if let Some(batch) = &explorer.saved_batch {
-                batch::show(ui, batch);
+            if let Some(batch) = &explorer.saved_batch
+                && batch::show(
+                    ui,
+                    batch,
+                    explorer.saved_report.as_deref(),
+                    !explorer.busy(),
+                )
+            {
+                let batch = Arc::clone(batch);
+                let directory = PathBuf::from(self.preferences.directory.trim());
+                explorer.saved_report = None;
+                explorer.start(move || {
+                    batch::save_report(&batch, &directory).map(Response::SavedReport)
+                });
             }
             let mut remove = None;
             for (index, read) in self.preferences.cip_reads.iter().enumerate() {

@@ -169,14 +169,17 @@ mod tests {
             },
         )
         .collect();
+        let wait_for_explore = |device: &mut Device| {
+            let deadline = Instant::now() + std::time::Duration::from_secs(5);
+            while device.explorer.busy() && Instant::now() < deadline {
+                device.explorer.poll();
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            assert!(!device.explorer.busy());
+        };
         click(&mut device, &ctx, size, "Saved reads");
         click(&mut device, &ctx, size, "Read all saved");
-        let deadline = Instant::now() + std::time::Duration::from_secs(5);
-        while device.explorer.busy() && Instant::now() < deadline {
-            device.explorer.poll();
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
-        assert!(!device.explorer.busy());
+        wait_for_explore(&mut device);
         click(&mut device, &ctx, size, "Saved read results");
         let labels = draw(&mut device, &ctx, size);
         for expected in [
@@ -199,6 +202,47 @@ mod tests {
                 "{expected}"
             );
         }
+        device.preferences.directory.clear();
+        click(&mut device, &ctx, size, "Save JSON");
+        wait_for_explore(&mut device);
+        assert!(
+            draw(&mut device, &ctx, size)
+                .iter()
+                .any(|(text, _)| text == "Set an output directory in Logging")
+        );
+
+        let folder = super::super::tests::temporary("saved-read-reports");
+        device.preferences.directory = folder.display().to_string();
+        for _ in 0..2 {
+            click(&mut device, &ctx, size, "Save JSON");
+            wait_for_explore(&mut device);
+        }
+        let reports = fs::read_dir(&folder)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect::<Vec<_>>();
+        assert_eq!(reports.len(), 2);
+        let first = fs::read(&reports[0]).unwrap();
+        assert_eq!(fs::read(&reports[1]).unwrap(), first);
+        let report: serde_json::Value = serde_json::from_slice(&first).unwrap();
+        assert_eq!(report["adapter_or_bridge"], "127.0.0.1");
+        assert_eq!(report["results"][1]["extended_status"][0], 0x0311);
+        assert_eq!(report["results"][2]["data_hex"], "78 56 34 12");
+        assert_eq!(report["results"][2]["decoded"], "0x12345678");
+        assert_eq!(report["results"][3]["status"], "exchange_failed");
+        assert_eq!(report["results"][4]["status"], "not_attempted");
+        for report in reports {
+            assert!(
+                report
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("saved-reads-")
+            );
+            assert_eq!(report.extension().unwrap(), "json");
+            fs::remove_file(report).unwrap();
+        }
+        fs::remove_dir(folder).unwrap();
         assert!(device.connection.is_none());
     }
 

@@ -1,6 +1,6 @@
 use super::*;
 
-fn temporary(name: &str) -> PathBuf {
+pub(super) fn temporary(name: &str) -> PathBuf {
     let mut id = [0; 8];
     getrandom::fill(&mut id).unwrap();
     std::env::temp_dir().join(format!("eipmaster-{name}-{:016x}", u64::from_le_bytes(id)))

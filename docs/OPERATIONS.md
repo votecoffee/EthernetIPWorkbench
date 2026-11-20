@@ -50,6 +50,8 @@ selection = { offset = 2, kind = "I32", big_endian = true, swap = "word_order" }
 
 In **Explore**, expand **Saved reads** and select **Read all saved**. When the job finishes, expand **Saved read results**. Each row shows the outcome and expands to show the request details, decoded value and raw bytes, or the error. The batch runs on the configured adapter or bridge and NIC in **Device**.
 
+Select **Save JSON** to save the displayed batch, including any failures, in the output directory configured under **Logging**. The filename starts with `saved-reads-` and includes the UTC save time. The app creates a new file for each save, shows its path, and reports any write error while keeping the batch available. The report uses the same JSON fields as `read-saved-all`.
+
 For the same batch headlessly, run:
 
 ~~~powershell

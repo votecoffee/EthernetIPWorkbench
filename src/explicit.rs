@@ -18,8 +18,10 @@ use std::{
     time::{Duration, Instant},
 };
 mod batch;
+mod report;
 mod route;
 pub use batch::{SavedReadBatch, SavedReadOutcome, SavedReadResult, run_saved_reads};
+pub use report::read_reply_document;
 pub use route::{Route, RoutedReadError};
 pub(crate) const TO_SOCKET: u16 = 0x8001;
 pub(crate) const PORT: u16 = 44818;
