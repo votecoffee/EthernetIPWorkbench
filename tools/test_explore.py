@@ -163,7 +163,9 @@ def main():
         PROFILE.with_suffix(".eds").read_text(encoding="utf-8")
         .replace("[Assembly]", 'Param2 = 0,,,0,0xC3,2,"Net weight";\n'
                               'Param3 = 0,,,0,0xC1,,"Ready";\n[Assembly]')
-        .replace("4, 0x0000,,,32,;", ", 0x0000,,,3,,1,Param3,12,,,Param2;"),
+        .replace("4, 0x0000,,,32,;", ", 0x0000,,,16,Assem103,,Param2;")
+        .replace("[Connection Manager]", 'Assem103 = "Status", "", ,0,,,3,,1,Param3,4,;\n'
+                                         '[Connection Manager]'),
         encoding="utf-8",
     )
     imported = subprocess.run([exe, "eds", typed_eds], capture_output=True, text=True,
@@ -202,7 +204,7 @@ def main():
     owner_eds = root / "typed-owner.eds"
     owner_eds.write_text(
         typed_eds.read_text(encoding="utf-8")
-        .replace("[Connection Manager]", 'Assem102 = "Outputs", "", ,0x0001,,,3,,1,Param3,12,,,Param2;\n'
+        .replace("[Connection Manager]", 'Assem102 = "Outputs", "", ,0x0001,,,16,Assem103,,Param2;\n'
                                          '[Connection Manager]')
         .replace("0x02010002", "0x04010002")
         .replace("0x22440305", "0x22440405")

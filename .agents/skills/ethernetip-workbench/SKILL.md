@@ -26,6 +26,8 @@ For an Exclusive Owner profile, review **EDS output mapping suggestions** or the
 
 An EDS size with a `member widths` source was calculated from the assembly layout. Confirm it against the device configuration before opening either cyclic direction.
 
+For nested `AssemN` members, review the final offsets and suffixed names in the mapping suggestions. Use a payload with distinct values in each repeated group when testing the mapping.
+
 ## Choose the entry point
 
 - Run CLI eds, validate or decode-input for offline work. validate returns connection validity and capture validity separately. Inspect both.

@@ -34,6 +34,7 @@ The C# examples demonstrate HTTP and shared-memory latest values, retained HTTP 
 - Suggest output mappings from declared O→T layouts in Exclusive Owner profiles. The GUI adds reviewed field definitions for typed staging and the CLI reports the same definitions offline.
 - Suggest packed Boolean mappings from explicit one-bit BOOL members in EDS input and output layouts.
 - Compare the selected EDS device identity with the live adapter in GUI connection review and the CLI identity read.
+- Resolve nested `AssemN` members for cyclic payload sizes and mapping suggestions. Repeated fields receive distinct names at their final payload offsets.
 - Resolve omitted cyclic payload sizes from complete EDS assembly member lists. The GUI and CLI identify the result as a layout width for bench review.
 
 - [Verify a second documented adapter family](https://github.com/votecoffee/EthernetIPWorkbench/issues/7). The [OpENer software adapter check](VERIFICATION.md#opener-compatibility) covers the upstream EDS, identity, assembly decoding, and sustained unicast input-only capture. Physical device acceptance remains separate.

@@ -8,7 +8,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 |---|---|
 | src/model.rs and src/model/mapping.rs | Settings, mapping validation, typed endian/swap decoding and output staging |
 | src/eds.rs | Supported EDS connection profiles and provenance |
-| src/eds/assembly.rs | Cyclic payload widths and optional raw input and output mapping candidates from EDS assembly members |
+| src/eds/assembly.rs | Cyclic payload widths and optional raw input and output mapping candidates from direct and nested EDS assembly members |
 | src/eds/identity.rs | Declared EDS identity fields and comparison with a CIP Identity Object readback |
 | src/preflight.rs | Effective configuration, EDS comparisons and offline validation |
 | src/settings_file.rs | Named profiles, workspace migration, preferences and file replacement |

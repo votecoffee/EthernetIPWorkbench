@@ -265,11 +265,7 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
         }
         u8::try_from(number(fields.get(11)?)?).ok()
     };
-    let assembly_definition = |name: &str| {
-        let key = name.to_ascii_lowercase();
-        key.strip_prefix("assem")?.parse::<u32>().ok()?;
-        entries.get(&("assembly".into(), key))
-    };
+    let mut layouts = assembly::LayoutReader::new(&entries);
     Ok(connections
         .into_iter()
         .map(|(id, f)| {
@@ -428,8 +424,8 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
                 let size_field = get(idx);
                 let size = if size_field.is_empty() {
                     let format = get(idx + 1);
-                    assembly_definition(format)
-                        .and_then(|definition| assembly::payload_size(definition, parameter))
+                    layouts
+                        .payload_size(format)
                         .map(|(size, from_members)| {
                             let source = if from_members {
                                 format!("{format} member widths")
@@ -454,19 +450,15 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
             if !origin.contains_key("O->T size") {
                 issues.push("Unresolved O->T size; verify it in manual mode".into());
             }
-            if origin.contains_key("T->O assembly")
-                && origin.contains_key("T->O size")
-                && let Some(definition) = assembly_definition(get(7))
-            {
-                p.input_layout = assembly::mapping_layout(get(7), definition, s.input_size, parameter);
+            if origin.contains_key("T->O assembly") && origin.contains_key("T->O size") {
+                p.input_layout = layouts.mapping_layout(get(7), s.input_size);
             }
             if origin.contains_key("Ownership")
                 && s.role() == ConnectionRole::ExclusiveOwner
                 && s.output_size > 0
                 && origin.contains_key("O->T assembly")
-                && let Some(definition) = assembly_definition(get(4))
             {
-                p.output_layout = assembly::mapping_layout(get(4), definition, s.output_size, parameter);
+                p.output_layout = layouts.mapping_layout(get(4), s.output_size);
             }
             if variable_output {
                 s.output_min_size = Some(s.output_size);

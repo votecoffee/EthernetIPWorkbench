@@ -438,6 +438,12 @@ The CLI read all five declared numeric identity values from the upstream OpENer 
 
 The headless GUI test displayed both differences in **Review connection**, then displayed a five-field match when the readback changed. The importer test covered hexadecimal values, malformed and out-of-range fields, and saved profile round-trip.
 
+## Nested EDS assembly members
+
+Rust tests resolved an eight-byte layout with two levels of references, repeated groups, and an explicitly padded group. The repeated BOOL and signed fields decoded distinct values at their final offsets. Missing and circular references with unknown widths left the size unresolved. Explicit widths preserved the offsets of following fields when an inner mapping could not be expanded.
+
+The Windows CLI derived four-byte input and output layouts from a synthetic EDS with a nested BOOL. Preflight, raw payload decoding, and a two-second localhost CSV capture at 8 ms verified the final offsets. Every logged Boolean value matched the fixture's packet payload. The pinned OpENer sample EDS produced the same CLI report as the prior release. [Upstream OpENer sample EDS](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/data/opener_sample_app.eds)
+
 ## Read-only software integration
 
 The 8 ms Windows localhost check exercised the HTTP API, MQTT publisher and named shared memory simultaneously. HTTP and the memory mapping stayed open across scanner reconnect. An independent broker fixture dropped its first TCP connection and received fresh MQTT samples after reconnect. HTTP continued while a client held the shared-memory mutex. Shared memory continued while an HTTP client stalled mid-request. The CLI saved 468 CSV rows with zero capture or integration queue overruns. The headless GUI backend test also fetched a live API sample during capture.
