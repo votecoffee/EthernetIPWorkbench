@@ -138,7 +138,12 @@ impl Explorer {
         let open = ui
             .collapsing("Write drafts", |ui| {
                 ui.add_enabled_ui(idle, |ui| {
-                    draft_file_control(ui, &mut self.write_draft_path, "Open write draft")
+                    file_control(
+                        ui,
+                        &mut self.write_draft_path,
+                        "Path to a write draft TOML",
+                        "Open write draft",
+                    )
                 })
                 .inner
             })
@@ -208,7 +213,7 @@ impl Explorer {
                         ui.small(format!("Saved {}", path.display()));
                     }
                     ui.add_enabled_ui(ready, |ui| {
-                        draft_file_control(ui, &mut self.write_draft_path, "Save write draft")
+                        file_control(ui, &mut self.write_draft_path, "Path to a write draft TOML", "Save write draft")
                     }).inner
                 }).body_returned.unwrap_or(false);
                 if let Some(notice) = &self.notice {
@@ -302,12 +307,12 @@ impl Explorer {
     }
 }
 
-fn draft_file_control(ui: &mut Ui, path: &mut String, button: &str) -> bool {
+pub(super) fn file_control(ui: &mut Ui, path: &mut String, hint: &str, button: &str) -> bool {
     ui.horizontal_wrapped(|ui| {
         ui.add(
             egui::TextEdit::singleline(path)
                 .desired_width(280.0)
-                .hint_text("Path to a write draft TOML"),
+                .hint_text(hint),
         );
         ui.add_enabled(!path.trim().is_empty(), egui::Button::new(button))
             .clicked()
@@ -449,7 +454,7 @@ fn edit_value(ui: &mut Ui, draft: &mut Draft) {
     }
 }
 
-fn show_address(ui: &mut Ui, request: &AttributeWrite) {
+pub(super) fn show_address(ui: &mut Ui, request: &AttributeWrite) {
     ui.label(format!(
         "Adapter or bridge {} · Local NIC {}",
         request.adapter_or_bridge, request.local_ip
@@ -470,6 +475,16 @@ fn show_identity(ui: &mut Ui, identity: &Identity) {
     ui.label(format!(
         "{} · identity {}:{}:{}:{}",
         identity.name, identity.vendor, identity.device_type, identity.code, identity.serial
+    ));
+}
+
+pub(super) fn show_reviewed_identity(ui: &mut Ui, identity: IdentityPin) {
+    let IdentityPin {
+        key: (vendor, device_type, code),
+        serial,
+    } = identity;
+    ui.label(format!(
+        "Reviewed identity {vendor}:{device_type}:{code}:{serial}"
     ));
 }
 
@@ -538,13 +553,7 @@ fn show_result(
         if let Some(size) = receipt.draft.class3_size {
             ui.label(format!("Class 3 · {} bytes requested", size.bytes()));
         }
-        let IdentityPin {
-            key: (vendor, device_type, code),
-            serial,
-        } = report.expected_identity;
-        ui.label(format!(
-            "Reviewed identity {vendor}:{device_type}:{code}:{serial}"
-        ));
+        show_reviewed_identity(ui, report.expected_identity);
         if let Some(identity) = &report.observed_identity {
             show_identity(ui, identity);
         }
@@ -565,7 +574,7 @@ fn show_result(
     .flatten()
 }
 
-fn show_current_check(ui: &mut Ui, check: &WriteCurrentCheck) {
+pub(super) fn show_current_check(ui: &mut Ui, check: &WriteCurrentCheck) {
     show_identity(ui, &check.observed_identity);
     match &check.comparison {
         ReadbackOutcome::Matched { .. } => {

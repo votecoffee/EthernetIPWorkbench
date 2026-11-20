@@ -89,6 +89,8 @@ Save the latest write result as JSON from Explore to keep the reviewed identity,
 
 Recheck the current attribute from an Explore write result or a saved receipt. Workbench verifies the recorded device identity before comparing its current bytes with the staged bytes. [Check the current value from a receipt](docs/OPERATIONS.md#check-the-current-value-from-a-receipt)
 
+Open a saved GUI or CLI receipt in **Explore → Saved write receipts** to review the recorded outcome, address, identity and staged bytes offline. [Reopen a write receipt](docs/OPERATIONS.md#reopen-a-write-receipt)
+
 ~~~powershell
 .\target\release\eipmaster-cli.exe discover 127.0.0.1 127.0.0.1
 .\target\release\eipmaster-cli.exe read 127.0.0.1 127.0.0.1 0x01 1 6

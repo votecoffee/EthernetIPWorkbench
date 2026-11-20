@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 mod batch;
 mod class_info;
+mod receipt;
 mod write;
 
 const PRESETS: [(&str, u32, u32); 9] = [
@@ -38,6 +39,8 @@ enum Response {
     WriteResult(Arc<write::Receipt>),
     SavedWriteReceipt(PathBuf),
     CheckedWriteReceipt(Box<WriteCurrentCheck>),
+    OpenedReceiptFile(receipt::Opened),
+    CheckedReceiptFile(Box<WriteCurrentCheck>),
 }
 
 struct ReadReply {
@@ -67,6 +70,7 @@ pub(super) struct Explorer {
     write_result: Option<Arc<write::Receipt>>,
     saved_write_receipt: Option<PathBuf>,
     write_current_check: Option<Box<WriteCurrentCheck>>,
+    receipt_files: receipt::Panel,
 }
 
 impl Default for Explorer {
@@ -92,6 +96,7 @@ impl Default for Explorer {
             write_result: None,
             saved_write_receipt: None,
             write_current_check: None,
+            receipt_files: receipt::Panel::default(),
         }
     }
 }
@@ -145,6 +150,10 @@ impl Explorer {
             }
             Ok(Ok(Response::SavedWriteReceipt(path))) => self.saved_write_receipt = Some(path),
             Ok(Ok(Response::CheckedWriteReceipt(check))) => self.write_current_check = Some(check),
+            Ok(Ok(Response::OpenedReceiptFile(receipt))) => {
+                self.receipt_files.opened = Some(receipt)
+            }
+            Ok(Ok(Response::CheckedReceiptFile(check))) => self.receipt_files.check = Some(check),
             Ok(Err(error)) => self.notice = Some(error),
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.notice = Some("Explore request ended without a response".into())
@@ -478,6 +487,7 @@ impl Device {
             }
         });
         explorer.show_open_write_draft(ui, self.preferences.cip_class3_size);
+        explorer.show_write_receipts(ui);
         if explorer.busy() {
             ui.spinner();
         }

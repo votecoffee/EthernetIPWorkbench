@@ -140,6 +140,12 @@ Use `write-receipt <receipt.json>` to preview a completed GUI or CLI write recei
 
 A later match describes the bytes at the time of that check. An original unconfirmed outcome stays unconfirmed. The check is read-only and the receipt file stays intact.
 
+#### Reopen a write receipt
+
+In **Explore → Saved write receipts**, enter a path to a completed GUI or CLI write receipt and select **Open write receipt**. The panel shows the file path, recorded outcome, completion time when present, endpoint, reviewed identity, and staged bytes. Opening a file is offline.
+
+Select **Check receipt current value** to run the read-only follow-up against the saved endpoint. The check uses the recorded NIC, route, attribute, transport and identity. The panel displays the later comparison alongside the historical outcome.
+
 ### Run all saved reads
 
 In **Explore**, expand **Saved reads**, choose a **Read mode**, and select **Read all saved**. The batch runs on the configured adapter or bridge and NIC in **Device**. The mode starts at **Unconnected sequential** in each new application session.

@@ -475,6 +475,81 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode class3-write-current-matches"]
+    fn explore_reopens_saved_write_receipt_and_checks_the_recorded_endpoint() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[]);
+        device.device = "127.0.0.7".into();
+        device.local = "127.0.0.8".into();
+        let profile = device.snapshot();
+        let path = crate::gui::tests::temporary("saved-workbench-write.json");
+        let document = serde_json::json!({
+            "adapter_or_bridge": "127.0.0.1",
+            "local_ip": "127.0.0.1",
+            "path": {"class": 4, "instance": 154, "attribute": 3},
+            "service": "Set_Attribute_Single",
+            "bytes": 4,
+            "value_hex": "A5 16 2C 93",
+            "class3_size": 504,
+            "large_forward_open": false,
+            "completed_utc": "2026-11-20T12:34:56Z",
+            "result": {
+                "outcome": "unconfirmed",
+                "expected_identity": {"key": [0, 12, 1], "serial": 305419896},
+                "error": "Invalid Class 3 reply data or sequence",
+            }
+        });
+        let receipt = serde_json::to_vec(&document).unwrap();
+        let text = std::str::from_utf8(&receipt).unwrap();
+        settings_file::write_new(&path, text).unwrap();
+        click(&mut device, &ctx, size, "Saved write receipts");
+        click(&mut device, &ctx, size, "Path to a write receipt JSON");
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+            events: vec![egui::Event::Text(path.to_str().unwrap().into())],
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| device.show(ctx, &[]));
+        click(&mut device, &ctx, size, "Open write receipt");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Recorded write outcome · Unconfirmed",
+            "Completed 2026-11-20T12:34:56Z",
+            "Adapter or bridge 127.0.0.1 · Local NIC 127.0.0.1",
+            "Class 0x4 · Instance 0x9A · Attribute 0x3",
+            "Class 3 · 504 bytes requested",
+            "Reviewed identity 0:12:1:305419896",
+            "0000  A5 16 2C 93",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        assert!(!labels.iter().any(|(text, _)| text == "Send reviewed write"));
+        click(&mut device, &ctx, size, "Check receipt current value");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Recorded write outcome · Unconfirmed",
+            "Current value matches the staged bytes",
+            "Current check Forward_Close · confirmed",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        assert_eq!(device.snapshot(), profile);
+        assert_eq!(fs::read(&path).unwrap(), receipt);
+        assert!(device.connection.is_none());
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode class3-write-inspect-gui"]
     fn explore_stages_inspected_bytes_and_rechecks_them_on_apply() {
         let ctx = egui::Context::default();

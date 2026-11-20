@@ -700,3 +700,7 @@ Headless Explore displayed the inspected bytes and copied them into the expected
 The localhost fixture verified offline receipt preview and rejection of malformed receipts without a network session. Follow-up tests covered a matching value after an unconfirmed write, different bytes, a different identity that skipped the attribute read, a rejected unconnected read, routed Class 3 Large Forward_Open, and a matching value with a rejected close. The follow-up sent no write requests and preserved the input receipts byte-for-byte.
 
 Headless Explore kept the original unconfirmed write visible alongside the later match and confirmed close. The pinned OpENer 2.3 adapter matched all 32 staged bytes on a separate identity-checked Class 3 session after an acknowledged write. All 46 prior CLI write-suite JSON reports matched the previous build.
+
+## Reopening write receipts in Explore
+
+A headless Explore session opened a saved unconfirmed receipt while the active profile pointed to a different loopback address. The panel showed the recorded outcome, completion time, endpoint, class and attribute, transport, reviewed identity, and staged bytes. The fixture saw one session after the explicit follow-up action, with an identity read, one attribute read, and confirmed Forward_Close. Explore displayed the match alongside the original unconfirmed outcome. The source receipt stayed byte-for-byte intact and the active profile was preserved. The existing in-session receipt workflow and all 53 CLI JSON reports passed regression checks.

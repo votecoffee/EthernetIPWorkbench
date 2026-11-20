@@ -4,7 +4,7 @@ use super::{
 use crate::model::parse_hex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{fs::File, io::Read, net::Ipv4Addr, path::Path};
+use std::{fmt, fs::File, io::Read, net::Ipv4Addr, path::Path};
 
 const MAX_RECEIPT_BYTES: u64 = 4 * 1024 * 1024;
 
@@ -16,9 +16,9 @@ pub struct SavedWriteReceipt {
     completed_utc: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum OriginalOutcome {
+pub enum SavedWriteOutcome {
     NotSent,
     Acknowledged,
     Rejected,
@@ -26,9 +26,21 @@ enum OriginalOutcome {
     Unconfirmed,
 }
 
+impl fmt::Display for SavedWriteOutcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::NotSent => "Not sent",
+            Self::Acknowledged => "Acknowledged",
+            Self::Rejected => "Rejected by target",
+            Self::RouterError => "Router error · Target outcome unconfirmed",
+            Self::Unconfirmed => "Unconfirmed",
+        })
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct OriginalWrite {
-    outcome: OriginalOutcome,
+    outcome: SavedWriteOutcome,
     expected_identity: IdentityPin,
 }
 
@@ -95,6 +107,26 @@ impl SavedWriteReceipt {
             })
         };
         load().map_err(|error| format!("Load write receipt {} · {error}", path.display()))
+    }
+
+    pub fn request(&self) -> &AttributeWrite {
+        &self.draft.request
+    }
+
+    pub fn class3_size(&self) -> Option<Class3Size> {
+        self.draft.class3_size
+    }
+
+    pub fn expected_identity(&self) -> IdentityPin {
+        self.original.expected_identity
+    }
+
+    pub fn outcome(&self) -> SavedWriteOutcome {
+        self.original.outcome
+    }
+
+    pub fn completed_utc(&self) -> Option<&str> {
+        self.completed_utc.as_deref()
     }
 
     /// Describe the original target, staged bytes and historical outcome.
