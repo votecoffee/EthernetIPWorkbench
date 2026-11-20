@@ -704,3 +704,9 @@ Headless Explore kept the original unconfirmed write visible alongside the later
 ## Reopening write receipts in Explore
 
 A headless Explore session opened a saved unconfirmed receipt while the active profile pointed to a different loopback address. The panel showed the recorded outcome, completion time, endpoint, class and attribute, transport, reviewed identity, and staged bytes. The fixture saw one session after the explicit follow-up action, with an identity read, one attribute read, and confirmed Forward_Close. Explore displayed the match alongside the original unconfirmed outcome. The source receipt stayed byte-for-byte intact and the active profile was preserved. The existing in-session receipt workflow and all 53 CLI JSON reports passed regression checks.
+
+## Exporting current-value checks
+
+The headless Explore tests saved a read-only follow-up from both a reopened receipt and the latest write result. Each file recorded the original unconfirmed outcome and completion time, along with the matched bytes, observed identity and confirmed close. The exported UTC timestamp matched the time already displayed in Explore. The fixture saw no additional session during either save, and the original receipts stayed byte-for-byte intact.
+
+The CLI suite validated the UTC field for matched, mismatched, skipped and rejected comparisons, including a rejected Class 3 close. All 53 reports matched the preceding build after excluding the six newly added check timestamps.

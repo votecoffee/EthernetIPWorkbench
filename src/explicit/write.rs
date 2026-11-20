@@ -30,6 +30,7 @@ pub struct WriteInspection {
 
 #[derive(Debug, Serialize)]
 pub struct WriteCurrentCheck {
+    pub checked_utc: String,
     pub expected_identity: IdentityPin,
     pub observed_identity: Identity,
     pub identity_matches: bool,
@@ -359,6 +360,7 @@ impl AttributeWrite {
                 compare_value(current, &self.value)
             });
         Ok(WriteCurrentCheck {
+            checked_utc: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             expected_identity,
             identity_matches: inspected.identity.pin() == expected_identity,
             observed_identity: inspected.identity,

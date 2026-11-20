@@ -1,5 +1,6 @@
 use super::{
     AttributeWrite, Class3Size, IdentityPin, ReadPath, Route, WriteCurrentCheck, WriteDraft,
+    WriteOutcome, WriteReport,
 };
 use crate::model::parse_hex;
 use serde::{Deserialize, Serialize};
@@ -38,6 +39,18 @@ impl fmt::Display for SavedWriteOutcome {
     }
 }
 
+impl From<&WriteOutcome> for SavedWriteOutcome {
+    fn from(outcome: &WriteOutcome) -> Self {
+        match outcome {
+            WriteOutcome::NotSent { .. } => Self::NotSent,
+            WriteOutcome::Acknowledged { .. } => Self::Acknowledged,
+            WriteOutcome::Rejected { .. } => Self::Rejected,
+            WriteOutcome::RouterError { .. } => Self::RouterError,
+            WriteOutcome::Unconfirmed { .. } => Self::Unconfirmed,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct OriginalWrite {
     outcome: SavedWriteOutcome,
@@ -60,6 +73,23 @@ struct Document {
 }
 
 impl SavedWriteReceipt {
+    /// Build the follow-up reference from a completed write still in memory.
+    pub fn from_report(draft: &WriteDraft, report: &WriteReport, completed_utc: String) -> Self {
+        Self {
+            draft: WriteDraft {
+                request: draft.request.clone(),
+                class3_size: draft.class3_size,
+                expected_current: None,
+                readback: false,
+            },
+            original: OriginalWrite {
+                outcome: (&report.outcome).into(),
+                expected_identity: report.expected_identity,
+            },
+            completed_utc: Some(completed_utc),
+        }
+    }
+
     /// Validate a completed GUI or CLI write receipt without connecting to the recorded endpoint.
     pub fn load(path: &Path) -> Result<Self, String> {
         let load = || -> Result<Self, String> {
@@ -136,6 +166,13 @@ impl SavedWriteReceipt {
         if let Some(time) = &self.completed_utc {
             report["completed_utc"] = json!(time);
         }
+        report
+    }
+
+    /// Describe a later check alongside the reference to the original write.
+    pub fn follow_up_document(&self, check: &WriteCurrentCheck) -> Value {
+        let mut report = self.report_document();
+        report["result"] = json!(check);
         report
     }
 

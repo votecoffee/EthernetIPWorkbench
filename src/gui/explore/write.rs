@@ -1,5 +1,5 @@
 use super::*;
-use assembly_scanner::explicit::{ReadbackOutcome, WriteDraft};
+use assembly_scanner::explicit::{ReadbackOutcome, SavedWriteReceipt, WriteDraft};
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::json;
 
@@ -49,6 +49,7 @@ enum Action {
 enum ReceiptAction {
     Save,
     CheckCurrent,
+    SaveCheck(Arc<WriteCurrentCheck>),
 }
 
 impl Draft {
@@ -164,7 +165,7 @@ impl Explorer {
                 ui,
                 receipt,
                 self.saved_write_receipt.as_deref(),
-                self.write_current_check.as_deref(),
+                self.write_current_check.as_ref(),
                 !self.busy() && self.write_draft.is_none(),
             )
         {
@@ -180,7 +181,18 @@ impl Explorer {
                         let check = receipt
                             .draft
                             .check_current(receipt.report.expected_identity)?;
-                        Ok(Response::CheckedWriteReceipt(Box::new(check)))
+                        Ok(Response::CheckedWriteReceipt(Arc::new(check)))
+                    });
+                }
+                ReceiptAction::SaveCheck(check) => {
+                    let directory = PathBuf::from(directory);
+                    self.start(move || {
+                        let original = SavedWriteReceipt::from_report(
+                            &receipt.draft,
+                            &receipt.report,
+                            receipt.completed_utc(),
+                        );
+                        receipt::save_check(&directory, &original, &check, receipt::Source::Current)
                     });
                 }
             }
@@ -492,7 +504,7 @@ fn show_result(
     ui: &mut Ui,
     receipt: &Receipt,
     saved: Option<&Path>,
-    current: Option<&WriteCurrentCheck>,
+    current: Option<&receipt::FollowUp>,
     ready: bool,
 ) -> Option<ReceiptAction> {
     let report = &receipt.report;
@@ -525,7 +537,7 @@ fn show_result(
         }
     }
     ui.collapsing("Attribute write result", |ui| {
-        let action = ui
+        let mut action = ui
             .horizontal_wrapped(|ui| {
                 if ui
                     .add_enabled(ready, egui::Button::new("Save write receipt JSON"))
@@ -545,8 +557,10 @@ fn show_result(
         if let Some(path) = saved {
             ui.small(format!("Saved {}", path.display()));
         }
-        if let Some(check) = current {
-            show_current_check(ui, check);
+        if let Some(check) = current
+            && let Some(save) = check.show(ui, ready, "Save current check JSON")
+        {
+            action = Some(ReceiptAction::SaveCheck(save));
         }
         ui.small(format!("Completed {}", receipt.completed_utc()));
         show_address(ui, request);
@@ -575,6 +589,7 @@ fn show_result(
 }
 
 pub(super) fn show_current_check(ui: &mut Ui, check: &WriteCurrentCheck) {
+    ui.small(format!("Checked {}", check.checked_utc));
     show_identity(ui, &check.observed_identity);
     match &check.comparison {
         ReadbackOutcome::Matched { .. } => {

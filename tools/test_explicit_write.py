@@ -1,6 +1,7 @@
 """Verify reviewed explicit attribute writes on localhost."""
 
 import argparse
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import socket
@@ -167,6 +168,8 @@ def check_write_receipts(exe, root):
         assert report["value_hex"] == VALUE and source.read_bytes() == initial
         result = report["result"]
         assert result["identity_matches"] == (state != "skipped")
+        assert result["checked_utc"].endswith("Z")
+        assert datetime.fromisoformat(result["checked_utc"]).tzinfo == timezone.utc
         assert result["observed_identity"]["serial"] == 305419896
         assert result["comparison"]["outcome"] == state and result["comparison"].get("data_hex") == hex_value
         assert peer["registrations"] == 1 and peer["unregistered"] and "writes" not in peer

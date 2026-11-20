@@ -5,7 +5,7 @@ use assembly_scanner::explicit::{SavedWriteOutcome, SavedWriteReceipt};
 pub(super) struct Panel {
     path: String,
     pub(super) opened: Option<Opened>,
-    pub(super) check: Option<Box<WriteCurrentCheck>>,
+    pub(super) check: Option<FollowUp>,
 }
 
 pub(super) struct Opened {
@@ -13,13 +13,62 @@ pub(super) struct Opened {
     receipt: Arc<SavedWriteReceipt>,
 }
 
+pub(super) enum Source {
+    Current,
+    Reopened,
+}
+
+pub(super) struct FollowUp {
+    check: Arc<WriteCurrentCheck>,
+    pub(super) saved_path: Option<PathBuf>,
+}
+
+impl FollowUp {
+    pub(super) fn new(check: Arc<WriteCurrentCheck>) -> Self {
+        Self {
+            check,
+            saved_path: None,
+        }
+    }
+
+    pub(super) fn show(
+        &self,
+        ui: &mut Ui,
+        ready: bool,
+        label: &str,
+    ) -> Option<Arc<WriteCurrentCheck>> {
+        write::show_current_check(ui, &self.check);
+        let save = ui
+            .add_enabled(ready, egui::Button::new(label))
+            .on_hover_text("Save the follow-up to the output directory in Logging.")
+            .clicked();
+        if let Some(path) = &self.saved_path {
+            ui.small(format!("Saved current check {}", path.display()));
+        }
+        save.then(|| Arc::clone(&self.check))
+    }
+}
+
+pub(super) fn save_check(
+    directory: &Path,
+    receipt: &SavedWriteReceipt,
+    result: &WriteCurrentCheck,
+    source: Source,
+) -> Result<Response, String> {
+    let text = serde_json::to_string_pretty(&receipt.follow_up_document(result))
+        .map_err(|error| error.to_string())?;
+    save_json_report(directory, "write-current-check", &text)
+        .map(|path| Response::SavedWriteCheck(source, path))
+}
+
 enum Action {
     Open,
     Check,
+    SaveCheck(Arc<WriteCurrentCheck>),
 }
 
 impl Explorer {
-    pub(super) fn show_write_receipts(&mut self, ui: &mut Ui) {
+    pub(super) fn show_write_receipts(&mut self, ui: &mut Ui, directory: &str) {
         let ready = !self.busy() && self.write_draft.is_none();
         let panel = &mut self.receipt_files;
         let action = ui
@@ -43,8 +92,15 @@ impl Explorer {
                     panel.check = None;
                     self.start(move || {
                         let check = receipt.check_current()?;
-                        Ok(Response::CheckedReceiptFile(Box::new(check)))
+                        Ok(Response::CheckedReceiptFile(Arc::new(check)))
                     });
+                }
+            }
+            Some(Action::SaveCheck(check)) => {
+                if let Some(opened) = &panel.opened {
+                    let receipt = Arc::clone(&opened.receipt);
+                    let directory = PathBuf::from(directory);
+                    self.start(move || save_check(&directory, &receipt, &check, Source::Reopened));
                 }
             }
             None => {}
@@ -96,8 +152,10 @@ impl Panel {
                 "Read the recorded device and compare its current attribute with the staged bytes.",
             )
             .clicked();
-        if let Some(result) = &self.check {
-            write::show_current_check(ui, result);
+        if let Some(result) = &self.check
+            && let Some(save) = result.show(ui, ready, "Save receipt check JSON")
+        {
+            return Some(Action::SaveCheck(save));
         }
         check.then_some(Action::Check)
     }

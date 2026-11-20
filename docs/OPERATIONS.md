@@ -146,6 +146,12 @@ In **Explore → Saved write receipts**, enter a path to a completed GUI or CLI 
 
 Select **Check receipt current value** to run the read-only follow-up against the saved endpoint. The check uses the recorded NIC, route, attribute, transport and identity. The panel displays the later comparison alongside the historical outcome.
 
+#### Save a current-value check
+
+Set the output directory in **Logging**. After a check returns, select **Save current check JSON** under **Attribute write result** or **Save receipt check JSON** under **Saved write receipts**. Each export creates a new `write-current-check-*.json` file from the displayed result.
+
+The GUI export and `write-receipt --check-current` stdout use the same JSON fields. `original_write` gives the recorded outcome and reviewed identity. `completed_utc` records the original write completion when available. `result.checked_utc` records when the follow-up finished, including any Class 3 close. The observed identity, byte comparison and any close outcome remain under `result`. An unconfirmed original write retains that status even if the later bytes match.
+
 ### Run all saved reads
 
 In **Explore**, expand **Saved reads**, choose a **Read mode**, and select **Read all saved**. The batch runs on the configured adapter or bridge and NIC in **Device**. The mode starts at **Unconnected sequential** in each new application session.

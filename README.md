@@ -91,6 +91,8 @@ Recheck the current attribute from an Explore write result or a saved receipt. W
 
 Open a saved GUI or CLI receipt in **Explore → Saved write receipts** to review the recorded outcome, address, identity and staged bytes offline. [Reopen a write receipt](docs/OPERATIONS.md#reopen-a-write-receipt)
 
+Save a completed follow-up as timestamped JSON from either write result view. The export includes the historical write outcome and the later comparison. [Save a current-value check](docs/OPERATIONS.md#save-a-current-value-check)
+
 ~~~powershell
 .\target\release\eipmaster-cli.exe discover 127.0.0.1 127.0.0.1
 .\target\release\eipmaster-cli.exe read 127.0.0.1 127.0.0.1 0x01 1 6

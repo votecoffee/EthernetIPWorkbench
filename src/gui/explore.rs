@@ -38,9 +38,10 @@ enum Response {
     WriteInspection(Box<WriteInspection>),
     WriteResult(Arc<write::Receipt>),
     SavedWriteReceipt(PathBuf),
-    CheckedWriteReceipt(Box<WriteCurrentCheck>),
+    CheckedWriteReceipt(Arc<WriteCurrentCheck>),
     OpenedReceiptFile(receipt::Opened),
-    CheckedReceiptFile(Box<WriteCurrentCheck>),
+    CheckedReceiptFile(Arc<WriteCurrentCheck>),
+    SavedWriteCheck(receipt::Source, PathBuf),
 }
 
 struct ReadReply {
@@ -69,7 +70,7 @@ pub(super) struct Explorer {
     write_draft_path: String,
     write_result: Option<Arc<write::Receipt>>,
     saved_write_receipt: Option<PathBuf>,
-    write_current_check: Option<Box<WriteCurrentCheck>>,
+    write_current_check: Option<receipt::FollowUp>,
     receipt_files: receipt::Panel,
 }
 
@@ -149,11 +150,24 @@ impl Explorer {
                 self.write_current_check = None;
             }
             Ok(Ok(Response::SavedWriteReceipt(path))) => self.saved_write_receipt = Some(path),
-            Ok(Ok(Response::CheckedWriteReceipt(check))) => self.write_current_check = Some(check),
+            Ok(Ok(Response::CheckedWriteReceipt(check))) => {
+                self.write_current_check = Some(receipt::FollowUp::new(check));
+            }
             Ok(Ok(Response::OpenedReceiptFile(receipt))) => {
                 self.receipt_files.opened = Some(receipt)
             }
-            Ok(Ok(Response::CheckedReceiptFile(check))) => self.receipt_files.check = Some(check),
+            Ok(Ok(Response::CheckedReceiptFile(check))) => {
+                self.receipt_files.check = Some(receipt::FollowUp::new(check));
+            }
+            Ok(Ok(Response::SavedWriteCheck(source, path))) => {
+                let check = match source {
+                    receipt::Source::Current => &mut self.write_current_check,
+                    receipt::Source::Reopened => &mut self.receipt_files.check,
+                };
+                if let Some(check) = check {
+                    check.saved_path = Some(path);
+                }
+            }
             Ok(Err(error)) => self.notice = Some(error),
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.notice = Some("Explore request ended without a response".into())
@@ -487,7 +501,7 @@ impl Device {
             }
         });
         explorer.show_open_write_draft(ui, self.preferences.cip_class3_size);
-        explorer.show_write_receipts(ui);
+        explorer.show_write_receipts(ui, self.preferences.directory.trim());
         if explorer.busy() {
             ui.spinner();
         }

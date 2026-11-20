@@ -483,6 +483,8 @@ mod tests {
         let mut device = explore_device(&[]);
         device.device = "127.0.0.7".into();
         device.local = "127.0.0.8".into();
+        let directory = crate::gui::tests::temporary("saved-write-check");
+        device.preferences.directory = directory.to_str().unwrap().into();
         let profile = device.snapshot();
         let path = crate::gui::tests::temporary("saved-workbench-write.json");
         let document = serde_json::json!({
@@ -530,6 +532,11 @@ mod tests {
             );
         }
         assert!(!labels.iter().any(|(text, _)| text == "Send reviewed write"));
+        assert!(
+            !labels
+                .iter()
+                .any(|(text, _)| text == "Save receipt check JSON")
+        );
         click(&mut device, &ctx, size, "Check receipt current value");
         wait_for_explore(&mut device);
         let labels = draw(&mut device, &ctx, size);
@@ -543,10 +550,15 @@ mod tests {
                 "{expected}"
             );
         }
+        click(&mut device, &ctx, size, "Save receipt check JSON");
+        wait_for_explore(&mut device);
+        let exported = assert_saved_write_check(&directory, &labels, "2026-11-20T12:34:56Z");
         assert_eq!(device.snapshot(), profile);
         assert_eq!(fs::read(&path).unwrap(), receipt);
         assert!(device.connection.is_none());
         fs::remove_file(path).unwrap();
+        fs::remove_file(exported).unwrap();
+        fs::remove_dir(directory).unwrap();
     }
 
     #[test]
@@ -744,6 +756,11 @@ mod tests {
                 );
             }
             assert!(labels.iter().any(|(text, _)| text.starts_with(label)));
+            click(&mut device, &ctx, size, "Save current check JSON");
+            wait_for_explore(&mut device);
+            let exported = assert_saved_write_check(&directory, &labels, timestamp);
+            assert_eq!(fs::read_to_string(&file).unwrap(), text);
+            fs::remove_file(exported).unwrap();
         }
 
         device.preferences.directory = file.to_str().unwrap().to_owned();
@@ -762,6 +779,44 @@ mod tests {
         device.preferences.directory = configured;
         assert_eq!(device.snapshot(), saved);
         assert!(device.connection.is_none());
+    }
+
+    fn assert_saved_write_check(
+        directory: &Path,
+        labels: &[(String, egui::Rect)],
+        completed_utc: &str,
+    ) -> PathBuf {
+        let mut files = fs::read_dir(directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                path.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("write-current-check-")
+            });
+        let path = files.next().unwrap();
+        assert!(files.next().is_none());
+        let report: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(report["completed_utc"], completed_utc);
+        assert_eq!(report["original_write"]["outcome"], "unconfirmed");
+        assert_eq!(report["value_hex"], "A5 16 2C 93");
+        let result = &report["result"];
+        let time = result["checked_utc"].as_str().unwrap();
+        assert!(chrono::DateTime::parse_from_rfc3339(time).is_ok() && time.ends_with('Z'));
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text == &format!("Checked {time}"))
+        );
+        assert_eq!(result["identity_matches"], true);
+        assert_eq!(result["observed_identity"]["serial"], 305419896);
+        assert_eq!(
+            result["comparison"],
+            serde_json::json!({"outcome": "matched", "data_hex": "A5 16 2C 93"})
+        );
+        assert_eq!(result["forward_close"]["outcome"], "confirmed");
+        path
     }
 
     #[test]

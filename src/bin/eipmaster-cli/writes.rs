@@ -48,14 +48,14 @@ pub(super) fn receipt(path: &Path, options: &[OsString]) -> Result<bool, String>
         _ => return Err(USAGE.into()),
     };
     let receipt = SavedWriteReceipt::load(path)?;
-    let mut report = receipt.report_document();
-    let (success, result) = if check {
+    let (success, report) = if check {
         let current = receipt.check_current()?;
-        (current.is_success(), json!(current))
+        (current.is_success(), receipt.follow_up_document(&current))
     } else {
-        (true, json!({"outcome": "preview"}))
+        let mut report = receipt.report_document();
+        report["result"] = json!({"outcome": "preview"});
+        (true, report)
     };
-    report["result"] = result;
     println!(
         "{}",
         serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
