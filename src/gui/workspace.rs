@@ -199,6 +199,49 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode class-info"]
+    fn explore_reads_class_details_without_changing_the_saved_requests() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[("Serial through bridge", 6, Some("1/3"))]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "Read class info");
+        assert!(device.explorer.busy());
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Class 0x1 details",
+            "Route 1/3",
+            "Class revision · Reply",
+            "Optional services · CIP rejection",
+            "Maximum instance attribute ID · Reply",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(
+            &mut device,
+            &ctx,
+            size,
+            "Optional instance attributes · Reply",
+        );
+        let labels = draw(&mut device, &ctx, size);
+        for expected in ["[0x0003, 0x0100]", "0000  02 00 03 00 00 01"] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        assert_eq!(device.snapshot(), saved);
+        assert!(device.connection.is_none());
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode saved-reads on localhost"]
     fn runs_and_displays_saved_reads_from_explore_headlessly() {
         let ctx = egui::Context::default();

@@ -1,5 +1,5 @@
 use super::{
-    Class3Size, ConnectedPacketBatch, ConnectedReadBatch, EipError, ReadPath, Route,
+    Class3Size, ClassInfo, ConnectedPacketBatch, ConnectedReadBatch, EipError, ReadPath, Route,
     RoutedReadError, SavedReadBatch, SavedReadOutcome, SavedReadReport,
 };
 use crate::model::{Selection, hex};
@@ -60,6 +60,17 @@ impl ConnectedReadBatch {
             Some(&self.forward_close),
             None,
         )
+    }
+}
+
+impl ClassInfo {
+    pub fn report_json(&self) -> Result<String, String> {
+        let mut document = self.batch.report_document()?;
+        document["class"] = json!(self.class);
+        if let Some(route) = &self.route {
+            document["route"] = json!(route);
+        }
+        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
     }
 }
 

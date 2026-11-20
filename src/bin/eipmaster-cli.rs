@@ -15,9 +15,10 @@ use assembly_scanner::{
 use serde::Serialize;
 use std::{
     env,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fs::{self, OpenOptions},
     io::Write,
+    net::Ipv4Addr,
     path::{Path, PathBuf},
     process::ExitCode,
     sync::atomic::Ordering::Relaxed,
@@ -42,6 +43,7 @@ Usage:
   eipmaster-cli identity <adapter-or-bridge-ipv4> <local-ipv4> [--route <port/link/...>] [--eds <vendor.eds>]
   eipmaster-cli discover <local-ipv4> [<destination-ipv4>]
   eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
+  eipmaster-cli class-info <adapter-or-bridge-ipv4> <local-ipv4> <class> [--route <port/link/...>]
   eipmaster-cli read-saved <settings.toml> <name>
   eipmaster-cli read-saved-all <settings.toml> [--multiple-service-packet] [--connected]
   eipmaster-cli capture <settings.toml> <new-output-dir> <seconds> <vendor:type:product[:serial]>
@@ -112,19 +114,7 @@ fn run(args: &[OsString]) -> Result<bool, String> {
             attribute,
             options @ ..,
         ] if command == "read" => {
-            let route: Option<Route> = match options {
-                [] => None,
-                [option, route] if option == "--route" => Some(route.to_string_lossy().parse()?),
-                _ => return Err(USAGE.into()),
-            };
-            let adapter = adapter
-                .to_string_lossy()
-                .parse()
-                .map_err(|_| "Invalid adapter IPv4 address")?;
-            let local = local
-                .to_string_lossy()
-                .parse()
-                .map_err(|_| "Invalid local IPv4 address")?;
+            let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;
             let path = ReadPath {
                 class: explicit::parse_id(&class.to_string_lossy())?,
                 instance: explicit::parse_id(&instance.to_string_lossy())?,
@@ -135,6 +125,17 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                 },
             };
             reads::single(adapter, local, path, route.as_ref(), None)
+        }
+        [command, adapter, local, class, options @ ..] if command == "class-info" => {
+            let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;
+            let report = explicit::read_class_info(
+                adapter,
+                local,
+                explicit::parse_id(&class.to_string_lossy())?,
+                route,
+            )?;
+            println!("{}", report.report_json()?);
+            Ok(report.is_usable())
         }
         [command, profile, name] if command == "read-saved" => {
             let (settings, app) = settings_file::load_profile(Path::new(profile))?;
@@ -349,6 +350,27 @@ impl From<ExpectedIdentity> for ScannerIdentity {
             None => Self::Model(expected.key),
         }
     }
+}
+
+fn explicit_endpoint(
+    adapter: &OsStr,
+    local: &OsStr,
+    options: &[OsString],
+) -> Result<(Ipv4Addr, Ipv4Addr, Option<Route>), String> {
+    let route = match options {
+        [] => None,
+        [option, route] if option == "--route" => Some(route.to_string_lossy().parse()?),
+        _ => return Err(USAGE.into()),
+    };
+    let adapter = adapter
+        .to_string_lossy()
+        .parse()
+        .map_err(|_| "Invalid adapter IPv4 address")?;
+    let local = local
+        .to_string_lossy()
+        .parse()
+        .map_err(|_| "Invalid local IPv4 address")?;
+    Ok((adapter, local, route))
 }
 
 fn parse_expected_identity(value: &str) -> Result<ExpectedIdentity, String> {

@@ -46,6 +46,17 @@ selection = { offset = 2, kind = "I32", big_endian = true, swap = "word_order" }
 
 `read-saved` returns the selection, the decoded value as text, and the raw `data_hex`. A successful CIP read with a short reply still returns its bytes and a successful exit code. The JSON includes `decoded: null` and a separate `decode_error`. With no selection the existing standard attribute descriptions still apply.
 
+### Inspect a CIP class
+
+In **Explore**, enter a class ID or select a common attribute to fill in its class. Set **CIP route** when reading through a bridge, then select **Read class info**. The inspection queries class instance zero with seven Get_Attribute_Single requests on one TCP session. The results show the revision, maximum instance ID, instance count, optional instance attributes and services, and maximum attribute IDs. Maximum IDs describe bounds. Use the device manual for the implemented instance and attribute addresses. [Common class attribute formats](https://assets.danfoss.com/documents/366937/BC361183001812en-000201.pdf) · [EtherNet/IP class attribute example](https://product-help.schneider-electric.com/Machine%20Expert/V1.1/en/tm3bcprg/tm3bcprg/TM3_Ethernet_Bus_Coupler/TM3_Ethernet_Bus_Coupler-6.htm)
+
+~~~powershell
+.\target\release\eipmaster-cli.exe class-info 127.0.0.1 127.0.0.1 0x01
+.\target\release\eipmaster-cli.exe class-info 192.0.2.10 192.0.2.11 0x04 --route 1/3
+~~~
+
+The routed command takes the first bridge's address. The JSON keeps each reply's raw bytes, decoded value or decode error, and CIP status. The inspection returns exit code 0 when at least one field decodes and the only rejections are target statuses `0x08` or `0x14` for unsupported services or attributes. A router rejection, exchange failure, undecodable reply, or lack of a decoded value returns exit code 1.
+
 ### Run all saved reads
 
 In **Explore**, expand **Saved reads**, choose a **Read mode**, and select **Read all saved**. The batch runs on the configured adapter or bridge and NIC in **Device**. The mode starts at **Unconnected sequential** in each new application session.

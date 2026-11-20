@@ -251,6 +251,25 @@ def check_multicast(cli, adapter, root, identity, seconds):
     print(f"OpENer selected multicast group {group}:{port}.")
 
 
+def check_class_info(cli, adapter, root):
+    root.mkdir()
+    with run_adapter(adapter, root):
+        result = subprocess.run([cli, "class-info", ADAPTER, "127.0.0.1", "0x04"],
+                                capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+    (root / "result.json").write_bytes(result.stdout)
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    report = json.loads(result.stdout)
+    assert report["class"] == 4
+    replies = report["results"]
+    assert [entry["path"]["attribute"] for entry in replies] == list(range(1, 8))
+    assert all(entry["path"]["instance"] == 0 for entry in replies)
+    assert int(replies[1]["decoded"]) >= int(replies[2]["decoded"]) > 0
+    for entry in replies[3:5]:
+        if entry["status"] == "cip_rejected":
+            assert entry["general_status"] in (0x08, 0x14)
+    print("OpENer reported Assembly class metadata and separate optional attribute outcomes.")
+
+
 def check_connected_reads(cli, adapter, root, identity):
     root.mkdir()
     source = PROFILE.read_text(encoding="utf-8")
@@ -477,6 +496,7 @@ def main():
     check_capture(report, args.seconds)
     if args.explore:
         check_explore(cli, adapter, root / "extended", identity, args.seconds)
+        check_class_info(cli, adapter, root / "class-info")
         check_connected_reads(cli, adapter, root / "connected-reads", identity)
     if args.multicast:
         check_multicast(cli, adapter, root / "multicast", identity, args.seconds)

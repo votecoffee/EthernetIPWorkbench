@@ -75,9 +75,12 @@ For an explicit read, choose a common attribute or enter a class, instance and a
 
 For a documented field within a reply, enable **Decode reply field** and enter its offset, type, and byte order. Save the request to reuse that selection in Explore or with `read-saved`. The result retains the complete raw reply.
 
+Select **Read class info** beside the class field to inspect its revision, instance limits, and optional attributes and services advertised by the device. Expand a result for raw bytes or CIP status. The CLI `class-info` command provides the same inspection as JSON. [Class inspection](docs/OPERATIONS.md#inspect-a-cip-class)
+
 ~~~powershell
 .\target\release\eipmaster-cli.exe discover 127.0.0.1 127.0.0.1
 .\target\release\eipmaster-cli.exe read 127.0.0.1 127.0.0.1 0x01 1 6
+.\target\release\eipmaster-cli.exe class-info 127.0.0.1 127.0.0.1 0x01
 .\target\release\eipmaster-cli.exe read 192.0.2.10 192.0.2.11 0x01 1 6 --route 1/3
 .\target\release\eipmaster-cli.exe read-saved .local\device.toml "Serial number"
 .\target\release\eipmaster-cli.exe read-saved-all .local\device.toml

@@ -156,7 +156,7 @@ pub(super) fn save_report(report: &SavedReadReport, directory: &Path) -> Result<
     Ok(path)
 }
 
-fn show_result(ui: &mut Ui, result: &SavedReadResult) {
+pub(super) fn show_result(ui: &mut Ui, result: &SavedReadResult) {
     let status = match &result.outcome {
         SavedReadOutcome::Reply(_) => "Reply",
         SavedReadOutcome::Rejected(_) => "CIP rejection",

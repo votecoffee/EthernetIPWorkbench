@@ -18,6 +18,7 @@ use std::{
     time::{Duration, Instant},
 };
 mod batch;
+mod class_info;
 mod connected;
 mod multiple;
 mod report;
@@ -26,6 +27,7 @@ pub use batch::{
     SavedReadBatch, SavedReadMode, SavedReadOutcome, SavedReadReport, SavedReadResult,
     run_saved_reads, run_saved_reads_with_class3_size, run_saved_reads_with_mode,
 };
+pub use class_info::{ClassInfo, read_class_info};
 pub use connected::{
     Class3Size, ConnectedPacketBatch, ConnectedReadBatch, run_saved_reads_connected,
     run_saved_reads_connected_packet,
@@ -86,6 +88,11 @@ impl ReadPath {
         selection: Option<Selection>,
     ) -> std::result::Result<Option<String>, String> {
         let Some(selection) = selection else {
+            if self.instance == 0
+                && let Some(attribute @ 1..=7) = self.attribute
+            {
+                return class_info::decode(attribute, bytes).map(Some);
+            }
             return Ok(self.describe(bytes));
         };
         let width = selection.validated_width()?;

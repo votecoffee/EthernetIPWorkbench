@@ -214,6 +214,24 @@ def identity_attribute_reply(request, attrs):
     return bytes.fromhex("8E 00 00 00") + attrs[attribute]
 
 
+def class_info_reply(cip, mode, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    assert len(message) == 8 and message[:7] == bytes.fromhex("0E 03 20 01 24 00 30")
+    attribute = message[7]
+    assert 1 <= attribute <= 7 and route in (b"", b"\x01\x03", b"\x01\x07")
+    report.setdefault("class_attributes", []).append(attribute)
+    report["route_hex"] = route.hex()
+    if route == b"\x01\x07":
+        return bytes.fromhex("D2 00 01 01 11 03")
+    if route and attribute == 5:
+        return bytes.fromhex("8E 00 14 01 02 03")
+    if mode == "class-info-malformed" and attribute == 4:
+        return bytes.fromhex("8E 00 00 00 02 00 03 00")
+    values = ("02 00", "01 00", "01 00", "02 00 03 00 00 01",
+              "02 00 01 00 0E 00", "07 00", "00 01")
+    return bytes.fromhex("8E 00 00 00 " + values[attribute - 1])
+
+
 def multiple_service_reply(cip, attrs):
     assert cip[:6] == bytes.fromhex("0A 02 20 02 24 01")
     data = cip[6:]
@@ -277,6 +295,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     connected_packet = connected and "packet" in mode
     connected_large = connected and "large" in mode
     connected_size = 4002 if connected_large else 511 if mode == "class3-sized" else 504
+    report_explicit = connected or mode in ("saved-reads", "multiple-service") or mode.startswith("class-info")
     multicast = mode.startswith("multicast")
     udp_mode = "stall" if mode == "stall-close-reject" else mode
     adapter_ip = tcp.getsockname()[0]
@@ -311,12 +330,12 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
             assert status == options == 0
             if cmd == 0x65:
                 assert handle == 0 and request == b"\x01\x00\x00\x00"
-                if mode in ("saved-reads", "multiple-service") or connected:
+                if report_explicit:
                     report["registrations"] = report.get("registrations", 0) + 1
                 response = request
             elif cmd == 0x66:
                 assert handle == SESSION
-                if mode in ("saved-reads", "multiple-service") or connected:
+                if report_explicit:
                     report["unregistered"] = True
                 break
             elif cmd == 0x70 and connected:
@@ -341,6 +360,11 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                 items = rr_items(request)
                 cip = items[0xB2]
                 service, words = cip[:2]
+                if mode.startswith("class-info"):
+                    assert set(items) == {0, 0xB2} and not items[0]
+                    response = rr_reply(class_info_reply(cip, mode, report))
+                    tcp.sendall(struct.pack("<HHII8sI", cmd, len(response), SESSION, 0, ctx, 0) + response)
+                    continue
                 if mode in ("saved-reads", "multiple-service"):
                     report.setdefault("explicit_requests", []).append(cip.hex())
                 if mode == "multiple-service":
@@ -530,6 +554,7 @@ def main():
         "slow-input", "pause-different-api",
         "identity-then-owner",
         "explicit", "saved-reads", "multiple-service", "large-keyed", "routed", "variable-input", "large-variable-input",
+        "class-info", "class-info-malformed",
         "class3-packet", "class3-packet-close-reject",
         "class3-routed", "class3-routed-open-reject", "class3-routed-packet", "class3-routed-packet-unsupported",
         "class3-sized", "class3-large-packet", "class3-routed-large-packet", "class3-large-open-reject",

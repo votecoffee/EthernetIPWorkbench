@@ -130,6 +130,52 @@ def discover(exe):
     return report
 
 
+def check_class_info(exe, root):
+    for case, mode, route, exit_code in (
+        ("direct", "class-info", None, 0),
+        ("routed", "class-info", "1/3", 0),
+        ("router-rejected", "class-info", "1/7", 1),
+        ("bad-list", "class-info-malformed", None, 1),
+    ):
+        command = [exe, "class-info", LOCAL, LOCAL, "0x01"]
+        if route:
+            command.extend(("--route", route))
+        result, peer = with_adapter(root, f"class-info-{case}", command, mode)
+        assert result.returncode == exit_code and not result.stderr, (result.stdout, result.stderr)
+        report = json.loads(result.stdout)
+        (root / f"class-info-{case}.json").write_text(result.stdout, encoding="utf-8")
+        assert report["class"] == 1 and report.get("route") == route
+        replies = report["results"]
+        assert [row["path"] for row in replies] == [
+            {"class": 1, "instance": 0, "attribute": idx} for idx in range(1, 8)
+        ]
+        assert peer["class_attributes"] == list(range(1, 8))
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        if case == "router-rejected":
+            assert peer["route_hex"] == "0107"
+            assert all(row["reply_from"] == "router" and row["extended_status"] == [0x0311]
+                       and row["status"] == "cip_rejected" for row in replies)
+            continue
+        assert [replies[i]["decoded"] for i in (0, 1, 2, 5, 6)] == ["2", "1", "1", "7", "256"]
+        if case == "bad-list":
+            assert replies[3]["status"] == "success"
+            assert replies[3]["decoded"] is None and replies[3]["data_hex"] == "02 00 03 00"
+            assert "declares 2 IDs" in replies[3]["decode_error"]
+        else:
+            assert replies[3]["decoded"] == "[0x0003, 0x0100]"
+        if route:
+            assert peer["route_hex"] == "0103"
+            assert all(row["bridge"] == LOCAL and row["reply_from"] == "target" for row in replies)
+            assert replies[4]["status"] == "cip_rejected" and replies[4]["general_status"] == 0x14
+            assert replies[4]["extended_status"] == [0x0302]
+        else:
+            assert replies[4]["decoded"] == "[0x0001, 0x000E]"
+
+    result = subprocess.run([exe, "class-info", LOCAL, LOCAL, "0"], capture_output=True,
+                            text=True, timeout=4, creationflags=NO_WINDOW)
+    assert result.returncode == 1 and "CIP class and attribute IDs must be nonzero" in result.stderr
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
@@ -322,6 +368,7 @@ def main():
     assert rejected.returncode == 1
     failure = json.loads(rejected.stdout)
     assert failure["general_status"] == 0x14 and failure["extended_status"] == [0x0302]
+    check_class_info(exe, root)
 
     saved = root / "saved.toml"
     source = PROFILE.read_text(encoding="utf-8")

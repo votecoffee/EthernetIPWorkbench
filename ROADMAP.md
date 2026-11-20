@@ -49,6 +49,7 @@ The C# examples demonstrate HTTP and shared-memory latest values, retained HTTP 
 
 - [Verify a second documented adapter family](https://github.com/votecoffee/EthernetIPWorkbench/issues/7). The [OpENer software adapter check](VERIFICATION.md#opener-compatibility) covers the upstream EDS, identity, assembly decoding, and sustained unicast input-only capture. Physical device acceptance remains separate.
 - Discovery, the direct CIP read browser, saved read requests and Large Forward_Open have localhost coverage. Exact and compatible format 4 keys have independent OpENer software coverage. Verify them against documented physical adapters.
+- Explore and `class-info` inspect the selected class's revision, instance bounds and advertised optional attributes and services through direct or routed reads. The reports preserve optional-field rejections and decode errors.
 - Saved CIP reads support an optional typed reply field with zero-based offsets, byte order and swaps. The GUI and CLI retain the raw response for review.
 - Run all saved CIP requests in profile order on one explicit session from Explore or the CLI. Both report replies, rejections and unattempted requests. Explore can save the batch report as JSON.
 - Unconnected Multiple Service Packet groups direct reads or saved reads with one shared route in Explore, CLI and Rust. The localhost fixture covers successful and mixed replies and separate bridge and target rejections. Verify with a physical target and bridge that support the service.

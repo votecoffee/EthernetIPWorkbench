@@ -2,12 +2,14 @@ use super::*;
 use assembly_scanner::{
     discovery,
     explicit::{
-        self, Class3Size, ReadPath, Reader, Route, SavedRead, SavedReadMode, SavedReadReport,
+        self, Class3Size, ClassInfo, ReadPath, Reader, Route, SavedRead, SavedReadMode,
+        SavedReadReport,
     },
 };
 use std::sync::Arc;
 
 mod batch;
+mod class_info;
 
 const PRESETS: [(&str, u32, u32); 9] = [
     ("Identity · Vendor ID", 1, 1),
@@ -24,6 +26,7 @@ const PRESETS: [(&str, u32, u32); 9] = [
 enum Response {
     Discovery(Ipv4Addr, discovery::Report),
     Read(ReadReply),
+    ClassInfo(ClassInfo),
     Batch(SavedReadReport),
     SavedReport(PathBuf),
 }
@@ -43,6 +46,7 @@ pub(super) struct Explorer {
     name: String,
     selection: Option<Selection>,
     read_result: Option<ReadReply>,
+    class_info: Option<ClassInfo>,
     batch_mode: SavedReadMode,
     saved_batch: Option<Arc<SavedReadReport>>,
     saved_report: Option<PathBuf>,
@@ -62,6 +66,7 @@ impl Default for Explorer {
             name: String::new(),
             selection: None,
             read_result: None,
+            class_info: None,
             batch_mode: SavedReadMode::default(),
             saved_batch: None,
             saved_report: None,
@@ -95,6 +100,7 @@ impl Explorer {
         match work.try_recv() {
             Ok(Ok(Response::Discovery(nic, report))) => self.discovered = Some((nic, report)),
             Ok(Ok(Response::Read(reply))) => self.read_result = Some(reply),
+            Ok(Ok(Response::ClassInfo(info))) => self.class_info = Some(info),
             Ok(Ok(Response::Batch(batch))) => self.saved_batch = Some(Arc::new(batch)),
             Ok(Ok(Response::SavedReport(path))) => self.saved_report = Some(path),
             Ok(Err(error)) => self.notice = Some(error),
@@ -117,12 +123,15 @@ impl Explorer {
             },
         };
         path.validate()?;
-        let route = if self.route.trim().is_empty() {
-            None
+        Ok((path, self.parsed_route()?))
+    }
+
+    fn parsed_route(&self) -> Result<Option<Route>, String> {
+        if self.route.trim().is_empty() {
+            Ok(None)
         } else {
-            Some(self.route.parse()?)
-        };
-        Ok((path, route))
+            self.route.parse().map(Some)
+        }
     }
 
     fn load(&mut self, path: ReadPath) {
@@ -254,6 +263,13 @@ impl Device {
                 ui.label(label);
                 ui.add(egui::TextEdit::singleline(field).desired_width(80.0));
             }
+            if ui
+                .add_enabled(!explorer.busy(), egui::Button::new("Read class info"))
+                .on_hover_text("Read the selected class's common attributes at instance zero.")
+                .clicked()
+            {
+                explorer.read_class_info(&self.device, local.as_ref().ok().copied());
+            }
         });
         let mut typed = explorer.selection.is_some();
         if ui.checkbox(&mut typed, "Decode reply field").changed() {
@@ -338,6 +354,9 @@ impl Device {
                 }
             }
         });
+        if let Some(info) = &explorer.class_info {
+            class_info::show(ui, info);
+        }
         ui.collapsing("Saved reads", |ui| {
             if batch::controls(
                 ui,
