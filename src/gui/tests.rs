@@ -329,6 +329,33 @@ fn timed_gui_capture_finishes_after_first_input_even_when_polling_is_delayed() {
 }
 
 #[test]
+#[ignore = "requires tools/loopback_adapter.py --mode qualify and a new EIP_GUI_QUALIFICATION_DIR"]
+fn save_gui_qualification_reports_headlessly() {
+    let directory = PathBuf::from(std::env::var_os("EIP_GUI_QUALIFICATION_DIR").unwrap());
+    fs::create_dir(&directory).unwrap();
+    for (name, rpi) in [
+        ("baseline-8ms", 8000),
+        ("trial-1", 1000),
+        ("trial-2", 1000),
+        ("trial-3", 1000),
+    ] {
+        let mut device = Device::new(1, None);
+        device.preferences.directory = directory.join(name).display().to_string();
+        device.preferences.gui_capture_seconds = 1;
+        device.preferences.rotate_bytes = 4096;
+        device.settings.input_rpi_us = rpi;
+        device.settings.output_rpi_us = rpi;
+        device.start_capture();
+        device.connect(&[]);
+        poll_until(&mut device, |device| !device.capturing);
+        assert!(device.capture_run.duration_reached);
+        device.disconnect();
+        poll_until(&mut device, |device| !device.link_busy());
+        assert!(device.save_run_report().unwrap().is_file());
+    }
+}
+
+#[test]
 fn pending_identity_blocks_connect_and_failed_refresh_keeps_the_pin() {
     let mut device = Device::new(1, None);
     let pin = IdentityPin {

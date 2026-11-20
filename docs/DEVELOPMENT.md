@@ -33,6 +33,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/bin/eipmaster-cli/qualification.rs | Four-run qualification sequence |
 | src/bin/eipmaster-cli/interrupt.rs | Windows console stop handling |
 | tools/join_capture.py | CSV joining, report verification and saved-row timing by connection generation |
+| tools/review_gui_qualification.py | Offline review of four saved GUI runs against the bench qualification checks |
 | tools/package_windows.py | Clean-commit Windows build, manifest and license bundle |
 
 ## Data and lifecycle contracts
@@ -103,6 +104,8 @@ Use `--multicast --seconds 3` to also verify OpENer's adapter-selected multicast
 Use `--listen-only --seconds 3` to check rejection without a controller and two sequential listener captures on the same producer. This test adapts the pinned Windows loopback build so the fixture keeps its shared UDP socket across connection opens and closes and handles `WSAEWOULDBLOCK` as a retryable receive result.
 
 The workspace tests render egui in memory at 900×580 and 1240×860 and simulate pointer events without a native window. They check workflow isolation, visible connection controls, write-review content and capture-stop behavior.
+
+Run `python tools/test_gui_qualification.py .local/gui-review-check-01` for the deterministic report and CSV review checks. The ignored Rust test `save_gui_qualification_reports_headlessly` writes four one-second localhost GUI backend reports when run with the `qualify` fixture mode and a fresh `EIP_GUI_QUALIFICATION_DIR`. Pass those four reports to the review tool with `--link-path loopback --loopback-seconds 1`.
 
 The ignored Rust GUI backend tests need the mode named in each test's ignore annotation. They exercise Device logic without opening a GUI. Start the loopback fixture using a process with CREATE_NO_WINDOW, wait for its Ready line, run the exact test filter with -- --ignored and clean up that fixture. tools/test_cli.py exposes with_adapter for this purpose. Use --bin assembly-scanner so unrelated tests are not selected.
 

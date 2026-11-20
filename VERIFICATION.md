@@ -556,3 +556,9 @@ Physical-device measurements require a connected bench adapter and verified devi
 ## Offline CSV timing audit
 
 The Windows recovery test audited a rotated localhost capture with two connection generations and compared p50, p95, p99, and longest saved-row spacing against independently sorted CSV intervals for each generation. It also checked the timed-out attempt and requested RPI from the run report. A synthetic GUI report exercised counter separation with a wrapping packet sequence, a reconnect gap, intentional filtering, and sample-index gaps. Missing and truncated CSV parts still failed verification. A legacy report without an on-change counter passed when its row counts reconciled.
+
+## Saved GUI qualification review
+
+The headless Windows GUI backend generated four one-second reports and their rotated CSV parts against the localhost adapter. The offline review passed all four runs, with 125 rows at 8 ms and 942, 990, and 999 rows at 1 ms. Both directions negotiated the requested intervals. Each run confirmed Forward_Close and reported zero receive sequence gaps or CSV buffer overruns. These results cover the saved-report workflow using shortened loopback trials.
+
+Synthetic cases verified that a repeated capture, a different serial, a negotiated interval mismatch, a timeout, and a missing rotated part each produce a per-run failure. The review retains timing for the other verified trials.

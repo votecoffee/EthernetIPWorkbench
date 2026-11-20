@@ -21,6 +21,7 @@ ASSETS = (
     ".agents/skills/ethernetip-workbench/SKILL.md", "tools/install_skill.py",
     "samples/loopback.eds", "samples/loopback.toml", "samples/mapped-loopback.toml",
     "tools/loopback_adapter.py", "tools/join_capture.py", "tools/test_cli.py", "tools/benchmark.py",
+    "tools/review_gui_qualification.py", "tools/test_gui_qualification.py",
     "samples/opener-loopback.toml",
     "tools/test_recovery.py", "tools/test_interrupt.py", "tools/test_opener.py", "tools/fixtures/opener_loopback.c",
     "tools/test_integration.py", "tools/test_explore.py", "tools/test_variable_input.py",

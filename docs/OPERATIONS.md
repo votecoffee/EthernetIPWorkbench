@@ -211,6 +211,24 @@ The command verifies the CSV parts before printing JSON. It calculates spacing f
 
 Requested and negotiated intervals and O→T/T→O socket timing come from the run report. For a GUI report, `socket` describes the final recorded connection. For a CLI report with reconnects, `socket` contains aggregate counters and final-connection timing, and `connection_attempts` preserves the available per-attempt measurements. Earlier every-packet reports without an `unchanged` counter can be checked when their seen, written, and overrun counts reconcile.
 
+### Review saved GUI qualification runs
+
+Keep each GUI `-report.toml` file beside its CSV parts. Pass the 8 ms baseline report followed by the three 1 ms reports. Use the verified decimal identity in vendor, device type, product code, and serial order. The example uses a loopback fixture identity.
+
+~~~powershell
+$reports = @(
+    ".local/baseline-8ms/capture-report.toml"
+    ".local/trial-1/capture-report.toml"
+    ".local/trial-2/capture-report.toml"
+    ".local/trial-3/capture-report.toml"
+)
+python tools/review_gui_qualification.py --link-path loopback --loopback-seconds 1 --expected 0:12:1:305419896 @reports
+~~~
+
+Use the actual report filenames. For a physical review, select `direct` or `switched` to label the bench path and supply the verified physical identity. The review checks a timed run of at least 15 seconds at 8 ms and three timed runs of at least 60 seconds at 1 ms. Shorter windows are available for loopback only.
+
+The JSON includes an outcome, issues for each run, requested and negotiated intervals, socket spacing, and the independent CSV timing audit. A passing review requires one clean input-only connection per run, a complete every-packet capture, and matching identity, connection settings, and CSV columns across the runs. Scanner skipped send slots remain visible for review. The GUI can disconnect after the recorder detaches, so extra connection packets beyond the CSV window are expected. Use exit code 0 for a pass and 1 for a failed review. The recorded topology is supplied by the operator. Loopback evidence stays under the loopback label.
+
 ## Connect other software
 
 Use [Connect other software](../README.md#connect-other-software) for complete profile keys and the binary layout. Enable feeds per device in [app.integration] or in the GUI. They start with the scanner session, survive automatic reconnect and end when the session ends. Distinct devices need distinct HTTP ports and shared-memory names.

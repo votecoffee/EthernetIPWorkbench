@@ -19,6 +19,8 @@ The offline timing and profile work can proceed while the bench device is unavai
 
 The [offline CSV timing audit](docs/OPERATIONS.md#audit-saved-capture-timing) checks the saved capture against the run report and measures spacing within each recorded connection generation.
 
+The [GUI qualification review](docs/OPERATIONS.md#review-saved-gui-qualification-runs) checks the four saved runs together and records issues per trial alongside the timing and CSV measurements.
+
 ## 0.3 Multiple adapters
 
 - [Run two isolated scanner sessions](https://github.com/votecoffee/EthernetIPWorkbench/issues/5). The GUI keeps each adapter's setup, sockets, identity, staged outputs, and write authorization separate. The [dual-adapter loopback check](VERIFICATION.md#concurrent-adapter-sessions) exercises a receive timeout while the other session continues.

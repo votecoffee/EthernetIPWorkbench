@@ -63,6 +63,8 @@ Separate requested RPI, Forward_Open actual intervals, observed socket spacing a
 
 Use `tools/join_capture.py` with `--report` and `--timing` to check existing CSV evidence without opening a connection. Saved-row spacing excludes time between generations. Interpret it with the filtering, writer loss, and socket diagnostics in the same report.
 
+Use `tools/review_gui_qualification.py` with the verified identity and declared link path to review the four saved GUI runs together. Keep each report beside its original CSV parts.
+
 ## Finish with a reproducible result
 
 Give the exact profile, executable or commit and capture/report paths relevant to the task. State whether results came from offline decoding, a software adapter or a physical device. For code or documentation changes, run the relevant checks and maintain the command and schema documentation. The skill does not grant hardware, output or publishing permission beyond the user's current authorization.
