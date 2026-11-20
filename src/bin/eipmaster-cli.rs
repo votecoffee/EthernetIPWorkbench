@@ -480,6 +480,8 @@ struct Report {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     input_multicast: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
+    default_unicast_port: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     listen_only: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     input_min_size: Option<u16>,
@@ -688,6 +690,7 @@ fn capture(
         input_assembly: settings.input_instance,
         input_size: settings.input_size,
         input_multicast: settings.input_multicast,
+        default_unicast_port: settings.default_unicast_port,
         listen_only: settings.listen_only,
         input_min_size: settings.input_min_size,
         duration_seconds: seconds,

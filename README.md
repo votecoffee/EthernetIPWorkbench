@@ -176,6 +176,8 @@ Choose **Listen-only** as the connection role to record an existing controlling 
 
 For routed Class 1, enter the first bridge's IPv4 address and set the port/link path under **Device → CIP routing**. Controlling input-only and Exclusive Owner profiles can use unicast or multicast inputs. The first bridge sources the inputs on the scanner's Ethernet segment. Routed Exclusive Owner requires target identity verification and authorization of the staged output and configuration bytes. [Routed Class 1 setup](docs/OPERATIONS.md#configure-routed-class-1)
 
+Select **Use default unicast UDP 2222** for profiles that expect that port with no T→O socket-address item in Forward_Open. [Default port settings](docs/OPERATIONS.md#use-default-unicast-udp-2222)
+
 Keep device-specific presets, vendor files and raw captures in the Git-ignored `.local/` folder. The tracked [sample EDS](samples/loopback.eds) and [sample TOML](samples/loopback.toml) target the localhost fixture.
 
 Set **CIP timeout code** in the GUI or `timeout_multiplier_code` in the TOML profile. Codes 0 through 7 represent factors of 4 through 512 in powers of two. Profiles that omit the setting use code 3 (32 times the interval). The app sends the code in Forward_Open and uses the returned input interval times that factor for its local receive watchdog. Before the first valid input, the scanner waits for the larger of two seconds and two returned input intervals. Preflight shows the watchdog calculated from the requested interval. Capture reports also show the local watchdog calculated from the interval the adapter returned.

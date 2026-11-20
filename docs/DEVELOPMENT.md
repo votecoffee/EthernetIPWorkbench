@@ -119,6 +119,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 | EDS assembly-member sizes and mapping suggestions, discovery, class inspection, direct and routed reads, saved requests, target identity, keyed and routed cyclic I/O | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
 | Variable-size T→O, EDS provenance, CSV and all three exports | python tools/test_variable_input.py target/release/eipmaster-cli.exe .local/variable-check-01 |
 | Direct and routed multicast T→O, returned endpoints and failed setup cleanup | python tools/test_multicast.py target/release/eipmaster-cli.exe .local/multicast-check-01 |
+| Default unicast UDP 2222, standard and routed Large Forward_Open, and port conflicts | python tools/test_default_unicast.py target/release/eipmaster-cli.exe .local/default-unicast-check-01 |
 | Routed standard and Large listen-only against a shared OpENer multicast stream | python tools/test_routed_listen.py target/release/eipmaster-cli.exe .local/opener-upstream .local/routed-listener-check-01 |
 | Reconnect, concurrent capture and writer failure | python tools/test_recovery.py target/release/eipmaster-cli.exe .local/recovery-check-01 |
 | HTTP, MQTT and shared memory | python tools/test_integration.py target/release/eipmaster-cli.exe .local/integration-check-01 |
@@ -134,6 +135,7 @@ The CLI check defaults to 8 ms. --rpi-us 1000 exercises the same cases at 1 ms. 
 
 Add `--explore --seconds 3` to the OpENer check for discovery, Assembly class inspection, direct unconnected and Class 3 reads and writes, keyed Large Forward_Open and a comparison of exact and compatible keys for an older minor revision. Both write transports check and read back values on OpENer's isolated explicit assembly.
 Use `--multicast --seconds 3` to also verify OpENer's adapter-selected multicast group and CSV capture.
+Use `--default-unicast --seconds 3` to verify OpENer's implicit 2222 input destination, unicast heartbeat, and CSV capture.
 
 Build the headless GUI tests with `cargo test --locked --offline --release --bin assembly-scanner --no-run`. Pass the printed test executable path to `python tools/test_routed_owner.py <test-exe> .local/routed-owner-check-01`. This exercises standard and keyed Large Forward_Open, staged outputs, configuration in the open path, the replacement-serial check, and cleanup after an unexpected UDP destination. Use the same test executable with `tools/test_opener.py --owner-test <test-exe> --seconds 3` (in addition to its three positional arguments) for direct Exclusive Owner against the independent OpENer stack. The upstream sample application mirrors the 32-byte output assembly into the input assembly. [OpENer sample application](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/ports/WIN32/sample_application/sampleapplication.c)
 

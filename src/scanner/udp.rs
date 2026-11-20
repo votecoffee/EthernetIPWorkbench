@@ -10,8 +10,6 @@ use std::{
     time::Duration,
 };
 
-pub(super) const IO_PORT: u16 = 2222;
-
 pub(super) fn bind(address: SocketAddrV4, exclusive: bool) -> io::Result<UdpSocket> {
     let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
     #[cfg(windows)]

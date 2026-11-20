@@ -43,6 +43,8 @@ struct ConnectionReport {
     input_bytes: u16,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     input_multicast: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    default_unicast_port: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     input_min_bytes: Option<u16>,
     output_assembly: u16,
@@ -134,6 +136,7 @@ impl Device {
             input_assembly: active.input_instance,
             input_bytes: active.input_size,
             input_multicast: active.input_multicast,
+            default_unicast_port: active.default_unicast_port,
             input_min_bytes: active.input_min_size,
             output_assembly: active.output_instance,
             output_bytes: active.output_size,

@@ -274,10 +274,11 @@ impl Device {
                 return Err("Wait for the identity read to finish".into());
             }
             let s = self.current()?;
-            if s.local_udp_port != 0 && reserved_ports.contains(&(s.local_ip, s.local_udp_port)) {
+            let port = s.local_io_port();
+            if port != 0 && reserved_ports.contains(&(s.local_ip, port)) {
                 return Err(format!(
-                    "UDP {}:{} is already reserved by another device. Choose port 0 or another supported bind endpoint.",
-                    s.local_ip, s.local_udp_port
+                    "UDP {}:{port} is already reserved by another device. Choose another supported bind endpoint.",
+                    s.local_ip
                 ));
             }
             let physical = !(s.device_ip.is_loopback() && s.local_ip.is_loopback());

@@ -244,6 +244,23 @@ def check_explore(cli, adapter, root, identity, seconds):
           "and rejected the same revision in exact mode.")
 
 
+def check_default_unicast(cli, adapter, root, identity, seconds):
+    root.mkdir()
+    profile = root / "default-unicast.toml"
+    profile.write_text("default_unicast_port = true\n" + PROFILE.read_text(encoding="utf-8"),
+                       encoding="utf-8")
+    expected = ":".join(str(identity[field]) for field in ("vendor", "device_type", "code", "serial"))
+    with run_adapter(adapter, root):
+        report = call(cli, root, "result", "capture", profile, root / "capture",
+                      str(seconds), expected, timeout=seconds + 15)
+    check_capture(report, seconds)
+    endpoints = report["cyclic_io"]
+    assert report["default_unicast_port"]
+    assert endpoints["local_udp"] == "127.0.0.1:2222"
+    assert endpoints["output_destination"] == endpoints["first_input_source"] == f"{ADAPTER}:2222"
+    print("OpENer used the default UDP ports for both directions.")
+
+
 def check_multicast(cli, adapter, root, identity, seconds):
     root.mkdir()
     profile = root / "multicast.toml"
@@ -531,6 +548,7 @@ def main():
     parser.add_argument("--seconds", type=int, default=60)
     parser.add_argument("--explore", action="store_true", help="Also test discovery, explicit reads and keyed Large Forward_Open")
     parser.add_argument("--multicast", action="store_true", help="Also capture OpENer multicast T->O")
+    parser.add_argument("--default-unicast", action="store_true", help="Also capture with the implicit UDP 2222 input port")
     parser.add_argument("--listen-only", action="store_true", help="Also attach a listener to a controlling multicast session")
     parser.add_argument("--owner-test", type=Path, help="Also run the compiled assembly-scanner Rust test executable against OpENer")
     args = parser.parse_args()
@@ -567,6 +585,8 @@ def main():
         check_connected_reads(cli, adapter, root / "connected-reads", identity)
     if args.multicast:
         check_multicast(cli, adapter, root / "multicast", identity, args.seconds)
+    if args.default_unicast:
+        check_default_unicast(cli, adapter, root / "default-unicast", identity, args.seconds)
     if args.listen_only:
         check_listen_only(cli, adapter, root / "listen-only", eds, identity, args.seconds)
     if args.owner_test:

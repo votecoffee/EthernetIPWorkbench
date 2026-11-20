@@ -177,8 +177,8 @@ impl App {
             .enumerate()
             .filter(|(index, device)| *index != self.selected && device.link_busy())
             .filter_map(|(_, device)| device.active.as_ref())
-            .filter(|settings| settings.local_udp_port != 0)
-            .map(|settings| (settings.local_ip, settings.local_udp_port))
+            .map(|settings| (settings.local_ip, settings.local_io_port()))
+            .filter(|&(_, port)| port != 0)
             .collect()
     }
 }

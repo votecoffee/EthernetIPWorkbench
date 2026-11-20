@@ -128,8 +128,26 @@ impl Device {
                     self.bench_confirmed = false;
                     self.writes_confirmed = false;
                 }
-                number(ui, "Local UDP port (0 = automatic)", &mut self.settings.local_udp_port);
+                if self.settings.default_unicast_port {
+                    ui.label("Local UDP port");
+                    ui.label(model::DEFAULT_IO_PORT.to_string());
+                    ui.end_row();
+                } else {
+                    number(ui, "Local UDP port (0 = automatic)", &mut self.settings.local_udp_port);
+                }
             });
+            if ui.checkbox(&mut self.settings.default_unicast_port, "Use default unicast UDP 2222")
+                .on_hover_text("Bind UDP 2222 and omit the input socket address in Forward_Open.")
+                .changed()
+            {
+                if self.settings.default_unicast_port
+                    && !matches!(self.settings.local_udp_port, 0 | model::DEFAULT_IO_PORT)
+                {
+                    self.settings.local_udp_port = 0;
+                }
+                self.bench_confirmed = false;
+                self.writes_confirmed = false;
+            }
             ui.collapsing("CIP routing", |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Cyclic I/O route");
@@ -324,6 +342,9 @@ impl Device {
         if !route.is_empty() {
             ui.label(format!("Cyclic I/O route · {route}"));
         }
+        if self.settings.default_unicast_port {
+            ui.label("Default unicast UDP 2222 · T->O socket address omitted");
+        }
         ui.label(format!(
             "Input assembly {} · {} bytes · Requested {:.3} ms",
             self.settings.input_instance,
@@ -505,6 +526,8 @@ impl Device {
             settings.log_fields = self.settings.log_fields.take();
             settings.capture_mode = self.settings.capture_mode;
             settings.local_udp_port = self.settings.local_udp_port;
+            settings.default_unicast_port =
+                self.settings.default_unicast_port && !settings.input_multicast;
             settings.io_route = std::mem::take(&mut self.settings.io_route);
             settings.timeout_multiplier_code = self.settings.timeout_multiplier_code;
             self.settings = settings;

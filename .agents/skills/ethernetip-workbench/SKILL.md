@@ -82,6 +82,8 @@ For variable-size O→T, verify the documented `output_size` maximum and local `
 
 For multicast T→O profiles, verify the selected NIC, the returned group and receive port in `cyclic_io`, and the Forward_Close result. O→T stays unicast and the usual ownership rules apply.
 
+For a unicast profile that expects the default UDP port, use **Use default unicast UDP 2222** or set `default_unicast_port = true` with `local_udp_port` set to 0 or 2222. This binds UDP 2222 on the selected NIC and omits the T→O socket-address item. Verify the effective port in preflight and the actual endpoints in the capture report.
+
 For listen-only, verify the adapter's distinct heartbeat connection point and an existing controlling multicast connection. Keep output and configuration payloads empty and O→T Run/Idle disabled. The listener uses manual reconnect.
 
 For routed Class 1, set `device_ip` to the first bridge and `io_route` to the documented port/link pairs. Verify the target with Device → Read identity or CLI identity with --route. A controlling input-only profile can use unicast or multicast T→O. A routed listen-only profile attaches to an existing multicast producer through the bridge. For multicast confirm that the first bridge sources the input packets and check the returned group and receive port. Routed Exclusive Owner uses unicast O→T and the target profile's unicast or multicast T→O. It requires the target's full identity and serial pin plus separate output and configuration authorization. The saved Explore read routes are independent.

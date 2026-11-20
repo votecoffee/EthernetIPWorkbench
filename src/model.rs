@@ -11,6 +11,7 @@ pub const CAPTURE_METADATA: [&str; 6] = [
     "cip_sequence",
 ];
 pub const MAX_ASSEMBLY_BYTES: usize = 509;
+pub const DEFAULT_IO_PORT: u16 = 2222;
 /// Bound cyclic UDP payloads to fit a normal Ethernet MTU.
 pub const MAX_LARGE_ASSEMBLY_BYTES: usize = 1400;
 pub const MAX_MAPPED_FIELDS: usize = 256;
@@ -42,6 +43,9 @@ pub struct Settings {
     pub device_ip: Ipv4Addr,
     pub local_ip: Ipv4Addr,
     pub local_udp_port: u16,
+    /// Bind the default UDP port and omit the unicast T->O Sockaddr Info item.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub default_unicast_port: bool,
     /// Optional CIP port/link path from device_ip, the first bridge.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub io_route: String,
@@ -162,6 +166,7 @@ impl Default for Settings {
             device_ip: Ipv4Addr::LOCALHOST,
             local_ip: Ipv4Addr::LOCALHOST,
             local_udp_port: 0,
+            default_unicast_port: false,
             io_route: String::new(),
             input_instance: 101,
             input_size: 4,
@@ -211,6 +216,15 @@ pub fn hex(data: &[u8]) -> String {
         .join(" ")
 }
 impl Settings {
+    /// Local cyclic socket port. Zero lets the OS choose an ephemeral port.
+    pub fn local_io_port(&self) -> u16 {
+        if self.default_unicast_port {
+            DEFAULT_IO_PORT
+        } else {
+            self.local_udp_port
+        }
+    }
+
     pub fn connection_timeout(&self, actual_input_rpi_us: Option<u32>) -> ConnectionTimeout {
         let code = self.timeout_multiplier_code;
         let factor = (code <= MAX_TIMEOUT_MULTIPLIER_CODE).then(|| 4u16 << code);
@@ -312,6 +326,13 @@ impl Settings {
             || self.local_ip.is_broadcast()
         {
             return Err("Enter the scanner NIC's assigned IPv4 address".into());
+        }
+        if self.default_unicast_port
+            && (self.input_multicast || !matches!(self.local_udp_port, 0 | DEFAULT_IO_PORT))
+        {
+            return Err(
+                "Default unicast UDP 2222 requires unicast input and local_udp_port set to 0 or 2222".into(),
+            );
         }
         let route = self.parsed_io_route()?;
         if route.is_some() && self.input_only && !self.input_only_without_writes() {

@@ -20,8 +20,10 @@ ROUTED_OWNER_CYCLIC_MODES = {
     "routed-io-large-owner": "large-variable-output",
     "routed-io-owner-unexpected-peer": "owner",
 }
-ROUTED_KEYED_MODES = ("routed-io-large", "routed-io-large-owner", "routed-io-multicast-large")
-LARGE_INPUT_MODES = ("large-keyed", "routed-io-large", "routed-io-multicast-large")
+ROUTED_KEYED_MODES = ("routed-io-large", "routed-io-large-owner", "routed-io-multicast-large",
+                      "routed-io-large-default-unicast")
+LARGE_INPUT_MODES = ("large-keyed", "routed-io-large", "routed-io-multicast-large",
+                     "routed-io-large-default-unicast")
 MULTICAST_GROUP = "239.255.92.44"
 
 
@@ -370,6 +372,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     multicast_mode = mode.removeprefix("routed-io-")
     multicast = multicast_mode.startswith("multicast")
     valid_multicast = multicast_mode in ("multicast", "multicast-large")
+    default_unicast = mode.endswith("default-unicast")
     udp_mode = "stall" if mode == "stall-close-reject" else cyclic_mode
     adapter_ip = tcp.getsockname()[0]
     scanner_ip = tcp.getpeername()[0]
@@ -541,6 +544,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                             "large-keyed": 0x4400025A,
                             "routed-io-large": 0x4400025A,
                             "routed-io-multicast-large": 0x2400025A,
+                            "routed-io-large-default-unicast": 0x4400025A,
                         }[cyclic_mode]
                         expected_output = 0x4600025A if cyclic_mode == "large-variable-output" else 0x44000002
                         assert ot_params == expected_output and to_params == expected_input
@@ -561,9 +565,14 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                     assert body[path_offset:] == path + (bytes.fromhex("80 02 AA BB CC 00") if owner else b"")
                     if route:
                         report.update(open_path_hex=body[path_offset:].hex(), open_service=service)
-                    family, port, address = struct.unpack(">HH4s8x", items[0x8001])
-                    assert family == 2 and port != 0
-                    assert socket.inet_ntoa(address) == ("0.0.0.0" if multicast else scanner_ip)
+                    if default_unicast:
+                        assert set(items) == {0, 0xB2}
+                        port = 2222
+                        report["input_sockaddr_omitted"] = True
+                    else:
+                        family, port, address = struct.unpack(">HH4s8x", items[0x8001])
+                        assert family == 2 and port != 0
+                        assert socket.inet_ntoa(address) == ("0.0.0.0" if multicast else scanner_ip)
                     assert body[18] <= 7 and body[19:22] == bytes(3)
                     report.update(ot_requested_us=ot_rpi, to_requested_us=to_rpi,
                                   timeout_multiplier_code=body[18])
@@ -579,7 +588,9 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                                             ot_api, to_api, 0, 0)
                         adapter_port = udp.getsockname()[1]
                         output_ip = "127.0.0.3" if unexpected_peer else adapter_ip
-                        extras = [(0x8000, sockaddr(output_ip, adapter_port))]
+                        extras = [] if mode == "default-unicast" else [(0x8000, sockaddr(output_ip, adapter_port))]
+                        if default_unicast:
+                            report["output_sockaddr_omitted"] = not extras
                         group = None
                         if multicast:
                             # Supply a different T->O ID to model an existing producer.
@@ -675,7 +686,7 @@ def main():
         "multicast", "multicast-missing", "multicast-unicast",
         "routed-io-multicast", "routed-io-multicast-large",
         "routed-io-multicast-missing", "routed-io-multicast-unicast",
-        "delayed-start", "split-udp",
+        "delayed-start", "split-udp", "default-unicast", "routed-io-large-default-unicast",
     ))
     parser.add_argument("--address", type=IPv4Address, default=IPv4Address(IP))
     parser.add_argument("--multicast-port", type=int, default=2222)
@@ -722,7 +733,7 @@ def main():
             conn, _ = listener.accept()
             with conn, socket.socket(type=socket.SOCK_DGRAM) as udp:
                 conn.settimeout(args.tcp_timeout or (75 if args.mode.startswith("qualify") else 20))
-                udp.bind((address, 0))
+                udp.bind((address, 2222 if mode == "default-unicast" else 0))
                 attempt = {"forward_close": False} if record_attempts else report
                 replacement = args.mode in ("replacement", "qualify-replacement", "routed-owner-replacement") and index == 1
                 input_socket = socket.socket(type=socket.SOCK_DGRAM) if mode == "split-udp" else nullcontext(udp)

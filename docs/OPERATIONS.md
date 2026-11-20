@@ -275,6 +275,7 @@ Start from a generic sample and use the device's EDS and manual to establish eac
 | device_ip, local_ip | Adapter or first bridge IPv4 and IPv4 assigned to the scanner NIC |
 | io_route | Optional port/link pairs for routed Class 1 I/O |
 | local_udp_port | 0 requests an ephemeral port, otherwise bind the required local port |
+| default_unicast_port | Bind UDP 2222 and omit the unicast T→O socket-address item in Forward_Open |
 | input_instance, input_size | Adapter-to-scanner assembly and payload bytes |
 | output_instance, output_size | Scanner-to-adapter assembly or heartbeat connection point |
 | output_min_size | Optional local lower bound for variable-size owner output |
@@ -289,6 +290,12 @@ Start from a generic sample and use the device's EDS and manual to establish eac
 Sizes exclude the Class 1 sequence and optional Run/Idle header. Standard Forward_Open supports at most 509 payload plus Run/Idle bytes per direction here. The code accepts requested intervals from 1,000 to 10,000,000 microseconds.
 
 Set the root TOML key `large_forward_open = true` when the adapter supports service 0x5B. Large Forward_Open allows up to 1,400 payload plus Run/Idle bytes here. CSV, live views, HTTP and MQTT support the larger payloads. The existing EIPWB001 shared memory format keeps its 509-byte limit. The app rejects a larger input when shared memory is enabled.
+
+### Use default unicast UDP 2222
+
+For a direct or routed unicast profile that expects the default EtherNet/IP I/O port, select **Use default unicast UDP 2222** in Device or set `default_unicast_port = true` with `local_udp_port = 0` or `2222` in TOML. The scanner binds UDP 2222 on the selected NIC and omits the T→O Sockaddr Info item from Forward_Open. Forward_Open can still return a separate O→T destination port. When the reply omits that item, the scanner sends to UDP 2222 on the adapter or first bridge. [OpENer point-to-point UDP port handling](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipioconnection.c)
+
+Offline preflight reports the effective local port. Capture reports record the mode and the actual UDP endpoints. If another application owns the port on that NIC, the bind fails before Forward_Open. Configure multicast using the usual multicast profile controls.
 
 ### Configure routed Class 1
 

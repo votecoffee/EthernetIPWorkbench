@@ -61,17 +61,20 @@ fn migrates_single_device_and_restores_two_independent_setups() {
 
 #[test]
 fn refuses_a_reserved_fixed_udp_port_before_connecting() {
-    let mut device = Device::new(1, None);
-    device.settings.local_udp_port = 2222;
-    device.connect(&[(Ipv4Addr::LOCALHOST, 2222)]);
-    assert!(device.connection.is_none());
-    assert!(
-        device
-            .error
-            .as_deref()
-            .unwrap()
-            .contains("already reserved")
-    );
+    for (port, default_unicast_port) in [(model::DEFAULT_IO_PORT, false), (0, true)] {
+        let mut device = Device::new(1, None);
+        device.settings.local_udp_port = port;
+        device.settings.default_unicast_port = default_unicast_port;
+        device.connect(&[(Ipv4Addr::LOCALHOST, model::DEFAULT_IO_PORT)]);
+        assert!(device.connection.is_none());
+        assert!(
+            device
+                .error
+                .as_deref()
+                .unwrap()
+                .contains("already reserved")
+        );
+    }
 }
 
 #[test]
@@ -1049,6 +1052,7 @@ fn named_profile_restores_imported_eds_and_preserves_overrides() {
         .remove(0);
     let mut source = Device::new(1, None);
     source.profiles.push(imported.clone());
+    source.settings.default_unicast_port = true;
     source.select_profile(Some(0));
     source.eds_path = "missing-vendor-source.eds".into();
     source.toml_path = path.display().to_string();
@@ -1067,6 +1071,8 @@ fn named_profile_restores_imported_eds_and_preserves_overrides() {
     assert_eq!(restored.selected, Some(0));
     assert_eq!(restored.profiles, vec![imported]);
     assert_eq!(restored.settings.input_rpi_us, 8_000);
+    assert!(restored.settings.default_unicast_port);
+    assert_eq!(restored.settings.local_io_port(), model::DEFAULT_IO_PORT);
     assert_eq!(restored.profiles[0].settings.input_rpi_us, 1_000);
     assert!(restored.eds_path.is_empty());
     assert!(!restored.bench_confirmed && !restored.writes_confirmed);

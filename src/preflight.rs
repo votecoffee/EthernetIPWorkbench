@@ -72,6 +72,8 @@ pub struct Report {
     pub adapter_ip: Ipv4Addr,
     pub local_ip: Ipv4Addr,
     pub local_udp_port: u16,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub default_unicast_port: bool,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub io_route: String,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -267,7 +269,8 @@ pub fn inspect(
         capture_config_valid: connection_errors.is_empty() && capture_errors.is_empty(),
         adapter_ip: settings.device_ip,
         local_ip: settings.local_ip,
-        local_udp_port: settings.local_udp_port,
+        local_udp_port: settings.local_io_port(),
+        default_unicast_port: settings.default_unicast_port,
         io_route: settings.io_route.clone(),
         input_multicast: settings.input_multicast,
         requests_output_ownership: !settings.input_only,

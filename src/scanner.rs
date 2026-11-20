@@ -601,10 +601,17 @@ fn run(
             }
         }
     }
+    let bind_address = SocketAddrV4::new(cfg.local_ip, cfg.local_io_port());
     let udp = udp::bind(
-        SocketAddrV4::new(cfg.local_ip, cfg.local_udp_port),
-        cfg.input_multicast,
-    )?;
+        bind_address,
+        cfg.input_multicast || cfg.default_unicast_port,
+    )
+    .map_err(|error| {
+        io::Error::new(
+            error.kind(),
+            format!("Bind cyclic I/O on {bind_address}: {error}"),
+        )
+    })?;
 
     let mut ids = [0; 10];
     getrandom::fill(&mut ids).map_err(|e| protocol(e.to_string()))?;
@@ -650,19 +657,21 @@ fn run(
         return Ok(());
     }
     let local_addr = udp.local_addr()?;
-    let requested_input = if cfg.input_multicast {
+    let requested_input = if cfg.default_unicast_port {
+        None
+    } else if cfg.input_multicast {
         // Ask the target to select the group. Some adapters require this
         // placeholder item and always return their own group and port.
-        SocketAddr::from((
+        Some(SocketAddr::from((
             Ipv4Addr::UNSPECIFIED,
             if cfg.local_udp_port == 0 {
-                udp::IO_PORT
+                model::DEFAULT_IO_PORT
             } else {
                 cfg.local_udp_port
             },
-        ))
+        )))
     } else {
-        local_addr
+        Some(local_addr)
     };
     let (service, request) = if cfg.large_forward_open {
         (0x5b, encode_large_open(&open))
@@ -670,7 +679,7 @@ fn run(
         (0x54, open.encode())
     };
     let open_started = Instant::now();
-    let open_result = session.cip(service, 6, &request, Some(requested_input));
+    let open_result = session.cip(service, 6, &request, requested_input);
     let open_completed = Instant::now();
     shared.status.lock().unwrap().forward_open_exchange_us =
         Some((open_completed - open_started).as_micros() as u64);
@@ -699,7 +708,12 @@ fn run(
         }
         shared.status.lock().unwrap().actual =
             Some((reply.o_to_t_actual_rpi_us, reply.t_to_o_actual_rpi_us));
-        let peer = cpf::resolve_peer_udp(&envelope, OT_SOCKET, cfg.device_ip.into(), udp::IO_PORT);
+        let peer = cpf::resolve_peer_udp(
+            &envelope,
+            OT_SOCKET,
+            cfg.device_ip.into(),
+            model::DEFAULT_IO_PORT,
+        );
         if peer.ip() != cfg.device_ip {
             return Err(protocol(format!(
                 "Advertised O->T address {} differs from the configured cyclic peer {}",
