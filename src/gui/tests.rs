@@ -680,18 +680,43 @@ fn routed_owner_closes_when_the_bridge_advertises_another_udp_peer() {
 #[test]
 #[ignore = "requires tools/test_opener.py --owner-test to launch OpENer"]
 fn opener_mirrors_two_staged_owner_outputs() {
+    exercise_opener_owner("", false);
+}
+
+#[test]
+#[ignore = "requires tools/test_routed_listen.py --owner-test on localhost"]
+fn opener_mirrors_standard_routed_multicast_owner_outputs() {
+    exercise_opener_owner("1/3", false);
+}
+
+#[test]
+#[ignore = "requires tools/test_routed_listen.py --owner-test on localhost"]
+fn opener_mirrors_large_routed_multicast_owner_outputs() {
+    exercise_opener_owner("1/3", true);
+}
+
+fn exercise_opener_owner(route: &str, large_forward_open: bool) {
     let mut device = Device::new(1, None);
     device.device = "127.0.0.2".into();
     let first: Vec<u8> = (0x40..0x60).collect();
     let second: Vec<u8> = (0xA0..0xC0).rev().collect();
+    let routed = !route.is_empty();
+    let config = if large_forward_open {
+        (0x11..0x1B).collect::<Vec<u8>>()
+    } else {
+        (1..11).collect()
+    };
     device.settings = Settings {
+        io_route: route.into(),
+        large_forward_open,
+        input_multicast: routed,
         input_instance: 100,
         output_instance: 150,
         config_instance: Some(151),
         input_size: 32,
         output_size: 32,
         config_size: 10,
-        config_hex: "01 02 03 04 05 06 07 08 09 0A".into(),
+        config_hex: model::hex(&config),
         output_hex: model::hex(&first),
         input_only: false,
         output_run_idle: true,
@@ -701,12 +726,49 @@ fn opener_mirrors_two_staged_owner_outputs() {
         output_rpi_us: 30_000,
         ..Settings::default()
     };
-    verify_owner_identity(
-        &mut device,
-        IdentityPin {
-            key: (1, 12, 65001),
-            serial: 123456789,
-        },
+    let pin = IdentityPin {
+        key: (1, 12, 65001),
+        serial: 123456789,
+    };
+    if routed {
+        device.preferences.auto_reconnect = true;
+        device.writes_confirmed = true;
+        device.connect(&[]);
+        assert!(device.connection.is_none());
+        assert!(
+            device
+                .error
+                .as_deref()
+                .unwrap()
+                .contains("routed target identity")
+        );
+        device.verified_identity = Some(IdentityPin {
+            serial: pin.serial + 1,
+            ..pin
+        });
+        device.writes_confirmed = true;
+        device.connect(&[]);
+        poll_until(&mut device, |device| !device.link_busy());
+        assert!(
+            device
+                .status
+                .identity_error
+                .as_deref()
+                .unwrap()
+                .contains("Identity mismatch")
+        );
+        assert!(device.status.actual.is_none());
+        assert_eq!(device.tx, 0);
+    }
+    verify_owner_identity(&mut device, pin);
+    device.connect(&[]);
+    assert!(device.connection.is_none());
+    assert!(
+        device
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("output permission")
     );
 
     device.writes_confirmed = true;
@@ -722,6 +784,16 @@ fn opener_mirrors_two_staged_owner_outputs() {
     poll_until(&mut device, |device| device.status.valid >= 30);
     assert_eq!(device.status.actual, Some((30_000, 30_000)));
     assert_eq!(device.status.invalid + device.status.timeouts, 0);
+    if routed {
+        let io = device.status.cyclic_io.unwrap();
+        let multicast = io.input_multicast_destination.unwrap();
+        assert!(multicast.ip().is_multicast());
+        assert_eq!(io.input_local_udp.unwrap().port(), multicast.port());
+        assert_eq!(
+            io.first_input_source.unwrap().ip(),
+            device.current().unwrap().device_ip
+        );
+    }
     println!(
         "OpENer mirrored both 32-byte payloads; received {} packets and {} gaps",
         device.status.valid, device.status.gaps

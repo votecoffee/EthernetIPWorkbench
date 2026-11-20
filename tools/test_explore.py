@@ -82,8 +82,8 @@ def check_routed_input(exe, root, source):
 
     for name, invalid in (
         ("invalid-route", standard.read_text(encoding="utf-8").replace("1/3", "1/")),
-        ("routed-multicast-owner", "input_multicast = true\n" + standard.read_text(encoding="utf-8").replace(
-            "input_only = true", "input_only = false")),
+        ("routed-multicast-owner-listen-only", "listen_only = true\ninput_multicast = true\n"
+         + standard.read_text(encoding="utf-8").replace("input_only = true", "input_only = false")),
         ("routed-unicast-listener", "listen_only = true\n" + standard.read_text(encoding="utf-8")),
         ("routed-input-run-idle", standard.read_text(encoding="utf-8").replace(
             "output_run_idle = false", "output_run_idle = true")),
