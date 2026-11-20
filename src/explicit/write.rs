@@ -177,6 +177,9 @@ impl AttributeWrite {
                     extended_status: ext,
                 }
             }
+            Err(RoutedReadError::Exchange(error)) => WriteOutcome::Unconfirmed {
+                error: error.to_string(),
+            },
             Err(error) => WriteOutcome::Unconfirmed {
                 error: error.to_string(),
             },

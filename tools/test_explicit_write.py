@@ -74,6 +74,9 @@ def check_writes(exe, root):
             assert outcome["general_status"] == 0x0E and outcome["extended_status"] == [0x0302]
         if case == "router-timeout":
             assert outcome["general_status"] == 1 and outcome["extended_status"] == [0x0204]
+        if case == "no-reply":
+            assert "reply ended early" in outcome["error"]
+            assert "read exchange" not in outcome["error"]
 
 
 if __name__ == "__main__":
