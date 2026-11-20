@@ -270,6 +270,31 @@ def check_class_info(cli, adapter, root):
     print("OpENer reported Assembly class metadata and separate optional attribute outcomes.")
 
 
+def check_explicit_write(cli, adapter, root, identity):
+    root.mkdir()
+    pin = ":".join(str(identity[field]) for field in ("vendor", "device_type", "code", "serial"))
+    address = [ADAPTER, "127.0.0.1", "4", "154", "3"]
+    # Assembly 154 is the sample application's dedicated explicit data buffer.
+    value = bytes(range(32)).hex(" ").upper()
+    with run_adapter(adapter, root):
+        for name, args in (
+            ("before", ["read", *address]),
+            ("write", ["write-attribute", *address, value, "--apply", pin]),
+            ("after", ["read", *address]),
+        ):
+            result = subprocess.run([cli, *args], capture_output=True, timeout=10,
+                                    creationflags=subprocess.CREATE_NO_WINDOW)
+            (root / f"{name}.json").write_bytes(result.stdout)
+            assert result.returncode == 0, (name, result.stdout, result.stderr)
+    before = json.loads((root / "before.json").read_text(encoding="utf-8"))
+    write = json.loads((root / "write.json").read_text(encoding="utf-8"))
+    after = json.loads((root / "after.json").read_text(encoding="utf-8"))
+    assert write["result"]["outcome"] == "acknowledged"
+    assert write["result"]["observed_identity"]["serial"] == identity["serial"]
+    assert after["data_hex"] == write["value_hex"] == value and before["data_hex"] != value
+    print("OpENer acknowledged Set_Attribute_Single and read back all 32 bytes from its explicit assembly.")
+
+
 def check_connected_reads(cli, adapter, root, identity):
     root.mkdir()
     source = PROFILE.read_text(encoding="utf-8")
@@ -497,6 +522,7 @@ def main():
     if args.explore:
         check_explore(cli, adapter, root / "extended", identity, args.seconds)
         check_class_info(cli, adapter, root / "class-info")
+        check_explicit_write(cli, adapter, root / "explicit-write", identity)
         check_connected_reads(cli, adapter, root / "connected-reads", identity)
     if args.multicast:
         check_multicast(cli, adapter, root / "multicast", identity, args.seconds)

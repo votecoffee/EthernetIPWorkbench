@@ -23,6 +23,7 @@ mod connected;
 mod multiple;
 mod report;
 mod route;
+mod write;
 pub use batch::{
     SavedReadBatch, SavedReadMode, SavedReadOutcome, SavedReadReport, SavedReadResult,
     run_saved_reads, run_saved_reads_with_class3_size, run_saved_reads_with_mode,
@@ -35,6 +36,7 @@ pub use connected::{
 pub use multiple::run_saved_reads_packet;
 pub use report::read_reply_document;
 pub use route::{Route, RoutedReadError};
+pub use write::{AttributeWrite, WriteOutcome, WriteReport};
 pub(crate) const TO_SOCKET: u16 = 0x8001;
 pub(crate) const PORT: u16 = 44818;
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -255,7 +257,7 @@ impl Identity {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct IdentityPin {
     pub key: IdentityKey,
     pub serial: u32,

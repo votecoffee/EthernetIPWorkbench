@@ -57,6 +57,29 @@ In **Explore**, enter a class ID or select a common attribute to fill in its cla
 
 The routed command takes the first bridge's address. The JSON keeps each reply's raw bytes, decoded value or decode error, and CIP status. The inspection returns exit code 0 when at least one field decodes and the only rejections are target statuses `0x08` or `0x14` for unsupported services or attributes. A router rejection, exchange failure, undecodable reply, or lack of a decoded value returns exit code 1.
 
+### Review and send an attribute write
+
+Use the documented writable class, instance and attribute. In **Explore**, enter the address and optional CIP route, and select **Stage attribute write**. Enter the value in space-separated hex using the device's wire format. Select **Verify target identity**, then review the device's name and identity, the NIC, address, route and exact bytes before selecting **Send reviewed write**. Changing the bytes clears the prior review. The send checks the full identity on the same registered session that carries the write. [Set_Attribute_Single reference](https://product-help.schneider-electric.com/Machine%20Expert/V2.2/en/EtherNetIP_Services/EtherNetIP_Services/modules/set-attribute-si.html)
+
+The following command previews the request offline. It shows the exact value, path and route as JSON.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe write-attribute 127.0.0.1 127.0.0.1 4 154 3 "A5 16 2C 93"
+~~~
+
+Add `--apply <vendor:type:product:serial>` to send to the reviewed target. All four identity fields are decimal. To write through a bridge, use its IP as the first address and pass `--route <port/link/...>`. The write uses unconnected CIP on TCP and sends a single `Set_Attribute_Single` request. Live writes require authorization for the exact target and value.
+
+| Result | Meaning |
+|---|---|
+| `preview` | Validated offline. |
+| `not_sent` | Session setup or identity verification prevented the write. |
+| `acknowledged` | The target acknowledged the service. An explicit read of a readable attribute can verify the resulting value. |
+| `rejected` | The target returned a CIP error with its General and Extended Status. |
+| `router_error` | The router returned a CIP error. The target outcome is unconfirmed. |
+| `unconfirmed` | The exchange ended without a valid target response. The value may have been applied. |
+
+The CLI returns exit code 0 for a valid preview or an acknowledged apply and exit code 1 for other outcomes. For an unconfirmed write, review the reported error and verify the target state before issuing another write. The Workbench sends each reviewed write at most once.
+
 ### Run all saved reads
 
 In **Explore**, expand **Saved reads**, choose a **Read mode**, and select **Read all saved**. The batch runs on the configured adapter or bridge and NIC in **Device**. The mode starts at **Unconnected sequential** in each new application session.

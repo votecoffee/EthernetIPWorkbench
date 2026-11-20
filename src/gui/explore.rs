@@ -2,14 +2,15 @@ use super::*;
 use assembly_scanner::{
     discovery,
     explicit::{
-        self, Class3Size, ClassInfo, ReadPath, Reader, Route, SavedRead, SavedReadMode,
-        SavedReadReport,
+        self, AttributeWrite, Class3Size, ClassInfo, ReadPath, Reader, Route, SavedRead,
+        SavedReadMode, SavedReadReport, WriteOutcome, WriteReport,
     },
 };
 use std::sync::Arc;
 
 mod batch;
 mod class_info;
+mod write;
 
 const PRESETS: [(&str, u32, u32); 9] = [
     ("Identity · Vendor ID", 1, 1),
@@ -29,6 +30,8 @@ enum Response {
     ClassInfo(ClassInfo),
     Batch(SavedReadReport),
     SavedReport(PathBuf),
+    WriteIdentity(Identity),
+    WriteResult(Box<(AttributeWrite, WriteReport)>),
 }
 
 struct ReadReply {
@@ -53,6 +56,8 @@ pub(super) struct Explorer {
     discovered: Option<(Ipv4Addr, discovery::Report)>,
     work: Option<mpsc::Receiver<Result<Response, String>>>,
     notice: Option<String>,
+    write_draft: Option<write::Draft>,
+    write_result: Option<Box<(AttributeWrite, WriteReport)>>,
 }
 
 impl Default for Explorer {
@@ -73,6 +78,8 @@ impl Default for Explorer {
             discovered: None,
             work: None,
             notice: None,
+            write_draft: None,
+            write_result: None,
         }
     }
 }
@@ -103,6 +110,12 @@ impl Explorer {
             Ok(Ok(Response::ClassInfo(info))) => self.class_info = Some(info),
             Ok(Ok(Response::Batch(batch))) => self.saved_batch = Some(Arc::new(batch)),
             Ok(Ok(Response::SavedReport(path))) => self.saved_report = Some(path),
+            Ok(Ok(Response::WriteIdentity(identity))) => {
+                if let Some(draft) = &mut self.write_draft {
+                    draft.identity = Some(identity);
+                }
+            }
+            Ok(Ok(Response::WriteResult(result))) => self.write_result = Some(result),
             Ok(Err(error)) => self.notice = Some(error),
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.notice = Some("Explore request ended without a response".into())
@@ -323,6 +336,12 @@ impl Device {
                     }
                 }
             }
+            if ui
+                .add_enabled(!explorer.busy(), egui::Button::new("Stage attribute write"))
+                .clicked()
+            {
+                explorer.stage_attribute_write(&self.device, local.as_ref().ok().copied());
+            }
             ui.label("Save as");
             ui.add(egui::TextEdit::singleline(&mut explorer.name).desired_width(160.0));
             if ui.button("Save / update read").clicked() {
@@ -434,6 +453,7 @@ impl Device {
             ui.label(format!("{} · {} bytes", reply.address, reply.bytes.len()));
             show_reply_payload(ui, &reply.bytes, &reply.interpretation);
         }
+        explorer.show_attribute_write(ui);
         if let Some(address) = selected {
             self.device = address.to_string();
             self.reset_endpoint_status();

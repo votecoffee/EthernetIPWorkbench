@@ -646,3 +646,9 @@ The independent OpENer 2.3 software target accepted the 4,002-byte Large Forward
 The Windows localhost fixture verified seven ordered Get_Attribute_Single requests at instance zero on one registered TCP session. Direct and routed runs decoded UINT fields and optional ID lists. The routed result kept target status `0x14` with extended word `0x0302`, and a separate router rejection retained `0x0311`. A short list kept its raw bytes and reported a decode error. A headless Explore check showed the routed class results, expanded the raw reply, and preserved the saved requests.
 
 The independent OpENer 2.3 software target reported Assembly class revision 2, maximum instance ID 154 and six instances. It returned attribute-unsupported replies for both optional lists. The CLI retained both statuses and returned exit code 0 for the usable partial result. Routed class inspection was tested with the localhost bridge fixture.
+
+## Reviewed explicit attribute writes
+
+The Windows localhost fixture verified that preview and an incomplete identity pin opened no session. Applying a mismatched serial sent only the identity query. Direct and routed successful applies each used one registered session for the identity query and the exact four-byte Set_Attribute_Single value. Target rejection preserved general status `0x0E` and extended word `0x0302`. A router timeout preserved `0x0204` with an unconfirmed target outcome. The test that dropped the write reply recorded one request and an unconfirmed result. Both write failures and uncertain outcomes returned exit code 1.
+
+In the headless GUI, editing a reviewed value cleared the approved identity. Two read-only review sessions preceded the single apply session. The independent OpENer 2.3 software target acknowledged a write to its dedicated explicit Assembly instance 154 and returned the same 32 bytes on a separate Get_Attribute_Single read. This verification used localhost targets.

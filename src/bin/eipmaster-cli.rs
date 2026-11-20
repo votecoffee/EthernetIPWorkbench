@@ -33,6 +33,8 @@ mod qualification;
 mod reads;
 #[path = "eipmaster-cli/serve.rs"]
 mod serve;
+#[path = "eipmaster-cli/writes.rs"]
+mod writes;
 
 const USAGE: &str = "\
 Usage:
@@ -44,6 +46,7 @@ Usage:
   eipmaster-cli discover <local-ipv4> [<destination-ipv4>]
   eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
   eipmaster-cli class-info <adapter-or-bridge-ipv4> <local-ipv4> <class> [--route <port/link/...>]
+  eipmaster-cli write-attribute <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute> \"<hex bytes>\" [--route <port/link/...>] [--apply <vendor:type:product:serial>]
   eipmaster-cli read-saved <settings.toml> <name>
   eipmaster-cli read-saved-all <settings.toml> [--multiple-service-packet] [--connected]
   eipmaster-cli capture <settings.toml> <new-output-dir> <seconds> <vendor:type:product[:serial]>
@@ -136,6 +139,23 @@ fn run(args: &[OsString]) -> Result<bool, String> {
             )?;
             println!("{}", report.report_json()?);
             Ok(report.is_usable())
+        }
+        [
+            command,
+            adapter,
+            local,
+            class,
+            instance,
+            attribute,
+            bytes,
+            options @ ..,
+        ] if command == "write-attribute" => {
+            let path = ReadPath {
+                class: explicit::parse_id(&class.to_string_lossy())?,
+                instance: explicit::parse_id(&instance.to_string_lossy())?,
+                attribute: Some(explicit::parse_id(&attribute.to_string_lossy())?),
+            };
+            writes::attribute(adapter, local, path, bytes, options)
         }
         [command, profile, name] if command == "read-saved" => {
             let (settings, app) = settings_file::load_profile(Path::new(profile))?;

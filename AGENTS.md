@@ -5,7 +5,7 @@ Read the repository skill at [.agents/skills/ethernetip-workbench/SKILL.md](.age
 ## Scope and names
 
 - The repository is EthernetIPWorkbench. The Rust package and GUI executable are still named assembly-scanner, the CLI is eipmaster-cli, and the saved GUI workspace lives in the EIPMaster application-data directory. Follow those existing names in commands and compatibility work.
-- This code operates as a Class 1 EtherNet/IP scanner/originator and supports direct and routed explicit reads over unconnected CIP or Class 3. HTTP, MQTT and shared memory export its cyclic inputs. A C-compatible FFI and an EtherNet/IP adapter stack are separate future work.
+- This code operates as a Class 1 EtherNet/IP scanner/originator. It supports explicit reads over unconnected CIP or Class 3 and identity-checked unconnected Set_Attribute_Single writes. HTTP, MQTT and shared memory export its cyclic inputs. A C-compatible FFI and an EtherNet/IP adapter stack are separate future work.
 - Verify checkout state, applicable instructions and remote before editing. Keep unrelated changes intact. Use the verified origin when publishing authorized work.
 
 ## Operational boundaries
@@ -21,6 +21,7 @@ Read the repository skill at [.agents/skills/ethernetip-workbench/SKILL.md](.age
 - Preserve the difference between requested RPI, Forward_Open actual packet intervals and observed socket spacing. A clean localhost test does not establish physical 1 ms acceptance.
 - Preserve old profiles, CSV columns and sample indexes across reconnects. Distinguish packet sequence gaps, duplicates, late/invalid traffic, CSV overruns, export queue drops and intentional on-change filtering.
 - Keep output staging separate from applying an output buffer. Keep automatic reconnect restricted to identity-pinned input-only sessions.
+- Keep explicit write staging separate from sending. Verify the reviewed target on the write session and preserve unconfirmed outcomes without retrying.
 - Update the relevant operator documentation, skill routing and verification notes when changing a public command, profile key, export schema or lifecycle.
 
 ## Delivery

@@ -232,6 +232,27 @@ def class_info_reply(cip, mode, report):
     return bytes.fromhex("8E 00 00 00 " + values[attribute - 1])
 
 
+def explicit_write_reply(cip, mode, attrs, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    assert route in (b"", b"\x01\x03")
+    if message == bytes.fromhex("01 02 20 01 24 01"):
+        assert "identity_route" not in report and not report.get("writes")
+        report["identity_route"] = route.hex()
+        return bytes.fromhex("81 00 00 00") + b"".join(attrs)
+    assert mode != "explicit-write-review"
+    assert report["identity_route"] == route.hex() and "writes" not in report
+    assert message[:8] == bytes.fromhex("10 03 20 04 24 9A 30 03")
+    assert message[8:] == bytes.fromhex("A5 16 2C 93")
+    report["writes"] = [message.hex()]
+    if mode == "explicit-write-no-reply":
+        return None
+    if mode == "explicit-write-rejected":
+        return bytes.fromhex("90 00 0E 01 02 03")
+    if mode == "explicit-write-router-timeout":
+        return bytes.fromhex("D2 00 01 01 04 02")
+    return bytes.fromhex("90 00 00 00")
+
+
 def multiple_service_reply(cip, attrs):
     assert cip[:6] == bytes.fromhex("0A 02 20 02 24 01")
     data = cip[6:]
@@ -295,7 +316,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     connected_packet = connected and "packet" in mode
     connected_large = connected and "large" in mode
     connected_size = 4002 if connected_large else 511 if mode == "class3-sized" else 504
-    report_explicit = connected or mode in ("saved-reads", "multiple-service") or mode.startswith("class-info")
+    explicit_write = mode.startswith("explicit-write")
+    report_explicit = connected or explicit_write or mode in ("saved-reads", "multiple-service") or mode.startswith("class-info")
     multicast = mode.startswith("multicast")
     udp_mode = "stall" if mode == "stall-close-reject" else mode
     adapter_ip = tcp.getsockname()[0]
@@ -360,6 +382,14 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                 items = rr_items(request)
                 cip = items[0xB2]
                 service, words = cip[:2]
+                if explicit_write:
+                    assert set(items) == {0, 0xB2} and not items[0]
+                    result = explicit_write_reply(cip, mode, attrs, report)
+                    if result is None:
+                        break
+                    response = rr_reply(result)
+                    tcp.sendall(struct.pack("<HHII8sI", cmd, len(response), SESSION, 0, ctx, 0) + response)
+                    continue
                 if mode.startswith("class-info"):
                     assert set(items) == {0, 0xB2} and not items[0]
                     response = rr_reply(class_info_reply(cip, mode, report))
@@ -555,6 +585,8 @@ def main():
         "identity-then-owner",
         "explicit", "saved-reads", "multiple-service", "large-keyed", "routed", "variable-input", "large-variable-input",
         "class-info", "class-info-malformed",
+        "explicit-write", "explicit-write-review", "explicit-write-gui", "explicit-write-rejected",
+        "explicit-write-no-reply", "explicit-write-router-timeout",
         "class3-packet", "class3-packet-close-reject",
         "class3-routed", "class3-routed-open-reject", "class3-routed-packet", "class3-routed-packet-unsupported",
         "class3-sized", "class3-large-packet", "class3-routed-large-packet", "class3-large-open-reject",
@@ -579,6 +611,7 @@ def main():
         listener.settimeout(30)
         print("Ready on loopback", flush=True)
         sequences = {
+            "explicit-write-gui": ("explicit-write-review", "explicit-write-review", "explicit-write"),
             "reconnect": ("normal", "normal"),
             "recover": ("stall", "normal"),
             "recover-slower-api": ("stall", "slower-api"),

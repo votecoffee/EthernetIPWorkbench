@@ -199,6 +199,80 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode explicit-write-gui"]
+    fn explore_requires_fresh_review_after_editing_a_staged_write() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[]);
+        device.settings.input_instance = 154;
+        let saved = device.snapshot();
+        let enter = |device: &mut Device, events| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                events,
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| device.show(ctx, &[]));
+        };
+
+        click(&mut device, &ctx, size, "Common attributes");
+        click(&mut device, &ctx, size, "Assembly · Data");
+        click(&mut device, &ctx, size, "Stage attribute write");
+        click(&mut device, &ctx, size, "Send reviewed write");
+        assert!(!device.explorer.busy());
+        click(&mut device, &ctx, size, "Space-separated hex bytes");
+        enter(&mut device, vec![egui::Event::Text("A5 16 2C".into())]);
+        click(&mut device, &ctx, size, "Verify target identity");
+        assert!(device.explorer.busy());
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Class 0x4 · Instance 0x9A · Attribute 0x3",
+            "Loopback Adapter · identity 0:12:1:305419896",
+            "3 bytes to send",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+
+        click(&mut device, &ctx, size, "A5 16 2C");
+        enter(
+            &mut device,
+            vec![
+                egui::Event::Key {
+                    key: egui::Key::End,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::Text(" 93".into()),
+            ],
+        );
+        click(&mut device, &ctx, size, "Send reviewed write");
+        assert!(!device.explorer.busy());
+        click(&mut device, &ctx, size, "Verify target identity");
+        wait_for_explore(&mut device);
+        assert!(
+            draw(&mut device, &ctx, size)
+                .iter()
+                .any(|(text, _)| text == "4 bytes to send")
+        );
+        click(&mut device, &ctx, size, "Send reviewed write");
+        wait_for_explore(&mut device);
+        assert!(
+            draw(&mut device, &ctx, size)
+                .iter()
+                .any(|(text, _)| text == "Write acknowledged by target")
+        );
+        assert_eq!(device.snapshot(), saved);
+        assert!(device.connection.is_none());
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode class-info"]
     fn explore_reads_class_details_without_changing_the_saved_requests() {
         let ctx = egui::Context::default();
