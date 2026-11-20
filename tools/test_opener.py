@@ -499,6 +499,20 @@ def check_listen_only(cli, adapter, root, eds, identity, seconds):
           "A second listener read the same producer after the first closed.")
 
 
+def check_owner(adapter, test_exe, root):
+    root.mkdir()
+    with run_adapter(adapter, root) as adapter_log:
+        result = subprocess.run(
+            [test_exe, "opener_mirrors_two_staged_owner_outputs", "--ignored", "--nocapture"],
+            capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=15,
+        )
+        (root / "test.log").write_bytes(result.stdout + result.stderr)
+        if result.returncode != 0 or b"1 passed" not in result.stdout:
+            raise RuntimeError(f"OpENer cyclic owner test failed. See {root}")
+    assert "ForwardClose: ConnSerNo" in adapter_log.read_text(encoding="utf-8", errors="replace")
+    print("OpENer confirmed cyclic Exclusive Owner and mirrored both 32-byte output buffers.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path, help="Path to eipmaster-cli.exe")
@@ -508,6 +522,7 @@ def main():
     parser.add_argument("--explore", action="store_true", help="Also test discovery, explicit reads and keyed Large Forward_Open")
     parser.add_argument("--multicast", action="store_true", help="Also capture OpENer multicast T->O")
     parser.add_argument("--listen-only", action="store_true", help="Also attach a listener to a controlling multicast session")
+    parser.add_argument("--owner-test", type=Path, help="Also run the compiled assembly-scanner Rust test executable against OpENer")
     args = parser.parse_args()
     if sys.platform != "win32" or not 2 <= args.seconds <= 300:
         parser.error("This fixture requires Windows and a duration from 2 to 300 seconds")
@@ -544,6 +559,8 @@ def main():
         check_multicast(cli, adapter, root / "multicast", identity, args.seconds)
     if args.listen_only:
         check_listen_only(cli, adapter, root / "listen-only", eds, identity, args.seconds)
+    if args.owner_test:
+        check_owner(adapter, args.owner_test.resolve(), root / "cyclic-owner")
 
 
 if __name__ == "__main__":

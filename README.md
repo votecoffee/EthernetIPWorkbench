@@ -174,7 +174,7 @@ For a multicast producer, enable **Multicast input (T->O)** in **Device**. The s
 
 Choose **Listen-only** as the connection role to record an existing controlling connection's multicast input. Use the adapter's documented listen-only heartbeat assembly, or import the matching EDS profile. The listener sends an empty unicast heartbeat and takes no output ownership. [Listen-only settings](docs/OPERATIONS.md#configure-a-listen-only-connection)
 
-For a routed unicast input-only connection, enter the first bridge's IPv4 address and set the port/link path under **Device → CIP routing**. **Read identity** queries the target through that route. The first bridge also carries the cyclic UDP traffic on the scanner's Ethernet segment. [Routed Class 1 setup](docs/OPERATIONS.md#configure-routed-class-1-input)
+For routed unicast input-only or Exclusive Owner, enter the first bridge's IPv4 address and set the port/link path under **Device → CIP routing**. The first bridge also carries the cyclic UDP traffic on the scanner's Ethernet segment. For Exclusive Owner, read and verify the target identity before authorizing the staged output and configuration bytes. [Routed Class 1 setup](docs/OPERATIONS.md#configure-routed-class-1)
 
 Keep device-specific presets, vendor files and raw captures in the Git-ignored `.local/` folder. The tracked [sample EDS](samples/loopback.eds) and [sample TOML](samples/loopback.toml) target the localhost fixture.
 
@@ -371,7 +371,7 @@ python tools/test_recovery.py .\target\release\eipmaster-cli.exe .\.local\recove
 
 On Windows 11 build 26100 or later, run `python tools/test_interrupt.py .\target\release\eipmaster-cli.exe .\.local\interrupt-check` to exercise real console signals without opening a window.
 
-The [independent OpENer compatibility check](VERIFICATION.md#opener-compatibility) builds a pinned software adapter and runs a headless 60-second input-only capture using the upstream EDS.
+The [independent OpENer compatibility check](VERIFICATION.md#opener-compatibility) builds a pinned software adapter and runs a headless 60-second input-only capture using the upstream EDS. A separate [Exclusive Owner check](VERIFICATION.md#routed-class-1-exclusive-owner) verifies direct staged-output readback on OpENer and routed ownership on a simulated bridge.
 
 ## Roadmap
 

@@ -139,7 +139,7 @@ impl Device {
                         self.writes_confirmed = false;
                     }
                 });
-                ui.small("Leave blank for a direct connection. For a route, use the first bridge's IPv4 address and a unicast input-only profile.");
+                ui.small("Leave blank for a direct connection. For a route, use the first bridge's IPv4 address and a unicast profile. Read the target identity before authorizing output ownership.");
             });
             let s = &mut self.settings;
             let write_settings = |s: &Settings| (
@@ -443,12 +443,25 @@ impl Device {
                 pin.serial
             ));
         }
+        let needs_routed_pin =
+            !route.is_empty() && !self.settings.input_only && self.verified_identity.is_none();
         if self.identity_task.is_some() {
             ui.small("Reading identity…");
+        } else if needs_routed_pin {
+            ui.small("Read and verify the routed target before connecting as owner.");
+            if let Some(error) = &self.status.identity_error {
+                ui.colored_label(AMBER, error);
+            }
+            if ui.button("Read target identity").clicked() {
+                self.begin_identity_read();
+            }
         }
         ui.horizontal_wrapped(|ui| {
             if ui
-                .add_enabled(self.identity_task.is_none(), egui::Button::new("Connect"))
+                .add_enabled(
+                    self.identity_task.is_none() && !needs_routed_pin,
+                    egui::Button::new("Connect"),
+                )
                 .clicked()
             {
                 self.connect(reserved_ports);

@@ -541,7 +541,7 @@ The localhost bridge fixture checked the Unconnected Send wrapper, the embedded 
 
 The Windows localhost bridge fixture exercised a single backplane slot with standard Forward_Open and a three-hop path with a padded IPv4 link, exact electronic key, and Large Forward_Open. The scanner read the target Identity Object through the route. The large case verified fallback to attributes 1–7. The first bridge was the scanner-side UDP peer. Both connection paths matched the fixture byte for byte on Open and Close. The runs requested and negotiated 8 ms in both directions, saved 126 and 125 CSV samples, and confirmed Forward_Close with zero input sequence gaps or buffer overruns.
 
-The fixture also verified that a routing rejection or a replacement serial blocks Forward_Open, and that an unexpected O→T address triggers Forward_Close before sending cyclic traffic. Offline validation rejected malformed routes, routed multicast and routed owner profiles. These checks cover the scanner's wire traffic against a simulated bridge. Physical bridge forwarding remains open.
+The fixture also verified that a routing rejection or a replacement serial blocks Forward_Open, and that an unexpected O→T address triggers Forward_Close before sending cyclic traffic. Offline validation rejected malformed routes and routed multicast. These input-only checks preceded support for routed unicast Exclusive Owner. These checks cover the scanner's wire traffic against a simulated bridge. Physical bridge forwarding remains open.
 
 ## Variable-size Class 1 input
 
@@ -566,6 +566,8 @@ With the adapted fixture and an independent heartbeat producer, two successive t
 ## Physical bench acceptance
 
 Physical-device measurements require a connected bench adapter and verified device settings. First verify the Identity Object and the intended profile, preferably input-only. Confirm output ownership and write permissions before using a profile that owns outputs, asserts Run or sends configuration bytes. Then run the Windows GUI and logger with the requested RPIs and record the Forward_Open actual intervals separately from socket spacing percentiles, longest gap, sequence gaps, timeouts, missed send slots and capture losses. Use a capture at the NIC or switch if wire-level timestamps are required.
+
+For an interoperability run, save the adapter and bridge models, firmware revisions, EDS revision, profile, scanner NIC and route with the report. First establish a direct input-only baseline at a documented RPI. Repeat over the intended route and use the reported connection IDs, O→T destination and first T→O source to correlate both scanner-side traffic directions with the trace. Verify the routed target serial and confirm Forward_Close. For a separately approved owner trial, record the exact initial output and configuration bytes before connecting. Apply one documented output change and confirm it with an independently observed readback. Retain the run report, packet trace and readback together.
 
 ## Offline CSV timing audit
 
@@ -716,3 +718,9 @@ The CLI suite validated the UTC field for matched, mismatched, skipped and rejec
 A fresh headless Explore session reopened a GUI-exported check and displayed its recorded timestamp, matching bytes and confirmed close alongside the original unconfirmed write. The fixture recorded just the preceding explicit follow-up session. The reopened check file stayed byte-for-byte intact.
 
 The CLI reopened all six saved check outcomes offline, including a skipped comparison and a rejected close. It rejected records with inconsistent identity, bytes, timestamp or close fields. The offline tests monitored the loopback listener and observed no incoming sessions. All 53 prior CLI reports passed comparison with the preceding build after accounting for timestamps.
+
+## Routed Class 1 Exclusive Owner
+
+The Windows localhost bridge fixture accepted standard Forward_Open over a backplane route and keyed Large Forward_Open over a route with an IPv4 hop. Both cases requested and negotiated 8 ms in each direction. The fixture checked the routed identity exchanges, open path, exact configuration bytes and odd-byte padding, cyclic peer addresses, and Forward_Close path. The standard case verified the Run/Idle header and both fixed-size staged output buffers. The large case verified modeless output and length changes of 2 → 600 → 5 → 2 bytes. Both closed cleanly. A changed target serial blocked Forward_Open. An unexpected advertised O→T address caused the scanner to close the accepted open before sending cyclic output.
+
+The pinned OpENer 2.3 software adapter accepted direct Exclusive Owner on its sample Connection1 with 32-byte input and output assemblies, a 10-byte configuration segment, and O→T Run/Idle. It mirrored both staged output buffers into the input assembly. The initial check requested and negotiated 30 ms in each direction, received 31 packets with zero sequence gaps, invalid packets or timeouts, and confirmed Forward_Close. Physical bridge forwarding and physical output behavior remain open. [OpENer sample application](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/ports/WIN32/sample_application/sampleapplication.c)

@@ -15,6 +15,12 @@ SESSION = 0xABCD0123
 OT_ID = 0x1234ABCD
 VARIABLE_INPUT_MAX = {"variable-input": 12, "large-variable-input": 600}
 VARIABLE_OUTPUT_MAX = {"variable-output": 12, "large-variable-output": 600}
+ROUTED_OWNER_CYCLIC_MODES = {
+    "routed-io-owner": "owner",
+    "routed-io-large-owner": "large-variable-output",
+    "routed-io-owner-unexpected-peer": "owner",
+}
+ROUTED_KEYED_MODES = ("routed-io-large", "routed-io-large-owner")
 MULTICAST_GROUP = "239.255.92.44"
 
 
@@ -327,10 +333,10 @@ def routed_identity_reply(cip, attrs, route, mode, report):
         requested.append("all")
         if mode == "routed-io-rejected-route":
             return bytes.fromhex("D2 00 01 01 11 03")
-        if mode == "routed-io-large":
+        if mode in ROUTED_KEYED_MODES:
             return bytes.fromhex("81 00 08 00")
         return bytes.fromhex("81 00 00 00") + b"".join(attrs)
-    assert mode == "routed-io-large"
+    assert mode in ROUTED_KEYED_MODES
     assert message[:7] == bytes.fromhex("0E 03 20 01 24 01 30") and len(message) == 8
     attribute = message[7]
     assert 1 <= attribute <= 7
@@ -341,7 +347,9 @@ def routed_identity_reply(cip, attrs, route, mode, report):
 def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     stop = threading.Event()
     io = None
-    owner = mode == "owner" or mode in VARIABLE_OUTPUT_MAX
+    cyclic_mode = ROUTED_OWNER_CYCLIC_MODES.get(mode, mode)
+    owner = cyclic_mode == "owner" or cyclic_mode in VARIABLE_OUTPUT_MAX
+    unexpected_peer = mode in ("routed-io-unexpected-peer", "routed-io-owner-unexpected-peer")
     connected = mode.startswith("class3-")
     connected_packet = connected and "packet" in mode
     connected_large = connected and "large" in mode
@@ -350,7 +358,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     explicit_write = mode.startswith("explicit-write")
     report_explicit = connected or explicit_write or mode in ("saved-reads", "multiple-service") or mode.startswith("class-info")
     multicast = mode.startswith("multicast")
-    udp_mode = "stall" if mode == "stall-close-reject" else mode
+    udp_mode = "stall" if mode == "stall-close-reject" else cyclic_mode
     adapter_ip = tcp.getsockname()[0]
     scanner_ip = tcp.getpeername()[0]
     adapter_index = int(IPv4Address(adapter_ip)) - int(IPv4Address(IP))
@@ -360,7 +368,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     path = bytes.fromhex("20 04 24 01 2C 64 2C 65" if owner else "20 04 24 01 2C FE 2C 65")
     if connected:
         path = bytes.fromhex("20 02 24 01")
-    keyed = mode in ("large-keyed", "routed-io-large")
+    keyed = mode == "large-keyed" or mode in ROUTED_KEYED_MODES
     if keyed:
         path = bytes.fromhex("34 04 01 00 0C 00 01 00 01 00") + path
     route = b""
@@ -508,10 +516,9 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                 elif service in (0x54, 0x5B) and object_class == 6:
                     assert io is None
                     if route:
-                        report["open_path_hex"] = path.hex()
                         assert report["routed_identity_attributes"] == (["all", *range(1, 8)] if keyed else ["all"])
                     _, to, serial, vendor, origin = struct.unpack_from("<IIHHI", body, 2)
-                    if keyed or mode in ("large-variable-input", "large-variable-output"):
+                    if keyed or cyclic_mode in ("large-variable-input", "large-variable-output"):
                         assert service == 0x5B
                         ot_rpi, ot_params, to_rpi, to_params, transport, path_words = struct.unpack_from(
                             "<IIIIBB", body, 22
@@ -521,8 +528,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                             "large-variable-output": 0x4400000A,
                             "large-keyed": 0x4400025A,
                             "routed-io-large": 0x4400025A,
-                        }[mode]
-                        expected_output = 0x4600025A if mode == "large-variable-output" else 0x44000002
+                        }[cyclic_mode]
+                        expected_output = 0x4600025A if cyclic_mode == "large-variable-output" else 0x44000002
                         assert ot_params == expected_output and to_params == expected_input
                         path_offset = 40
                     else:
@@ -539,6 +546,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                     assert transport == 1
                     assert len(body[path_offset:]) == path_words * 2
                     assert body[path_offset:] == path + (bytes.fromhex("80 02 AA BB CC 00") if owner else b"")
+                    if route:
+                        report.update(open_path_hex=body[path_offset:].hex(), open_service=service)
                     family, port, address = struct.unpack(">HH4s8x", items[0x8001])
                     assert family == 2 and port != 0
                     assert socket.inet_ntoa(address) == ("0.0.0.0" if multicast else scanner_ip)
@@ -556,7 +565,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                         reply = struct.pack("<IIHHIIIBB", OT_ID, to, serial, vendor, origin,
                                             ot_api, to_api, 0, 0)
                         adapter_port = udp.getsockname()[1]
-                        output_ip = "127.0.0.3" if mode == "routed-io-unexpected-peer" else adapter_ip
+                        output_ip = "127.0.0.3" if unexpected_peer else adapter_ip
                         extras = [(0x8000, sockaddr(output_ip, adapter_port))]
                         group = None
                         if multicast:
@@ -571,13 +580,13 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                         response = rr_reply(bytes([service | 0x80, 0, 0, 0]) + reply, *extras)
                         report["cyclic_io"] = {
                             "local_udp": f"{scanner_ip}:{port}",
-                            "output_destination": f"{adapter_ip}:{adapter_port}",
+                            "output_destination": f"{output_ip}:{adapter_port}",
                             "ot_connection_id": OT_ID,
                             "to_connection_id": to,
                         }
                         if mode == "delayed-start":
                             time.sleep(0.05)
-                        if (not multicast or mode == "multicast") and mode != "routed-io-unexpected-peer":
+                        if (not multicast or mode == "multicast") and not unexpected_peer:
                             if multicast:
                                 # The fixture never emits multicast beyond localhost.
                                 source.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
@@ -630,7 +639,8 @@ def main():
         "qualify-replacement", "close-reject", "close-mismatch", "close-short", "close-eof",
         "stall-close-reject", "qualify-close-reject",
         "slow-input", "pause-different-api",
-        "identity-then-owner",
+        "identity-then-owner", "routed-owner", "routed-large-owner",
+        "routed-owner-replacement", "routed-owner-unexpected-peer",
         "explicit", "saved-reads", "multiple-service", "large-keyed", "routed", "variable-input", "large-variable-input",
         "class-info", "class-info-malformed",
         "explicit-write", "explicit-write-review", "explicit-write-gui", "explicit-write-rejected",
@@ -683,6 +693,10 @@ def main():
             "qualify-replacement": ("normal", "normal"),
             "qualify-different-api": ("normal", "different-api", "normal", "normal"),
             "identity-then-owner": ("normal", "owner"),
+            "routed-owner": ("routed-io-owner", "routed-io-owner"),
+            "routed-large-owner": ("routed-io-large-owner", "routed-io-large-owner"),
+            "routed-owner-replacement": ("routed-io-owner", "routed-io-owner"),
+            "routed-owner-unexpected-peer": ("routed-io-owner", "routed-io-owner-unexpected-peer"),
             "qualify-close-reject": ("normal", "close-reject"),
         }
         modes = sequences.get(args.mode, (args.mode,))
@@ -695,7 +709,7 @@ def main():
                 conn.settimeout(args.tcp_timeout or (75 if args.mode.startswith("qualify") else 20))
                 udp.bind((address, 0))
                 attempt = {"forward_close": False} if record_attempts else report
-                replacement = args.mode in ("replacement", "qualify-replacement") and index == 1
+                replacement = args.mode in ("replacement", "qualify-replacement", "routed-owner-replacement") and index == 1
                 input_socket = socket.socket(type=socket.SOCK_DGRAM) if mode == "split-udp" else nullcontext(udp)
                 with input_socket as source:
                     if source is not udp:

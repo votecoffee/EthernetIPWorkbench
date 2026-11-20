@@ -273,7 +273,7 @@ Start from a generic sample and use the device's EDS and manual to establish eac
 | Setting | Interpretation |
 |---|---|
 | device_ip, local_ip | Adapter or first bridge IPv4 and IPv4 assigned to the scanner NIC |
-| io_route | Optional port/link pairs for routed Class 1 input |
+| io_route | Optional port/link pairs for routed unicast Class 1 I/O |
 | local_udp_port | 0 requests an ephemeral port, otherwise bind the required local port |
 | input_instance, input_size | Adapter-to-scanner assembly and payload bytes |
 | output_instance, output_size | Scanner-to-adapter assembly or heartbeat connection point |
@@ -290,13 +290,13 @@ Sizes exclude the Class 1 sequence and optional Run/Idle header. Standard Forwar
 
 Set the root TOML key `large_forward_open = true` when the adapter supports service 0x5B. Large Forward_Open allows up to 1,400 payload plus Run/Idle bytes here. CSV, live views, HTTP and MQTT support the larger payloads. The existing EIPWB001 shared memory format keeps its 509-byte limit. The app rejects a larger input when shared memory is enabled.
 
-### Configure routed Class 1 input
+### Configure routed Class 1
 
-Use **Device → CIP routing** to set the documented port/link path from the first bridge to the input target. In TOML, set `device_ip` to the first bridge's IPv4 address and `io_route = "1/3"` for a target at backplane slot 3. Leave the path blank for a direct connection. Use the target's assemblies, RPIs, transfer format and electronic key. The EDS supplies assembly settings. The route describes the installed topology and is entered manually.
+Use **Device → CIP routing** to set the documented port/link path from the first bridge to the target. In TOML, set `device_ip` to the first bridge's IPv4 address and `io_route = "1/3"` for a target at backplane slot 3. Leave the path blank for a direct connection. Use the target's assemblies, RPIs, transfer format and electronic key. The EDS supplies assembly settings. Enter the route for the installed topology manually.
 
-This mode uses unicast input-only with zero output and configuration bytes and O→T Run/Idle disabled. The first bridge must support routed Class 1 and act as the scanner's UDP peer in both directions. Check those capabilities for the intended bridge and target before physical use.
+Routed Class 1 supports unicast input-only and Exclusive Owner. The first bridge must act as the scanner's UDP peer in both directions. For input-only, use zero output and configuration bytes and disable O→T Run/Idle. For Exclusive Owner, use **Read target identity** in connection review, verify the target serial, then authorize the displayed output and configuration bytes. Forward_Open can apply the configuration and start sending the staged output buffer. Automatic reconnect is available for verified input-only profiles.
 
-Read identity through the configured route before connecting. The CLI equivalent is `eipmaster-cli identity <bridge-ipv4> <local-ipv4> --route 1/3`. Use the returned target identity in the capture command. The target Identity Object is read again before each Forward_Open. Forward_Open and Forward_Close carry the same routed assembly path. Preflight and capture reports show `io_route`. In `cyclic_io`, the output destination and first input source identify the scanner-side bridge.
+The CLI can read the routed target with `eipmaster-cli identity <bridge-ipv4> <local-ipv4> --route 1/3` and capture input-only using that identity. The scanner rereads the target Identity Object before each Forward_Open and checks the reviewed serial on a routed owner connection. Forward_Open and Forward_Close carry the same routed assembly path. Preflight and capture reports show `io_route`. In the completed run report's `cyclic_io`, check that the output destination and first input source identify the scanner-side bridge.
 
 ### Configure variable-size input
 

@@ -385,7 +385,7 @@ fn pending_identity_blocks_connect_and_failed_refresh_keeps_the_pin() {
     assert!(device.verified_identity.is_none());
 }
 
-fn read_loopback_owner_identity() -> Device {
+fn loopback_owner() -> Device {
     let mut device = Device::new(1, None);
     let settings = &mut device.settings;
     settings.input_only = false;
@@ -398,17 +398,26 @@ fn read_loopback_owner_identity() -> Device {
     settings.config_hex = "AA BB CC".into();
     settings.input_rpi_us = 8000;
     settings.output_rpi_us = 8000;
+    device
+}
+
+fn verify_owner_identity(device: &mut Device, pin: IdentityPin) {
     device.begin_identity_read();
     device.bench_confirmed = true;
     device.writes_confirmed = true;
-    poll_until(&mut device, |device| device.identity_task.is_none());
+    poll_until(device, |device| device.identity_task.is_none());
     assert!(!device.bench_confirmed && !device.writes_confirmed);
-    assert_eq!(
-        device.verified_identity,
-        Some(IdentityPin {
+    assert_eq!(device.verified_identity, Some(pin));
+}
+
+fn read_loopback_owner_identity() -> Device {
+    let mut device = loopback_owner();
+    verify_owner_identity(
+        &mut device,
+        IdentityPin {
             key: (0, 12, 1),
             serial: 0x12345678,
-        })
+        },
     );
     device
 }
@@ -527,6 +536,197 @@ fn standard_open_resizes_cyclic_owner_payload_with_run_idle() {
 #[ignore = "requires tools/loopback_adapter.py --mode large-variable-output on localhost"]
 fn large_open_resizes_modeless_cyclic_owner_payload() {
     exercise_variable_owner(600, false);
+}
+
+const ROUTED_FIXTURE_SERIAL: u32 = 0x12345679;
+
+fn routed_owner() -> Device {
+    let mut device = loopback_owner();
+    device.device = "127.0.0.2".into();
+    device.settings.io_route = "1/3".into();
+    device
+}
+
+fn approve_routed_owner(device: &mut Device, vendor: u16) {
+    device.current().unwrap().validate().unwrap();
+    device.connect(&[]);
+    assert!(device.connection.is_none());
+    assert!(
+        device
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("output permission")
+    );
+    device.writes_confirmed = true;
+    device.connect(&[]);
+    assert!(device.connection.is_none());
+    assert!(
+        device
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("routed target identity")
+    );
+    verify_owner_identity(
+        device,
+        IdentityPin {
+            key: (vendor, 12, 1),
+            serial: ROUTED_FIXTURE_SERIAL,
+        },
+    );
+    device.writes_confirmed = true;
+    device.connect(&[]);
+}
+
+fn expect_owner_closed(device: &mut Device) {
+    device.disconnect();
+    poll_until(device, |device| !device.link_busy());
+    assert_eq!(device.status.state, "Closed");
+    assert!(device.status.forward_close.as_ref().unwrap().is_confirmed());
+    assert!(device.reconnect.is_none());
+    assert!(!device.writes_confirmed);
+}
+
+#[test]
+#[ignore = "requires tools/test_routed_owner.py to launch the loopback bridge"]
+fn routed_owner_sends_configuration_and_updates_fixed_outputs() {
+    let mut device = routed_owner();
+    approve_routed_owner(&mut device, 0);
+    poll_until(&mut device, |device| device.status.valid >= 8);
+    device.settings.output_hex = "AB CD".into();
+    let connection = device.connection.as_ref().unwrap();
+    assert_eq!(connection.output_bytes(), [0x12, 0x34]);
+    connection
+        .apply_output(device.settings.output().unwrap())
+        .unwrap();
+    let target = device.status.valid + 8;
+    poll_until(&mut device, |device| device.status.valid >= target);
+    assert_eq!(device.status.actual, Some((8_000, 8_000)));
+    expect_owner_closed(&mut device);
+}
+
+#[test]
+#[ignore = "requires tools/test_routed_owner.py to launch the loopback bridge"]
+fn routed_owner_keyed_large_open_changes_variable_output_length() {
+    let mut device = routed_owner();
+    let settings = &mut device.settings;
+    settings.io_route = "1/2/2/127.0.0.3/1/0".into();
+    settings.large_forward_open = true;
+    settings.electronic_key = Some(model::ElectronicKey {
+        vendor: 1,
+        device_type: 12,
+        product: 1,
+        major: 1,
+        minor: 0,
+        compatible: false,
+    });
+    settings.output_size = 600;
+    settings.output_min_size = Some(2);
+    settings.output_run_idle = false;
+    approve_routed_owner(&mut device, 1);
+    poll_until(&mut device, |device| device.status.valid >= 8);
+    for bytes in [vec![0xA5; 600], vec![0x5B; 5], vec![0xCA, 0xFE]] {
+        device.settings.output_hex = model::hex(&bytes);
+        let connection = device.connection.as_ref().unwrap();
+        connection
+            .apply_output(device.settings.output().unwrap())
+            .unwrap();
+        let target = device.status.valid + 8;
+        poll_until(&mut device, |device| device.status.valid >= target);
+    }
+    assert_eq!(device.status.actual, Some((8_000, 8_000)));
+    expect_owner_closed(&mut device);
+}
+
+#[test]
+#[ignore = "requires tools/test_routed_owner.py to launch the loopback bridge"]
+fn routed_owner_blocks_a_replaced_target() {
+    let mut device = routed_owner();
+    approve_routed_owner(&mut device, 0);
+    poll_until(&mut device, |device| !device.link_busy());
+    assert_eq!(device.status.state, "Error");
+    assert!(
+        device
+            .status
+            .identity_error
+            .as_deref()
+            .unwrap()
+            .contains("Identity mismatch")
+    );
+    assert!(device.status.actual.is_none());
+    assert_eq!(device.tx, 0);
+}
+
+#[test]
+#[ignore = "requires tools/test_routed_owner.py to launch the loopback bridge"]
+fn routed_owner_closes_when_the_bridge_advertises_another_udp_peer() {
+    let mut device = routed_owner();
+    approve_routed_owner(&mut device, 0);
+    poll_until(&mut device, |device| !device.link_busy());
+    assert_eq!(device.status.state, "Error");
+    assert!(
+        device
+            .status
+            .network_error
+            .as_deref()
+            .unwrap()
+            .contains("configured cyclic peer")
+    );
+    assert!(device.status.forward_close.as_ref().unwrap().is_confirmed());
+    assert_eq!(device.tx, 0);
+}
+
+#[test]
+#[ignore = "requires tools/test_opener.py --owner-test to launch OpENer"]
+fn opener_mirrors_two_staged_owner_outputs() {
+    let mut device = Device::new(1, None);
+    device.device = "127.0.0.2".into();
+    let first: Vec<u8> = (0x40..0x60).collect();
+    let second: Vec<u8> = (0xA0..0xC0).rev().collect();
+    device.settings = Settings {
+        input_instance: 100,
+        output_instance: 150,
+        config_instance: Some(151),
+        input_size: 32,
+        output_size: 32,
+        config_size: 10,
+        config_hex: "01 02 03 04 05 06 07 08 09 0A".into(),
+        output_hex: model::hex(&first),
+        input_only: false,
+        output_run_idle: true,
+        input_priority: 2,
+        output_priority: 2,
+        input_rpi_us: 30_000,
+        output_rpi_us: 30_000,
+        ..Settings::default()
+    };
+    verify_owner_identity(
+        &mut device,
+        IdentityPin {
+            key: (1, 12, 65001),
+            serial: 123456789,
+        },
+    );
+
+    device.writes_confirmed = true;
+    device.connect(&[]);
+    poll_until(&mut device, |device| device.status.input == first);
+    device.settings.output_hex = model::hex(&second);
+    let connection = device.connection.as_ref().unwrap();
+    assert_eq!(connection.output_bytes(), first);
+    connection
+        .apply_output(device.settings.output().unwrap())
+        .unwrap();
+    poll_until(&mut device, |device| device.status.input == second);
+    poll_until(&mut device, |device| device.status.valid >= 30);
+    assert_eq!(device.status.actual, Some((30_000, 30_000)));
+    assert_eq!(device.status.invalid + device.status.timeouts, 0);
+    println!(
+        "OpENer mirrored both 32-byte payloads; received {} packets and {} gaps",
+        device.status.valid, device.status.gaps
+    );
+    expect_owner_closed(&mut device);
 }
 
 #[test]

@@ -314,8 +314,13 @@ impl Settings {
             return Err("Enter the scanner NIC's assigned IPv4 address".into());
         }
         let route = self.parsed_io_route()?;
-        if route.is_some() && (!self.input_only_without_writes() || self.input_multicast) {
-            return Err("Routed cyclic I/O requires a unicast input-only profile with zero write bytes and O->T Run/Idle disabled".into());
+        if route.is_some() {
+            if self.input_multicast || self.listen_only {
+                return Err("Routed cyclic I/O requires a unicast profile".into());
+            }
+            if self.input_only && !self.input_only_without_writes() {
+                return Err("Routed input-only requires zero output and configuration bytes and O->T Run/Idle disabled".into());
+            }
         }
         if self.input_instance == 0 || self.output_instance == 0 {
             return Err("Set both connection point instances".into());

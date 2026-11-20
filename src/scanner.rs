@@ -347,6 +347,15 @@ impl Connection {
                 "Confirm bench ownership, configuration and output permission first".into(),
             );
         }
+        if !settings.input_only
+            && !settings.io_route.trim().is_empty()
+            && !matches!(expected, Some(ExpectedIdentity::Device(_)))
+        {
+            return Err(
+                "Read and verify the routed target identity before requesting output ownership"
+                    .into(),
+            );
+        }
         let mut shared = Shared {
             status: Arc::new(Mutex::new(Status {
                 state: "Opening",
