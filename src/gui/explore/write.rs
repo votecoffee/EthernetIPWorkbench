@@ -46,6 +46,11 @@ enum Action {
     Cancel,
 }
 
+enum ReceiptAction {
+    Save,
+    CheckCurrent,
+}
+
 impl Draft {
     fn new(plan: WriteDraft, class3_default: Class3Size) -> Self {
         Self {
@@ -150,16 +155,30 @@ impl Explorer {
 
     pub(super) fn show_attribute_write(&mut self, ui: &mut Ui, directory: &str) {
         if let Some(receipt) = &self.write_result
-            && show_result(
+            && let Some(action) = show_result(
                 ui,
                 receipt,
                 self.saved_write_receipt.as_deref(),
+                self.write_current_check.as_deref(),
                 !self.busy() && self.write_draft.is_none(),
             )
         {
             let receipt = Arc::clone(receipt);
-            let directory = PathBuf::from(directory);
-            self.start(move || receipt.save(&directory).map(Response::SavedWriteReceipt));
+            match action {
+                ReceiptAction::Save => {
+                    let directory = PathBuf::from(directory);
+                    self.start(move || receipt.save(&directory).map(Response::SavedWriteReceipt));
+                }
+                ReceiptAction::CheckCurrent => {
+                    self.write_current_check = None;
+                    self.start(move || {
+                        let check = receipt
+                            .draft
+                            .check_current(receipt.report.expected_identity)?;
+                        Ok(Response::CheckedWriteReceipt(Box::new(check)))
+                    });
+                }
+            }
         }
         let ready = !self.busy();
         let Some(draft) = &mut self.write_draft else {
@@ -454,7 +473,13 @@ fn show_identity(ui: &mut Ui, identity: &Identity) {
     ));
 }
 
-fn show_result(ui: &mut Ui, receipt: &Receipt, saved: Option<&Path>, can_save: bool) -> bool {
+fn show_result(
+    ui: &mut Ui,
+    receipt: &Receipt,
+    saved: Option<&Path>,
+    current: Option<&WriteCurrentCheck>,
+    ready: bool,
+) -> Option<ReceiptAction> {
     let report = &receipt.report;
     let request = &receipt.draft.request;
     if matches!(report.outcome, WriteOutcome::Acknowledged { .. }) {
@@ -485,12 +510,28 @@ fn show_result(ui: &mut Ui, receipt: &Receipt, saved: Option<&Path>, can_save: b
         }
     }
     ui.collapsing("Attribute write result", |ui| {
-        let save = ui
-            .add_enabled(can_save, egui::Button::new("Save write receipt JSON"))
-            .on_hover_text("Save the result to the output directory in Logging.")
-            .clicked();
+        let action = ui
+            .horizontal_wrapped(|ui| {
+                if ui
+                    .add_enabled(ready, egui::Button::new("Save write receipt JSON"))
+                    .on_hover_text("Save the result to the output directory in Logging.")
+                    .clicked()
+                {
+                    return Some(ReceiptAction::Save);
+                }
+                ui.add_enabled(ready, egui::Button::new("Check current value"))
+                    .on_hover_text(
+                        "Read the same device and compare its current bytes with the staged value.",
+                    )
+                    .clicked()
+                    .then_some(ReceiptAction::CheckCurrent)
+            })
+            .inner;
         if let Some(path) = saved {
             ui.small(format!("Saved {}", path.display()));
+        }
+        if let Some(check) = current {
+            show_current_check(ui, check);
         }
         ui.small(format!("Completed {}", receipt.completed_utc()));
         show_address(ui, request);
@@ -518,10 +559,42 @@ fn show_result(ui: &mut Ui, receipt: &Receipt, saved: Option<&Path>, can_save: b
         if let Some(data_hex) = report.readback.as_ref().and_then(ReadbackOutcome::data_hex) {
             show_hex(ui, "Readback bytes", data_hex);
         }
-        save
+        action
     })
     .body_returned
-    .unwrap_or(false)
+    .flatten()
+}
+
+fn show_current_check(ui: &mut Ui, check: &WriteCurrentCheck) {
+    show_identity(ui, &check.observed_identity);
+    match &check.comparison {
+        ReadbackOutcome::Matched { .. } => {
+            ui.label("Current value matches the staged bytes");
+        }
+        ReadbackOutcome::Mismatch { .. } => {
+            ui.colored_label(AMBER, "Current value differs from the staged bytes");
+        }
+        ReadbackOutcome::Skipped => {
+            ui.colored_label(
+                AMBER,
+                "Current value check skipped · Device identity differs",
+            );
+        }
+        outcome => {
+            ui.colored_label(AMBER, outcome.to_string());
+        }
+    }
+    if let Some(data) = check.comparison.data_hex() {
+        show_hex(ui, "Current bytes after write attempt", data);
+    }
+    if let Some(close) = &check.forward_close {
+        let label = format!("Current check Forward_Close · {close}");
+        if close.is_confirmed() {
+            ui.small(label);
+        } else {
+            ui.colored_label(AMBER, label);
+        }
+    }
 }
 
 fn show_hex(ui: &mut Ui, label: &str, data_hex: &str) {

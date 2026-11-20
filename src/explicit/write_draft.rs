@@ -1,6 +1,6 @@
 use super::{
-    AttributeWrite, Class3Size, Identity, IdentityPin, ReadPath, Route, WriteInspection,
-    WriteOptions, WriteReport,
+    AttributeWrite, Class3Size, Identity, IdentityPin, ReadPath, Route, WriteCurrentCheck,
+    WriteInspection, WriteOptions, WriteReport,
 };
 use crate::{
     model::{hex, parse_hex},
@@ -114,6 +114,11 @@ impl WriteDraft {
     /// Read identity and the current attribute bytes on a single read-only session.
     pub fn inspect_current(&self) -> Result<WriteInspection, String> {
         self.request.inspect_current(self.class3_size)
+    }
+
+    /// Compare the current attribute against the staged bytes after verifying the recorded device.
+    pub fn check_current(&self, identity: IdentityPin) -> Result<WriteCurrentCheck, String> {
+        self.request.check_current(self.class3_size, identity)
     }
 
     /// Check the supplied identity and send the staged write at most once.

@@ -87,6 +87,8 @@ Read the current attribute from the write review or with `write-draft <draft.tom
 
 Save the latest write result as JSON from Explore to keep the reviewed identity, staged bytes and device replies together. [Save an attribute write receipt](docs/OPERATIONS.md#save-an-attribute-write-receipt)
 
+Recheck the current attribute from an Explore write result or a saved receipt. Workbench verifies the recorded device identity before comparing its current bytes with the staged bytes. [Check the current value from a receipt](docs/OPERATIONS.md#check-the-current-value-from-a-receipt)
+
 ~~~powershell
 .\target\release\eipmaster-cli.exe discover 127.0.0.1 127.0.0.1
 .\target\release\eipmaster-cli.exe read 127.0.0.1 127.0.0.1 0x01 1 6

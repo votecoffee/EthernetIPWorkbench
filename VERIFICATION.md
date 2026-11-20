@@ -694,3 +694,9 @@ Both GUI checks also targeted a regular file as the output directory. Explore su
 The localhost adapter verified that the CLI's `--inspect` read identity and the current attribute on one session. Tests covered direct unconnected and routed Large Forward_Open connections, target and router errors, and a Class 3 close rejection that preserved the received bytes. All cases left the draft file intact and sent no Set_Attribute_Single request.
 
 Headless Explore displayed the inspected bytes and copied them into the expected-value field only after the operator selected **Use as expected value**. A separate identity review enabled Send. The fixture changed the last byte before the apply session, and Explore displayed both values and blocked the write. The pinned OpENer 2.3 adapter independently returned all 32 bytes of its explicit Assembly using Class 3 inspection and confirmed Forward_Close.
+
+## Read-only follow-up from write receipts
+
+The localhost fixture verified offline receipt preview and rejection of malformed receipts without a network session. Follow-up tests covered a matching value after an unconfirmed write, different bytes, a different identity that skipped the attribute read, a rejected unconnected read, routed Class 3 Large Forward_Open, and a matching value with a rejected close. The follow-up sent no write requests and preserved the input receipts byte-for-byte.
+
+Headless Explore kept the original unconfirmed write visible alongside the later match and confirmed close. The pinned OpENer 2.3 adapter matched all 32 staged bytes on a separate identity-checked Class 3 session after an acknowledged write. All 46 prior CLI write-suite JSON reports matched the previous build.

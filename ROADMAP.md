@@ -58,6 +58,7 @@ The C# examples demonstrate HTTP and shared-memory latest values, retained HTTP 
 - Save exact staged write bytes and options in TOML drafts shared by Explore and CLI. Reopen drafts offline and require a fresh identity review before applying.
 - Inspect the current attribute with the write draft's transport. Stage reviewed bytes as an expected value in Explore and reread them before apply.
 - Export the latest Explore write receipt for audit, with the exact staged bytes, completion time and separate write, verification and Forward_Close outcomes.
+- Check the current value from an Explore or saved write receipt using the reviewed device identity. Keep the later comparison separate from the original write outcome.
 - Saved CIP reads support an optional typed reply field with zero-based offsets, byte order and swaps. The GUI and CLI retain the raw response for review.
 - Run all saved CIP requests in profile order on one explicit session from Explore or the CLI. Both report replies, rejections and unattempted requests. Explore can save the batch report as JSON.
 - Unconnected Multiple Service Packet groups direct reads or saved reads with one shared route in Explore, CLI and Rust. The localhost fixture covers successful and mixed replies and separate bridge and target rejections. Verify with a physical target and bridge that support the service.

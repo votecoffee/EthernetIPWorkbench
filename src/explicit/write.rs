@@ -28,6 +28,33 @@ pub struct WriteInspection {
     pub forward_close: Option<CloseOutcome>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct WriteCurrentCheck {
+    pub expected_identity: IdentityPin,
+    pub observed_identity: Identity,
+    pub identity_matches: bool,
+    pub comparison: ReadbackOutcome,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub forward_close: Option<CloseOutcome>,
+}
+
+impl WriteCurrentCheck {
+    pub fn is_success(&self) -> bool {
+        self.identity_matches
+            && self.comparison.is_match()
+            && self
+                .forward_close
+                .as_ref()
+                .is_none_or(CloseOutcome::is_confirmed)
+    }
+}
+
+struct InspectedValue {
+    identity: Identity,
+    current: Option<Result<Vec<u8>, RoutedReadError>>,
+    forward_close: Option<CloseOutcome>,
+}
+
 impl WriteInspection {
     pub fn is_success(&self) -> bool {
         self.current.is_ok()
@@ -312,7 +339,42 @@ impl AttributeWrite {
         &self,
         size: Option<Class3Size>,
     ) -> Result<WriteInspection, String> {
+        let inspected = self.inspect(size, None)?;
+        Ok(WriteInspection {
+            identity: inspected.identity,
+            current: inspected.current.ok_or("Attribute was not read")?,
+            forward_close: inspected.forward_close,
+        })
+    }
+
+    pub(super) fn check_current(
+        &self,
+        size: Option<Class3Size>,
+        expected_identity: IdentityPin,
+    ) -> Result<WriteCurrentCheck, String> {
+        let inspected = self.inspect(size, Some(expected_identity))?;
+        let comparison = inspected
+            .current
+            .map_or(ReadbackOutcome::Skipped, |current| {
+                compare_value(current, &self.value)
+            });
+        Ok(WriteCurrentCheck {
+            expected_identity,
+            identity_matches: inspected.identity.pin() == expected_identity,
+            observed_identity: inspected.identity,
+            comparison,
+            forward_close: inspected.forward_close,
+        })
+    }
+
+    fn inspect(
+        &self,
+        size: Option<Class3Size>,
+        expected_identity: Option<IdentityPin>,
+    ) -> Result<InspectedValue, String> {
         let identity_error = |error| format!("Read target identity · {error}");
+        let same_target =
+            |actual: &Identity| expected_identity.is_none_or(|pin| actual.pin() == pin);
         if let Some(size) = size {
             self.validate_connected(size)?;
             let (observed, close) = with_connection(
@@ -322,16 +384,18 @@ impl AttributeWrite {
                 size,
                 |connection| {
                     let identity = identity_from(|path| connection.request(&read_message(path)))?;
-                    let value = connection
-                        .request(&read_message(self.path))
-                        .map_err(target_error);
+                    let value = same_target(&identity).then(|| {
+                        connection
+                            .request(&read_message(self.path))
+                            .map_err(target_error)
+                    });
                     Ok::<_, EipError>((identity, value))
                 },
             )
             .map_err(|error| error.to_string())?;
             let (identity, current) = observed
                 .map_err(|error| format!("{}. Forward_Close {close}", identity_error(error)))?;
-            return Ok(WriteInspection {
+            return Ok(InspectedValue {
                 identity,
                 current,
                 forward_close: Some(close),
@@ -340,11 +404,11 @@ impl AttributeWrite {
         self.validate()?;
         let mut session = self.open_session()?;
         let identity = identity(&mut session, self.route.as_ref()).map_err(identity_error)?;
-        let current = match &self.route {
+        let current = same_target(&identity).then(|| match &self.route {
             Some(route) => session.read_routed(self.path, route),
             None => session.read(self.path).map_err(target_error),
-        };
-        Ok(WriteInspection {
+        });
+        Ok(InspectedValue {
             identity,
             current,
             forward_close: None,

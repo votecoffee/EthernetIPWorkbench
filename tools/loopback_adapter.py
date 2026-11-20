@@ -251,6 +251,8 @@ def explicit_write_reply(cip, mode, attrs, report):
             if mode.endswith("-router"):
                 assert route
                 return bytes.fromhex("D2 00 01 01 04 02")
+            if mode == "explicit-write-current-matches":
+                return bytes.fromhex("8E 00 00 00 A5 16 2C 93")
             value = "10 20 30 41" if mode.endswith("-mismatch") else "10 20 30 40"
             return bytes.fromhex("8E 00 00 00 " + value)
         assert (current_check or mode.startswith("explicit-write-readback")) and report.get("writes")
@@ -402,8 +404,11 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                 assert sequence == struct.pack("<H", len(requests) + 1)
                 requests.append(message.hex())
                 if connected_write:
-                    write_mode = ("explicit-write-current-mismatch" if mode == "class3-write-current-changed"
-                                  else "explicit-write-current")
+                    write_mode = {
+                        "class3-write-current-changed": "explicit-write-current-mismatch",
+                        "class3-write-current-matches": "explicit-write-current-matches",
+                        "class3-write-current-matches-close-reject": "explicit-write-current-matches",
+                    }.get(mode, "explicit-write-current")
                     cip = explicit_write_reply(message, write_mode, attrs, report)
                     if message[0] == 0x10 and mode.endswith("-bad-sequence"):
                         sequence = struct.pack("<H", len(requests) + 1)
@@ -595,7 +600,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                     if mode == "close-eof":
                         break
                     if mode in ("close-reject", "stall-close-reject",
-                                "class3-packet-close-reject", "class3-write-close-reject"):
+                                "class3-packet-close-reject", "class3-write-close-reject",
+                                "class3-write-current-matches-close-reject"):
                         response = rr_reply(bytes.fromhex("CE 00 01 01 07 01") + body[2:10] + b"\0\0")
                     elif mode == "close-mismatch":
                         wrong_ids = struct.pack("<H", serial ^ 1) + body[4:10]
@@ -639,6 +645,7 @@ def main():
         "class3-write", "class3-routed-large-write", "class3-write-open-reject",
         "class3-write-close-reject", "class3-write-bad-sequence", "class3-write-gui",
         "class3-write-gui-unconfirmed",
+        "class3-write-current-matches", "class3-write-current-matches-close-reject",
         "class3-write-inspect-gui",
         "routed-io", "routed-io-large", "routed-io-rejected-route", "routed-io-unexpected-peer",
         "variable-output", "large-variable-output",
@@ -664,7 +671,9 @@ def main():
             "explicit-write-gui": ("explicit-write-review", "explicit-write-review", "explicit-write-readback"),
             "explicit-write-gui-current": ("explicit-write-review", "explicit-write-review", "explicit-write-current"),
             "class3-write-gui": ("explicit-write-review", "class3-write", "class3-write"),
-            "class3-write-gui-unconfirmed": ("explicit-write-review", "class3-write", "class3-write-bad-sequence"),
+            "class3-write-gui-unconfirmed": (
+                "explicit-write-review", "class3-write", "class3-write-bad-sequence", "class3-write-current-matches",
+            ),
             "class3-write-inspect-gui": ("class3-write", "class3-write", "class3-write-current-changed"),
             "reconnect": ("normal", "normal"),
             "recover": ("stall", "normal"),

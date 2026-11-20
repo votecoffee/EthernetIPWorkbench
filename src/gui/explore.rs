@@ -3,7 +3,8 @@ use assembly_scanner::{
     discovery,
     explicit::{
         self, AttributeWrite, Class3Size, ClassInfo, ReadPath, Reader, Route, SavedRead,
-        SavedReadMode, SavedReadReport, WriteInspection, WriteOutcome, WriteReport,
+        SavedReadMode, SavedReadReport, WriteCurrentCheck, WriteInspection, WriteOutcome,
+        WriteReport,
     },
 };
 use std::sync::Arc;
@@ -36,6 +37,7 @@ enum Response {
     WriteInspection(Box<WriteInspection>),
     WriteResult(Arc<write::Receipt>),
     SavedWriteReceipt(PathBuf),
+    CheckedWriteReceipt(Box<WriteCurrentCheck>),
 }
 
 struct ReadReply {
@@ -64,6 +66,7 @@ pub(super) struct Explorer {
     write_draft_path: String,
     write_result: Option<Arc<write::Receipt>>,
     saved_write_receipt: Option<PathBuf>,
+    write_current_check: Option<Box<WriteCurrentCheck>>,
 }
 
 impl Default for Explorer {
@@ -88,6 +91,7 @@ impl Default for Explorer {
             write_draft_path: String::new(),
             write_result: None,
             saved_write_receipt: None,
+            write_current_check: None,
         }
     }
 }
@@ -137,8 +141,10 @@ impl Explorer {
             Ok(Ok(Response::WriteResult(result))) => {
                 self.write_result = Some(result);
                 self.saved_write_receipt = None;
+                self.write_current_check = None;
             }
             Ok(Ok(Response::SavedWriteReceipt(path))) => self.saved_write_receipt = Some(path),
+            Ok(Ok(Response::CheckedWriteReceipt(check))) => self.write_current_check = Some(check),
             Ok(Err(error)) => self.notice = Some(error),
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.notice = Some("Explore request ended without a response".into())

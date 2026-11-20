@@ -25,6 +25,7 @@ mod report;
 mod route;
 mod write;
 mod write_draft;
+mod write_receipt;
 pub use batch::{
     SavedReadBatch, SavedReadMode, SavedReadOutcome, SavedReadReport, SavedReadResult,
     run_saved_reads, run_saved_reads_with_class3_size, run_saved_reads_with_mode,
@@ -38,10 +39,11 @@ pub use multiple::run_saved_reads_packet;
 pub use report::read_reply_document;
 pub use route::{Route, RoutedReadError};
 pub use write::{
-    AttributeWrite, CurrentValueCheck, ReadbackOutcome, WriteInspection, WriteOptions,
-    WriteOutcome, WriteReport,
+    AttributeWrite, CurrentValueCheck, ReadbackOutcome, WriteCurrentCheck, WriteInspection,
+    WriteOptions, WriteOutcome, WriteReport,
 };
 pub use write_draft::WriteDraft;
+pub use write_receipt::SavedWriteReceipt;
 pub(crate) const TO_SOCKET: u16 = 0x8001;
 pub(crate) const PORT: u16 = 44818;
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -262,7 +264,8 @@ impl Identity {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct IdentityPin {
     pub key: IdentityKey,
     pub serial: u32,

@@ -619,6 +619,11 @@ mod tests {
         );
         let text = fs::read_to_string(&file).unwrap();
         let document: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let reopened = assembly_scanner::explicit::SavedWriteReceipt::load(&file).unwrap();
+        assert_eq!(
+            reopened.report_document()["value_hex"],
+            document["value_hex"]
+        );
         let timestamp = document["completed_utc"].as_str().unwrap();
         assert!(
             chrono::DateTime::parse_from_rfc3339(timestamp).is_ok() && timestamp.ends_with('Z')
@@ -651,6 +656,19 @@ mod tests {
                     .unwrap()
                     .contains("data or sequence")
             );
+            click(&mut device, &ctx, size, "Check current value");
+            wait_for_explore(&mut device);
+            let labels = draw(&mut device, &ctx, size);
+            for expected in [
+                "Current value matches the staged bytes",
+                "Current check Forward_Close · confirmed",
+            ] {
+                assert!(
+                    labels.iter().any(|(text, _)| text == expected),
+                    "{expected}"
+                );
+            }
+            assert!(labels.iter().any(|(text, _)| text.starts_with(label)));
         }
 
         device.preferences.directory = file.to_str().unwrap().to_owned();

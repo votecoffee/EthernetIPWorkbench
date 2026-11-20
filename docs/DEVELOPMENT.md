@@ -18,6 +18,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/explicit/class_info.rs and src/gui/explore/class_info.rs | Common class attribute inspection, decoding and the Explore details view |
 | src/explicit/write.rs, src/gui/explore/write.rs and src/bin/eipmaster-cli/writes.rs | Identity-checked Set_Attribute_Single, GUI review and CLI preview/apply |
 | src/explicit/write_draft.rs | Versioned TOML write drafts and transport dispatch shared by Explore and the CLI |
+| src/explicit/write_receipt.rs | Offline loading and read-only follow-up for completed write receipts |
 | src/explicit/batch.rs and src/gui/explore/batch.rs | Shared saved-read execution and the Explore mode picker and results |
 | src/explicit/report.rs | Shared JSON fields for explicit reads, batch results and write requests |
 | src/explicit/multiple.rs | Multiple Service Packet encoding, decoding and direct or routed unconnected batches |
@@ -88,6 +89,7 @@ Depend on the `assembly-scanner` library with `default-features = false` to omit
 - Use `AttributeWrite::validate_connected` for offline validation and `apply_connected` with `WriteOptions` and `Class3Size` for one reviewed Class 3 write. It uses the same connection for identity and optional value checks. Inspect `WriteReport::forward_close` separately from the write and readback.
 - Use `WriteDraft::load` and `save_new` to transfer the wire bytes, paths, transport, and optional value checks between tools. Both validate offline. Call `WriteDraft::read_target_identity` for a separate identity read and `WriteDraft::apply` with the reviewed pin. The versioned TOML schema rejects unknown fields.
 - Use `WriteDraft::inspect_current` to read identity and the current attribute on one session. The report preserves the read outcome and any Class 3 close separately. Preparing a guard from these bytes still requires the same-session check in `apply`.
+- Use `WriteDraft::check_current` for a read-only comparison against the staged bytes on a session pinned to the supplied identity. Use `SavedWriteReceipt::load` for the same check against a completed GUI or CLI receipt. Keep the historical outcome alongside the follow-up.
 - Use `WriteDraft::report_document` for the JSON request fields. The CLI and Explore combine them with the serialized `WriteReport`. Explore adds `completed_utc` and exports its latest result on the job worker.
 - Use `explicit::run_saved_reads` for the default ordered batch. Match the typed result for each saved request. A router or target rejection leaves later requests eligible to run. An exchange failure marks the remaining requests unattempted.
 - Use `explicit::run_saved_reads_packet` to pack direct saved reads or reads with one shared route into one unconnected Message Router request. Routed packets reuse the single-read Unconnected Send envelope and router/target reply distinction. Each valid embedded reply uses the same typed outcome as the sequential runner.
@@ -110,7 +112,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 | Change | Headless check |
 |---|---|
 | Profiles, mapping, CLI and capture | python tools/test_cli.py target/release/eipmaster-cli.exe .local/cli-check-01 |
-| Explicit write preview, typed encoding, identity pin, current-value check, readback, Class 3 close and draft portability | python tools/test_explicit_write.py target/release/eipmaster-cli.exe .local/write-check-01 |
+| Explicit write preview, typed encoding, identity pin, current-value check, readback, Class 3 close, draft portability and receipt follow-up | python tools/test_explicit_write.py target/release/eipmaster-cli.exe .local/write-check-01 |
 | EDS assembly-member sizes and mapping suggestions, discovery, class inspection, direct and routed reads, saved requests, target identity, keyed and routed cyclic I/O | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
 | Variable-size T→O, EDS provenance, CSV and all three exports | python tools/test_variable_input.py target/release/eipmaster-cli.exe .local/variable-check-01 |
 | Multicast T→O, returned endpoints and failed setup cleanup | python tools/test_multicast.py target/release/eipmaster-cli.exe .local/multicast-check-01 |
@@ -134,7 +136,7 @@ Run the ignored test `explore_reads_class_details_without_changing_the_saved_req
 Run the ignored tests `explore_requires_fresh_review_after_editing_a_staged_write` and `explore_previews_typed_bytes_and_clears_review_on_format_change` with separate localhost fixtures in `explicit-write-gui` mode. They verify review invalidation, the encoded preview, and the matched readback.
 
 Run `explore_requires_fresh_review_after_editing_the_expected_current_value` with the `explicit-write-gui-current` fixture to verify review invalidation and the separate pre-write and readback comparisons.
-Run `explore_requires_fresh_review_when_switching_to_class3_write` with the `class3-write-gui` fixture to verify review invalidation on transport change and export of the acknowledged result. Run `explore_saves_unconfirmed_write_receipt` with `class3-write-gui-unconfirmed` for a wrong-sequence acknowledgment. Both check that a disk failure preserves the prior receipt and the displayed outcome.
+Run `explore_requires_fresh_review_when_switching_to_class3_write` with the `class3-write-gui` fixture to verify review invalidation on transport change and export of the acknowledged result. Run `explore_saves_unconfirmed_write_receipt` with `class3-write-gui-unconfirmed` for a wrong-sequence acknowledgment and a later match that preserves the uncertainty. Both check that a disk failure preserves the prior receipt and the displayed outcome.
 The offline `explore_saves_and_reopens_an_offline_write_draft` test checks draft round-tripping and the fresh-review gate without a fixture.
 Run `explore_stages_inspected_bytes_and_rechecks_them_on_apply` with `class3-write-inspect-gui` to verify that only a deliberate copy stages the inspected bytes and a later value change blocks the write.
 

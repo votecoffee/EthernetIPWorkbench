@@ -1,6 +1,8 @@
 use super::{USAGE, explicit_endpoint, parse_expected_identity};
 use assembly_scanner::{
-    explicit::{AttributeWrite, Class3Size, IdentityPin, ReadPath, Route, WriteDraft},
+    explicit::{
+        AttributeWrite, Class3Size, IdentityPin, ReadPath, Route, SavedWriteReceipt, WriteDraft,
+    },
     model::{ByteSwap, Kind, Selection, parse_hex},
 };
 use serde_json::json;
@@ -37,6 +39,28 @@ pub(super) fn file(path: &Path, options: &[OsString]) -> Result<bool, String> {
         _ => return Err(USAGE.into()),
     };
     run(&WriteDraft::load(path)?, action, None)
+}
+
+pub(super) fn receipt(path: &Path, options: &[OsString]) -> Result<bool, String> {
+    let check = match options {
+        [] => false,
+        [flag] if flag == "--check-current" => true,
+        _ => return Err(USAGE.into()),
+    };
+    let receipt = SavedWriteReceipt::load(path)?;
+    let mut report = receipt.report_document();
+    let (success, result) = if check {
+        let current = receipt.check_current()?;
+        (current.is_success(), json!(current))
+    } else {
+        (true, json!({"outcome": "preview"}))
+    };
+    report["result"] = result;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
+    );
+    Ok(success)
 }
 
 pub(super) fn attribute(

@@ -105,6 +105,80 @@ def check_writes(exe, root):
     check_current_value(command, root)
     check_connected_writes(command, root)
     check_write_drafts(command, root)
+    check_write_receipts(exe, root)
+
+
+def check_write_receipts(exe, root):
+    receipt = root / "class3-wrong-sequence.json"
+    before = receipt.read_bytes()
+    original = json.loads(before)
+    mismatch = root / "class3-wrong-identity.json"
+    invalid = root / "invalid-receipt" / "receipt.json"
+    invalid.parent.mkdir()
+    command = [exe, "write-receipt"]
+
+    with socket.socket() as listener:
+        listener.bind((LOCAL, 44818))
+        listener.listen(1)
+        preview = subprocess.run([*command, receipt], capture_output=True, text=True, timeout=6,
+                                 creationflags=NO_WINDOW)
+        assert preview.returncode == 0 and not preview.stderr
+        report = json.loads(preview.stdout)
+        assert report["value_hex"] == VALUE and report["class3_size"] == 504
+        assert report["original_write"] == {
+            "outcome": "unconfirmed", "expected_identity": original["result"]["expected_identity"],
+        }
+        assert report["result"] == {"outcome": "preview"}
+        (root / "receipt-preview.json").write_text(preview.stdout, encoding="utf-8")
+        for document, error in (
+            ({**original, "bytes": 3}, "byte count differs"),
+            ({**original, "large_forward_open": True}, "open service disagree"),
+            ({**original, "result": {"outcome": "preview"}}, "unknown variant"),
+            (f'{{"adapter_or_bridge":"127.0.0.1",{before.decode()[1:]}', "duplicate field"),
+        ):
+            invalid.write_text(document if isinstance(document, str) else json.dumps(document), encoding="utf-8")
+            rejected = subprocess.run([*command, invalid, "--check-current"], capture_output=True, text=True,
+                                      timeout=6, creationflags=NO_WINDOW)
+            assert rejected.returncode == 1 and not rejected.stdout and error in rejected.stderr, rejected.stderr
+        listener.settimeout(0.1)
+        try:
+            unexpected, _ = listener.accept()
+        except TimeoutError:
+            pass
+        else:
+            unexpected.close()
+            raise AssertionError("A receipt preview or invalid receipt opened a network session")
+
+    for label, source, mode, state, hex_value, close, code in (
+        ("matches", receipt, "class3-write-current-matches", "matched", VALUE, "confirmed", 0),
+        ("different", receipt, "class3-write", "mismatch", CURRENT, "confirmed", 1),
+        ("routed-large", root / "class3-routed-large.json", "class3-routed-large-write",
+         "mismatch", CURRENT, "confirmed", 1),
+        ("device-mismatch", mismatch, "class3-write", "skipped", None, "confirmed", 1),
+        ("close-rejected", receipt, "class3-write-current-matches-close-reject", "matched", VALUE, "rejected", 1),
+        ("direct-rejected", root / "direct.json", "explicit-write-current-rejected", "rejected", None, None, 1),
+    ):
+        case = f"receipt-{label}"
+        initial = source.read_bytes()
+        received, peer = with_adapter(root, case, [*command, source, "--check-current"], mode)
+        assert received.returncode == code and not received.stderr, (received.stdout, received.stderr)
+        report = json.loads(received.stdout)
+        assert report["original_write"]["outcome"] == json.loads(initial)["result"]["outcome"]
+        assert report["value_hex"] == VALUE and source.read_bytes() == initial
+        result = report["result"]
+        assert result["identity_matches"] == (state != "skipped")
+        assert result["observed_identity"]["serial"] == 305419896
+        assert result["comparison"]["outcome"] == state and result["comparison"].get("data_hex") == hex_value
+        assert peer["registrations"] == 1 and peer["unregistered"] and "writes" not in peer
+        read = "0e032004249a3003"
+        assert peer.get("current_reads", []) == ([] if state == "skipped" else [read])
+        if close:
+            assert result["forward_close"]["outcome"] == close
+            assert peer["connected_requests"] == ["010220012401", *([] if state == "skipped" else [read])]
+        else:
+            assert "forward_close" not in result
+            assert result["comparison"]["extended_status"] == [0x0302]
+        (root / f"{case}.json").write_text(received.stdout, encoding="utf-8")
 
 
 def check_write_drafts(command, root):
@@ -422,4 +496,4 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
     check_writes(args.exe.resolve(strict=True), args.output.resolve())
-    print("Unconnected and Class 3 write previews, identity, current-value, readback, close, and draft inspection passed.")
+    print("Explicit write, draft inspection, and read-only receipt checks passed.")

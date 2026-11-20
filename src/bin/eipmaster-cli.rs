@@ -48,6 +48,7 @@ Usage:
   eipmaster-cli class-info <adapter-or-bridge-ipv4> <local-ipv4> <class> [--route <port/link/...>]
   eipmaster-cli write-attribute <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute> \"<value>\" [--type <Kind>] [--endian <little|big>] [--swap <none|bytes_in_words|word_order>] [--text-bytes <count>] [--route <port/link/...>] [--expect-current \"<hex bytes>\"] [--readback] [--connected [--connection-size <bytes>]] [--save-draft <new.toml> | --apply <vendor:type:product:serial>]
   eipmaster-cli write-draft <draft.toml> [--verify | --inspect | --apply <vendor:type:product:serial>]
+  eipmaster-cli write-receipt <receipt.json> [--check-current]
   eipmaster-cli read-saved <settings.toml> <name>
   eipmaster-cli read-saved-all <settings.toml> [--multiple-service-packet] [--connected]
   eipmaster-cli capture <settings.toml> <new-output-dir> <seconds> <vendor:type:product[:serial]>
@@ -161,6 +162,9 @@ fn run(args: &[OsString]) -> Result<bool, String> {
         }
         [command, path, options @ ..] if command == "write-draft" => {
             writes::file(Path::new(path), options)
+        }
+        [command, path, options @ ..] if command == "write-receipt" => {
+            writes::receipt(Path::new(path), options)
         }
         [command, profile, name] if command == "read-saved" => {
             let (settings, app) = settings_file::load_profile(Path::new(profile))?;

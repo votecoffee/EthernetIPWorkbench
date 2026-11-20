@@ -132,6 +132,14 @@ The receipt uses the CLI's write-result fields for the exact staged bytes, addre
 
 Saving uses the completed result already in Explore. A disk error leaves that result available so you can select a working directory and save it there. For CLI writes, retain the JSON from stdout and record the exit code separately.
 
+#### Check the current value from a receipt
+
+For a readable attribute, select **Check current value** under **Explore → Attribute write result**. Workbench uses the original address, route and transport. It verifies the recorded device identity and reads the attribute on that session only when the identity matches. The comparison and any Class 3 Forward_Close outcome appear separately from the original write result.
+
+Use `write-receipt <receipt.json>` to preview a completed GUI or CLI write receipt offline. For an authorized read, add `--check-current`. The command reports the original write outcome in `original_write` and the follow-up in `result`. Check `result.identity_matches`, `result.comparison` and, for Class 3, `result.forward_close`. Exit code 0 requires matching identity and current bytes, plus confirmed close for Class 3. You can save the command's stdout as a separate follow-up record.
+
+A later match describes the bytes at the time of that check. An original unconfirmed outcome stays unconfirmed. The check is read-only and the receipt file stays intact.
+
 ### Run all saved reads
 
 In **Explore**, expand **Saved reads**, choose a **Read mode**, and select **Read all saved**. The batch runs on the configured adapter or bridge and NIC in **Device**. The mode starts at **Unconnected sequential** in each new application session.
