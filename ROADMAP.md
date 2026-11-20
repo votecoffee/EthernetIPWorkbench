@@ -52,6 +52,7 @@ The C# examples demonstrate HTTP and shared-memory latest values, retained HTTP 
 - Saved CIP reads support an optional typed reply field with zero-based offsets, byte order and swaps. The GUI and CLI retain the raw response for review.
 - Run all saved CIP requests in profile order on one explicit session from Explore or the CLI. Both report replies, rejections and unattempted requests. Explore can save the batch report as JSON.
 - Unconnected Multiple Service Packet groups direct saved reads into one request through the CLI and Rust API. The localhost fixture covers successful and mixed replies. Verify with a physical target that implements this service.
+- Direct Class 3 connected reads and Forward_Close have independent OpENer coverage through the CLI and Rust API. Verify on a physical adapter.
 - Routed explicit reads support backplane and IPv4 links in Explore, CLI and the Rust API. Verify them through a physical bridge.
 - Variable-size T→O supports standard and Large Forward_Open, offline decoding, CSV and all three export feeds. Verify it on a physical adapter that produces variable-size assemblies.
 - Multicast T→O uses the adapter's group, port and connection ID with unicast O→T. Verify group membership and capture through a physical bench switch.

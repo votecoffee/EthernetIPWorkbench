@@ -483,7 +483,7 @@ struct Shared {
     publisher: Option<Publisher>,
 }
 
-fn forward_close(session: &mut Session, request: &ForwardCloseRequest) -> Result<()> {
+pub(crate) fn forward_close(session: &mut Session, request: &ForwardCloseRequest) -> Result<()> {
     let (body, _) = session.cip(0x4e, 6, &request.encode(), None)?;
     let reply = ForwardCloseResponse::decode(&body)?;
     if reply.connection_serial != request.connection_serial
@@ -758,16 +758,7 @@ fn run(
         .as_ref()
         .err()
         .is_none_or(|error| matches!(error, EipError::Io(_)));
-    status.forward_close = Some(match close_result {
-        Ok(()) => CloseOutcome::Confirmed,
-        Err(EipError::Cip { status, ext }) => CloseOutcome::Rejected {
-            general_status: status,
-            extended_status: ext,
-        },
-        Err(error) => CloseOutcome::Unconfirmed {
-            error: error.to_string(),
-        },
-    });
+    status.forward_close = Some(CloseOutcome::from_result(close_result));
     io_result
 }
 

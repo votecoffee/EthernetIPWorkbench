@@ -43,7 +43,7 @@ Usage:
   eipmaster-cli discover <local-ipv4> [<destination-ipv4>]
   eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
   eipmaster-cli read-saved <settings.toml> <name>
-  eipmaster-cli read-saved-all <settings.toml> [--multiple-service-packet]
+  eipmaster-cli read-saved-all <settings.toml> [--multiple-service-packet|--connected]
   eipmaster-cli capture <settings.toml> <new-output-dir> <seconds> <vendor:type:product[:serial]>
   eipmaster-cli serve <settings.toml> <vendor:type:product[:serial]> [<seconds>]
   eipmaster-cli qualify <settings.toml> <new-output-dir> <direct|switched|loopback> <vendor:type:product:serial> [<loopback-seconds>]
@@ -152,9 +152,10 @@ fn run(args: &[OsString]) -> Result<bool, String> {
             )
         }
         [command, profile, options @ ..] if command == "read-saved-all" => {
-            let packet = match options {
-                [] => false,
-                [option] if option == "--multiple-service-packet" => true,
+            let mode = match options {
+                [] => reads::Mode::Sequential,
+                [option] if option == "--multiple-service-packet" => reads::Mode::Packet,
+                [option] if option == "--connected" => reads::Mode::Connected,
                 _ => return Err(USAGE.into()),
             };
             let (settings, app) = settings_file::load_profile(Path::new(profile))?;
@@ -162,7 +163,7 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                 settings.device_ip,
                 settings.local_ip,
                 app.unwrap_or_default().cip_reads,
-                packet,
+                mode,
             )
         }
         [command, path] if command == "eds" => {

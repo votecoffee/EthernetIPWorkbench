@@ -1,7 +1,7 @@
 use assembly_scanner::{
     explicit::{
         ReadPath, Reader, Route, SavedRead, SavedReadOutcome, read_reply_document, run_saved_reads,
-        run_saved_reads_packet,
+        run_saved_reads_connected, run_saved_reads_packet,
     },
     model::Selection,
 };
@@ -26,20 +26,37 @@ pub(super) fn single(
     Ok(reply.is_ok())
 }
 
+pub(super) enum Mode {
+    Sequential,
+    Packet,
+    Connected,
+}
+
 pub(super) fn all(
     adapter: Ipv4Addr,
     local: Ipv4Addr,
     reads: Vec<SavedRead>,
-    packet: bool,
+    mode: Mode,
 ) -> Result<bool, String> {
-    let batch = if packet {
-        run_saved_reads_packet(adapter, local, reads)?
-    } else {
-        run_saved_reads(adapter, local, reads)?
+    let (batch, confirmed) = match mode {
+        Mode::Connected => {
+            let connected = run_saved_reads_connected(adapter, local, reads)?;
+            println!("{}", connected.report_json()?);
+            (connected.batch, connected.forward_close.is_confirmed())
+        }
+        Mode::Sequential | Mode::Packet => {
+            let batch = if matches!(mode, Mode::Packet) {
+                run_saved_reads_packet(adapter, local, reads)?
+            } else {
+                run_saved_reads(adapter, local, reads)?
+            };
+            println!("{}", batch.report_json()?);
+            (batch, true)
+        }
     };
-    println!("{}", batch.report_json()?);
-    Ok(batch
-        .results
-        .iter()
-        .all(|entry| matches!(entry.outcome, SavedReadOutcome::Reply(_))))
+    Ok(confirmed
+        && batch
+            .results
+            .iter()
+            .all(|entry| matches!(entry.outcome, SavedReadOutcome::Reply(_))))
 }

@@ -456,6 +456,9 @@ def main():
     routed_packet = subprocess.run([exe, "read-saved-all", routed_profile, "--multiple-service-packet"],
                                    capture_output=True, text=True, timeout=4, creationflags=NO_WINDOW)
     assert routed_packet.returncode == 1 and "requires direct saved reads" in routed_packet.stderr
+    routed_connected = subprocess.run([exe, "read-saved-all", routed_profile, "--connected"],
+                                      capture_output=True, text=True, timeout=4, creationflags=NO_WINDOW)
+    assert routed_connected.returncode == 1 and "requires direct saved reads" in routed_connected.stderr
 
     empty = subprocess.run([exe, "read-saved-all", PROFILE], capture_output=True, text=True,
                            timeout=4, creationflags=NO_WINDOW)

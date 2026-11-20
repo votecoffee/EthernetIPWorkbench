@@ -251,6 +251,41 @@ def check_multicast(cli, adapter, root, identity, seconds):
     print(f"OpENer selected multicast group {group}:{port}.")
 
 
+def check_connected_reads(cli, adapter, root, identity):
+    root.mkdir()
+    source = PROFILE.read_text(encoding="utf-8")
+    for name, rejected in (("success", False), ("mixed", True)):
+        case = root / name
+        case.mkdir()
+        profile = case / "profile.toml"
+        requests = [("Product name", 7)]
+        if rejected:
+            requests.append(("Unsupported attribute", 127))
+        requests.append(("Serial number", 6))
+        profile.write_text(source + "".join(
+            f'\n[[app.cip_reads]]\nname = "{label}"\npath = {{ class = 1, instance = 1, attribute = {attribute} }}\n'
+            for label, attribute in requests
+        ), encoding="utf-8")
+        with run_adapter(adapter, case) as log:
+            result = subprocess.run([cli, "read-saved-all", profile, "--connected"],
+                                    capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+        (case / "result.json").write_bytes(result.stdout)
+        assert result.returncode == int(rejected), (result.stdout, result.stderr)
+        report = json.loads(result.stdout)
+        replies = report["results"]
+        assert report["forward_close"] == {"outcome": "confirmed"}
+        assert [reply["name"] for reply in replies] == [item[0] for item in requests]
+        assert replies[0]["decoded"] == identity["name"]
+        assert replies[-1]["decoded"] == f"0x{identity['serial']:08X}"
+        assert all(reply["status"] == "success" for reply in (replies[0], replies[-1]))
+        if rejected:
+            assert replies[1]["status"] == "cip_rejected" and replies[1]["general_status"] == 0x14
+        trace = log.read_text(encoding="utf-8", errors="replace")
+        assert trace.count("Class 3 sequence number:") == len(requests)
+        assert "ForwardClose: ConnSerNo" in trace
+    print("OpENer Class 3 direct reads, partial rejection, sequence tracking and Forward_Close passed.")
+
+
 @contextmanager
 def controlling_heartbeat():
     """Independent loopback originator. Its input stream is observed by the listener."""
@@ -423,6 +458,7 @@ def main():
     check_capture(report, args.seconds)
     if args.explore:
         check_explore(cli, adapter, root / "extended", identity, args.seconds)
+        check_connected_reads(cli, adapter, root / "connected-reads", identity)
     if args.multicast:
         check_multicast(cli, adapter, root / "multicast", identity, args.seconds)
     if args.listen_only:

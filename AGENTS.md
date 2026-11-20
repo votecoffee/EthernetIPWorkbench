@@ -5,7 +5,7 @@ Read the repository skill at [.agents/skills/ethernetip-workbench/SKILL.md](.age
 ## Scope and names
 
 - The repository is EthernetIPWorkbench. The Rust package and GUI executable are still named assembly-scanner, the CLI is eipmaster-cli, and the saved GUI workspace lives in the EIPMaster application-data directory. Follow those existing names in commands and compatibility work.
-- This code operates as a Class 1 EtherNet/IP scanner/originator. HTTP, MQTT and shared memory export its inputs. A C-compatible FFI and an EtherNet/IP adapter stack are separate future work.
+- This code operates as a Class 1 EtherNet/IP scanner/originator and supports unconnected and direct Class 3 explicit reads. HTTP, MQTT and shared memory export its cyclic inputs. A C-compatible FFI and an EtherNet/IP adapter stack are separate future work.
 - Verify checkout state, applicable instructions and remote before editing. Keep unrelated changes intact. Use the verified origin when publishing authorized work.
 
 ## Operational boundaries

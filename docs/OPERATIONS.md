@@ -77,6 +77,16 @@ Exit code 0 means every CIP read returned a successful reply. A CIP rejection or
 
 Use this option with a target that supports unconnected CIP Multiple Service Packet. Every entry must be a direct saved read. The scanner sends one request to the Message Router and decodes each embedded reply in profile order. Each embedded CIP rejection keeps its status words in the usual JSON report and produces exit code 1. A rejection of the whole packet or an invalid reply table produces a diagnostic on stderr and exit code 1. The default sequential mode remains available for routed reads and other targets. [Rockwell CIP Multiple Service Packet format](https://literature.rockwellautomation.com/idc/groups/literature/documents/pm/1756-pm020_-en-p.pdf)
 
+#### Run direct Class 3 connected reads
+
+~~~powershell
+.\target\release\eipmaster-cli.exe read-saved-all .local\device.toml --connected
+~~~
+
+The target must accept a standard Class 3 Forward_Open to its Message Router. This mode requests variable sizes up to 504 bytes per direction, including the two-byte sequence. It sends each direct saved read over TCP in profile order and closes the connection after the batch. The option uses the profile's IPv4 addresses and saved requests. The default sequential mode handles routed reads. Select one CLI mode per invocation. [OpENer Class 3 target](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipclass3connection.c)
+
+The JSON includes `forward_close` separately from the read results. A CIP rejection still allows later reads. An exchange failure leaves later requests unattempted. Exit code 0 requires successful CIP replies and a confirmed close. If Forward_Open fails, the CLI reports the setup error on stderr and exits 1.
+
 ## Start offline
 
 ~~~powershell

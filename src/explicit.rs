@@ -18,10 +18,12 @@ use std::{
     time::{Duration, Instant},
 };
 mod batch;
+mod connected;
 mod multiple;
 mod report;
 mod route;
 pub use batch::{SavedReadBatch, SavedReadOutcome, SavedReadResult, run_saved_reads};
+pub use connected::{ConnectedReadBatch, run_saved_reads_connected};
 pub use multiple::run_saved_reads_packet;
 pub use report::read_reply_document;
 pub use route::{Route, RoutedReadError};
@@ -275,8 +277,13 @@ impl Session {
         Ok(session)
     }
     fn exchange(&mut self, cmd: Command, payload: &[u8]) -> Result<(Header, Vec<u8>)> {
-        self.context += 1;
-        let context = self.context.to_le_bytes();
+        let connected = matches!(cmd, Command::SendUnitData);
+        let context = if connected {
+            [0; 8]
+        } else {
+            self.context += 1;
+            self.context.to_le_bytes()
+        };
         self.tcp
             .write_all(&encap::encode_frame(cmd, self.handle, context, payload))?;
         let deadline = Instant::now() + EXCHANGE_TIMEOUT;
@@ -286,7 +293,7 @@ impl Session {
         let mut body = vec![0; header.length as usize];
         self.read_before(&mut body, deadline)?;
         if header.command != cmd.as_u16()
-            || header.sender_context != context
+            || (!connected && header.sender_context != context)
             || (self.handle != 0 && header.session_handle != self.handle)
             || header.options != 0
         {

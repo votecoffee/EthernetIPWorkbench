@@ -91,6 +91,8 @@ Choose **Save JSON** in **Saved read results** to keep the batch in the output d
 
 For targets that support unconnected Multiple Service Packet, add `--multiple-service-packet` to CLI `read-saved-all` to send the direct reads in one CIP request. The JSON retains each decoded reply and CIP error. [Packet mode](docs/OPERATIONS.md#combine-direct-reads-in-one-packet)
 
+Add `--connected` to run direct saved reads on one Class 3 connection and report its Forward_Close outcome. [Connected read mode](docs/OPERATIONS.md#run-direct-class-3-connected-reads)
+
 ### Save and restore settings
 
 The Windows GUI automatically remembers the device list and selected device in `%LOCALAPPDATA%\EIPMaster\last-session.toml`. It saves edited settings while the window is open and on a normal close. Each setup includes device and NIC settings, imported EDS profiles and overrides, assembly mappings, staged bytes, and CSV and scheduler preferences. An older single-device session opens as **Device 1**. The app starts offline. Confirm the bench and any output or configuration writes again for each device before connecting.

@@ -18,6 +18,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/explicit/batch.rs and src/gui/explore/batch.rs | Shared saved-read execution and the Explore batch results |
 | src/explicit/report.rs | Shared JSON reporting for explicit reads and saved batch exports |
 | src/explicit/multiple.rs | Unconnected Multiple Service Packet for direct saved reads |
+| src/explicit/connected.rs | Direct Class 3 connection lifecycle and connected reads |
 | src/scanner.rs and src/scanner/ | Session lifecycle, Forward_Open/Close, cyclic workers and diagnostics |
 | src/scanner/supervision.rs | Blocking read-only runner with identity-pinned reconnects |
 | src/deadline_wait.rs | Windows deadline wait resource |
@@ -77,6 +78,7 @@ Depend on the `assembly-scanner` library with `default-features = false` to omit
 - Use `discovery::discover(local, destination)` for ListIdentity. Use `explicit::Reader::connect(adapter, local)` and `reader.read(ReadPath { class, instance, attribute })` for direct explicit reads. Connect to the first bridge and use `reader.read_routed(path, &route)` for a routed read. Parse `Route` from the same port/link string accepted by Explore and CLI. Router and target rejections retain numeric status and extended words in separate error variants. The target reply retains its service code, which the reader checks before decoding. [ODVA CIP routing overview](https://www.odva.org/wp-content/uploads/2020/06/PUB00123R1_Common-Industrial_Protocol_and_Family_of_CIP_Networks.pdf#page=28)
 - Use `explicit::run_saved_reads` for the same ordered batch used by Explore and the CLI. Match the typed result for each saved request. A router or target rejection leaves later requests eligible to run. An exchange failure marks the remaining requests unattempted.
 - Use `explicit::run_saved_reads_packet` to pack direct saved reads into one unconnected Message Router request. Each valid embedded reply uses the same typed outcome as the sequential runner.
+- Use `explicit::run_saved_reads_connected` for one direct Class 3 batch. It validates the reply connection ID and CIP sequence and reports the outcome of Forward_Close separately.
 
 ## Build and choose checks
 
@@ -108,7 +110,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 
 The CLI check defaults to 8 ms. --rpi-us 1000 exercises the same cases at 1 ms. A timing failure must retain its receipt and unchanged watchdog configuration for diagnosis. Failed trials remain evidence alongside any later success.
 
-Add `--explore --seconds 3` to the OpENer check for a short interoperability run covering discovery, a direct CIP read, keyed Large Forward_Open and a comparison of exact and compatible keys for an older minor revision.
+Add `--explore --seconds 3` to the OpENer check for discovery, direct unconnected and Class 3 reads, keyed Large Forward_Open and a comparison of exact and compatible keys for an older minor revision.
 Use `--multicast --seconds 3` to also verify OpENer's adapter-selected multicast group and CSV capture.
 Use `--listen-only --seconds 3` to check rejection without a controller and two sequential listener captures on the same producer. This test adapts the pinned Windows loopback build so the fixture keeps its shared UDP socket across connection opens and closes and handles `WSAEWOULDBLOCK` as a retryable receive result.
 

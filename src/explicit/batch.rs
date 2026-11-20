@@ -31,13 +31,27 @@ pub fn run_saved_reads(
     }
     validate_saved_reads(&reads)?;
     let mut reader = Reader::connect(adapter, local).map_err(|error| error.to_string())?;
+    let results = run_ordered(reads, |request| {
+        reader.read_request(request.path, request.route.as_ref())
+    });
+    Ok(SavedReadBatch {
+        adapter_or_bridge: adapter,
+        local_ip: local,
+        results,
+    })
+}
+
+pub(super) fn run_ordered(
+    reads: Vec<SavedRead>,
+    mut query: impl FnMut(&SavedRead) -> Result<Vec<u8>, RoutedReadError>,
+) -> Vec<SavedReadResult> {
     let mut session_lost = false;
     let mut results = Vec::with_capacity(reads.len());
     for request in reads {
         let outcome = if session_lost {
             SavedReadOutcome::NotAttempted
         } else {
-            match reader.read_request(request.path, request.route.as_ref()) {
+            match query(&request) {
                 Ok(bytes) => SavedReadOutcome::Reply(bytes),
                 Err(error @ RoutedReadError::Exchange(_)) => {
                     session_lost = true;
@@ -48,9 +62,5 @@ pub fn run_saved_reads(
         };
         results.push(SavedReadResult { request, outcome });
     }
-    Ok(SavedReadBatch {
-        adapter_or_bridge: adapter,
-        local_ip: local,
-        results,
-    })
+    results
 }

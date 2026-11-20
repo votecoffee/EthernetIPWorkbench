@@ -1,4 +1,7 @@
-use super::{EipError, ReadPath, Route, RoutedReadError, SavedReadBatch, SavedReadOutcome};
+use super::{
+    ConnectedReadBatch, EipError, ReadPath, Route, RoutedReadError, SavedReadBatch,
+    SavedReadOutcome,
+};
 use crate::model::{Selection, hex};
 use serde_json::{Value, json};
 use std::net::Ipv4Addr;
@@ -6,6 +9,10 @@ use std::net::Ipv4Addr;
 impl SavedReadBatch {
     /// Format this batch for the CLI and for saving the GUI results.
     pub fn report_json(&self) -> Result<String, String> {
+        serde_json::to_string_pretty(&self.report_document()?).map_err(|error| error.to_string())
+    }
+
+    fn report_document(&self) -> Result<Value, String> {
         let mut results = Vec::with_capacity(self.results.len());
         for entry in &self.results {
             let saved = &entry.request;
@@ -34,12 +41,20 @@ impl SavedReadBatch {
             document["name"] = json!(saved.name);
             results.push(document);
         }
-        serde_json::to_string_pretty(&json!({
+        Ok(json!({
             "adapter_or_bridge": self.adapter_or_bridge,
             "local_ip": self.local_ip,
             "results": results,
         }))
-        .map_err(|error| error.to_string())
+    }
+}
+
+impl ConnectedReadBatch {
+    /// Format the read results with the separate Class 3 Forward_Close outcome.
+    pub fn report_json(&self) -> Result<String, String> {
+        let mut document = self.batch.report_document()?;
+        document["forward_close"] = json!(self.forward_close);
+        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
     }
 }
 

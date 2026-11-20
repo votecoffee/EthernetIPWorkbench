@@ -140,6 +140,19 @@ pub enum CloseOutcome {
 }
 
 impl CloseOutcome {
+    pub(crate) fn from_result(result: ethernetip_core::error::Result<()>) -> Self {
+        match result {
+            Ok(()) => Self::Confirmed,
+            Err(ethernetip_core::error::EipError::Cip { status, ext }) => Self::Rejected {
+                general_status: status,
+                extended_status: ext,
+            },
+            Err(error) => Self::Unconfirmed {
+                error: error.to_string(),
+            },
+        }
+    }
+
     pub fn is_confirmed(&self) -> bool {
         matches!(self, Self::Confirmed)
     }
