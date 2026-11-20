@@ -258,29 +258,37 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
             assert status == options == 0
             if cmd == 0x65:
                 assert handle == 0 and request == b"\x01\x00\x00\x00"
+                if mode == "saved-reads":
+                    report["registrations"] = report.get("registrations", 0) + 1
                 response = request
             elif cmd == 0x66:
                 assert handle == SESSION
+                if mode == "saved-reads":
+                    report["unregistered"] = True
                 break
             elif cmd == 0x6F:
                 assert handle == SESSION
                 items = rr_items(request)
                 cip = items[0xB2]
                 service, words = cip[:2]
+                if mode == "saved-reads":
+                    report.setdefault("explicit_requests", []).append(cip.hex())
                 if route and service == 0x52:
                     assert set(items) == {0, 0xB2} and not items[0]
                     result = routed_identity_reply(cip, attrs, route, mode, report)
                     response = rr_reply(result)
                     tcp.sendall(struct.pack("<HHII8sI", cmd, len(response), SESSION, 0, ctx, 0) + response)
                     continue
-                if mode == "routed":
+                if mode == "routed" or (mode == "saved-reads" and service == 0x52):
                     assert set(items) == {0, 0xB2} and not items[0]
                     response = rr_reply(routed_reply(cip, attrs, report))
                     tcp.sendall(struct.pack("<HHII8sI", cmd, len(response), SESSION, 0, ctx, 0) + response)
                     continue
-                if mode == "explicit" and service == 0x0e:
+                if mode in ("explicit", "saved-reads") and service == 0x0e:
                     assert len(cip) == 2 + words * 2
                     path_bytes = cip[2:]
+                    if mode == "saved-reads" and path_bytes == bytes.fromhex("20 01 24 01 30 7E"):
+                        break
                     if len(path_bytes) == 6 and path_bytes[:5] == b"\x20\x01\x24\x01\x30" and 1 <= path_bytes[5] <= 7:
                         attr = path_bytes[5]
                         result = bytes.fromhex("8E 00 00 00") + attrs[attr]
@@ -423,7 +431,7 @@ def main():
         "stall-close-reject", "qualify-close-reject",
         "slow-input", "pause-different-api",
         "identity-then-owner",
-        "explicit", "large-keyed", "routed", "variable-input", "large-variable-input",
+        "explicit", "saved-reads", "large-keyed", "routed", "variable-input", "large-variable-input",
         "routed-io", "routed-io-large", "routed-io-rejected-route", "routed-io-unexpected-peer",
         "variable-output", "large-variable-output",
         "multicast", "multicast-missing", "multicast-unicast",

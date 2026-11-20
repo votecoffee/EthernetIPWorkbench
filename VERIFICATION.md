@@ -596,3 +596,7 @@ The headless fixture refreshed a revised EDS after the selected connection moved
 ## Offline EDS revision comparison
 
 The CLI compared a saved 2 ms input minimum with a revised 1 ms minimum. A file with a different declared product code still returned its changes with refresh blocked. The saved profile bytes were preserved. The CLI also rejected a plain TOML without an EDS snapshot. The Rust test moved one typed field, added one and removed one, then checked the corresponding selections and omitted values in the TOML report. Reordering an otherwise unchanged field produced no change entry.
+
+## Batch saved CIP reads
+
+The localhost fixture counted one registration for a batch containing direct and routed reads. A short typed reply kept its raw data. The successful batch unregistered after its three requests and exited zero. A second batch reported router and target status words, read the next field, and then retained the earlier replies when the peer closed during the fifth request. The sixth request was marked `not_attempted` and the CLI exited 1. An empty saved read list failed before opening a session.

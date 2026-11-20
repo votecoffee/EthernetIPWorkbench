@@ -80,9 +80,12 @@ For a documented field within a reply, enable **Decode reply field** and enter i
 .\target\release\eipmaster-cli.exe read 127.0.0.1 127.0.0.1 0x01 1 6
 .\target\release\eipmaster-cli.exe read 192.0.2.10 192.0.2.11 0x01 1 6 --route 1/3
 .\target\release\eipmaster-cli.exe read-saved .local\device.toml "Serial number"
+.\target\release\eipmaster-cli.exe read-saved-all .local\device.toml
 ~~~
 
 The commands return JSON. A CIP rejection returns its general and extended status words and a nonzero exit code. Routed reports identify whether the reply came from the router or the target. [Saved request format](docs/OPERATIONS.md#discover-and-read).
+
+`read-saved-all` runs the saved requests in profile order on one registered session. It reports each result by name and keeps earlier replies if the session ends partway through. [Batch report fields](docs/OPERATIONS.md#run-all-saved-reads)
 
 ### Save and restore settings
 

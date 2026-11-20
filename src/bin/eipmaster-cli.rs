@@ -1,9 +1,9 @@
 use assembly_scanner::{
     capture::{Capture, FieldSummary, MAX_CAPTURE_SECONDS, Options, Slot},
     discovery, eds,
-    explicit::{self, ReadPath, Reader, Route, RoutedReadError},
+    explicit::{self, ReadPath, Route},
     integration::{self, Integration},
-    model::{ConnectionTimeout, Selection, Settings, parse_hex},
+    model::{ConnectionTimeout, Settings, parse_hex},
     preflight,
     scanner::{
         CloseOutcome, CyclicIo, Diagnostics, ExpectedIdentity as ScannerIdentity, Identity,
@@ -28,6 +28,8 @@ use std::{
 mod interrupt;
 #[path = "eipmaster-cli/qualification.rs"]
 mod qualification;
+#[path = "eipmaster-cli/reads.rs"]
+mod reads;
 #[path = "eipmaster-cli/serve.rs"]
 mod serve;
 
@@ -41,6 +43,7 @@ Usage:
   eipmaster-cli discover <local-ipv4> [<destination-ipv4>]
   eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
   eipmaster-cli read-saved <settings.toml> <name>
+  eipmaster-cli read-saved-all <settings.toml>
   eipmaster-cli capture <settings.toml> <new-output-dir> <seconds> <vendor:type:product[:serial]>
   eipmaster-cli serve <settings.toml> <vendor:type:product[:serial]> [<seconds>]
   eipmaster-cli qualify <settings.toml> <new-output-dir> <direct|switched|loopback> <vendor:type:product:serial> [<loopback-seconds>]
@@ -131,7 +134,7 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                     Some(explicit::parse_id(&attribute.to_string_lossy())?)
                 },
             };
-            print_read(adapter, local, path, route.as_ref(), None)
+            reads::single(adapter, local, path, route.as_ref(), None)
         }
         [command, profile, name] if command == "read-saved" => {
             let (settings, app) = settings_file::load_profile(Path::new(profile))?;
@@ -140,12 +143,20 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                 .iter()
                 .find(|read| read.name == name.to_string_lossy())
                 .ok_or_else(|| format!("No saved CIP read named {:?}", name))?;
-            print_read(
+            reads::single(
                 settings.device_ip,
                 settings.local_ip,
                 read.path,
                 read.route.as_ref(),
                 read.selection,
+            )
+        }
+        [command, profile] if command == "read-saved-all" => {
+            let (settings, app) = settings_file::load_profile(Path::new(profile))?;
+            reads::all(
+                settings.device_ip,
+                settings.local_ip,
+                &app.unwrap_or_default().cip_reads,
             )
         }
         [command, path] if command == "eds" => {
@@ -305,64 +316,6 @@ fn run(args: &[OsString]) -> Result<bool, String> {
         }
         _ => Err(USAGE.into()),
     }
-}
-
-fn print_read(
-    adapter: std::net::Ipv4Addr,
-    local: std::net::Ipv4Addr,
-    path: ReadPath,
-    route: Option<&Route>,
-    selection: Option<Selection>,
-) -> Result<bool, String> {
-    path.validate()?;
-    let mut reader = Reader::connect(adapter, local).map_err(|error| error.to_string())?;
-    let result = match route {
-        Some(route) => reader.read_routed(path, route),
-        None => reader.read(path).map_err(|error| match error {
-            error @ explicit::EipError::Cip { .. } => RoutedReadError::Target(error),
-            error => RoutedReadError::Exchange(error),
-        }),
-    };
-    let mut report = match &result {
-        Ok(bytes) => {
-            let decoded = path.decode_reply(bytes, selection);
-            let mut report = serde_json::json!({
-                "path": path,
-                "data_hex": assembly_scanner::model::hex(bytes),
-                "bytes": bytes.len(),
-                "decoded": decoded.as_ref().ok().and_then(|value| value.as_ref()),
-            });
-            if let Some(selection) = selection {
-                report["selection"] = serde_json::json!(selection);
-            }
-            if let Err(error) = decoded {
-                report["decode_error"] = serde_json::json!(error);
-            }
-            report
-        }
-        Err(
-            RoutedReadError::Router(explicit::EipError::Cip { status, ext })
-            | RoutedReadError::Target(explicit::EipError::Cip { status, ext }),
-        ) => {
-            serde_json::json!({"path": path, "general_status": status, "extended_status": ext})
-        }
-        Err(error) => return Err(error.to_string()),
-    };
-    if let Some(route) = route {
-        report["bridge"] = serde_json::json!(adapter);
-        report["route"] = serde_json::json!(route);
-        report["reply_from"] =
-            serde_json::json!(if matches!(result, Err(RoutedReadError::Router(_))) {
-                "router"
-            } else {
-                "target"
-            });
-    }
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?
-    );
-    Ok(result.is_ok())
 }
 
 #[derive(Clone, Copy)]

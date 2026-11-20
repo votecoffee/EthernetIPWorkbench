@@ -362,6 +362,50 @@ def main():
     assert reply["data_hex"] == "78 56 34 12" and reply["decoded"] is None
     assert reply["decode_error"] == "Selection at byte 3 needs 2 bytes. Reply has 4 bytes."
 
+    def saved_request(name, attribute, options=""):
+        return (f'\n[[app.cip_reads]]\nname = "{name}"\n{options}'
+                f'path = {{ class = 1, instance = 1, attribute = {attribute} }}\n')
+
+    short_field = saved_request("Short typed reply", 6, 'selection = { offset = 3, kind = "U16" }\n')
+    product_name = saved_request("Product name", 7)
+    all_ok = root / "all-saved-reads.toml"
+    all_ok.write_text(typed_source + short_field + product_name, encoding="utf-8")
+    read, peer = run("all-saved", "read-saved-all", all_ok, mode="saved-reads")
+    results = json.loads(read)["results"]
+    assert [item["status"] for item in results] == ["success"] * 3
+    assert results[0]["decoded"] == str(0x3456) and results[0]["route"] == "1/3"
+    assert results[1]["decoded"] is None and results[1]["data_hex"] == "78 56 34 12"
+    assert "decode_error" in results[1] and results[2]["decoded"] == "Loopback Adapter"
+    assert peer["registrations"] == 1 and peer["unregistered"]
+    assert len(peer["explicit_requests"]) == 3 and not peer["forward_close"]
+
+    mixed = root / "mixed-saved-reads.toml"
+    mixed.write_text(
+        typed_source + saved_request("Rejected route", 6, 'route = "1/7"\n')
+        + saved_request("Rejected target", 127, 'route = "1/3"\n') + product_name
+        + saved_request("Peer closes during read", 126) + saved_request("Unread", 4),
+        encoding="utf-8",
+    )
+    read, peer = with_adapter(root, "mixed-saved", [exe, "read-saved-all", mixed], "saved-reads")
+    assert read.returncode == 1, (read.stdout, read.stderr)
+    report = json.loads(read.stdout)
+    assert report["adapter_or_bridge"] == report["local_ip"] == LOCAL
+    results = report["results"]
+    assert [item["name"] for item in results] == [
+        "Serial number", "Rejected route", "Rejected target", "Product name", "Peer closes during read", "Unread",
+    ]
+    assert [item["status"] for item in results] == [
+        "success", "cip_rejected", "cip_rejected", "success", "exchange_failed", "not_attempted",
+    ]
+    assert results[1]["reply_from"] == "router" and results[1]["extended_status"] == [0x0311]
+    assert results[2]["reply_from"] == "target" and results[2]["extended_status"] == [0x0302]
+    assert results[3]["decoded"] == "Loopback Adapter" and results[4]["error"]
+    assert peer["registrations"] == 1 and len(peer["explicit_requests"]) == 5
+
+    empty = subprocess.run([exe, "read-saved-all", PROFILE], capture_output=True, text=True,
+                           timeout=4, creationflags=NO_WINDOW)
+    assert empty.returncode == 1 and "no saved CIP reads" in empty.stderr
+
     invalid = root / "invalid-typed-read.toml"
     invalid.write_text(typed_source.replace(selection, 'selection = { offset = 0, kind = "Bool", bit = 8 }'),
                        encoding="utf-8")

@@ -46,6 +46,23 @@ selection = { offset = 2, kind = "I32", big_endian = true, swap = "word_order" }
 
 `read-saved` returns the selection, the decoded value as text, and the raw `data_hex`. A successful CIP read with a short reply still returns its bytes and a successful exit code. The JSON includes `decoded: null` and a separate `decode_error`. With no selection the existing standard attribute descriptions still apply.
 
+### Run all saved reads
+
+~~~powershell
+.\target\release\eipmaster-cli.exe read-saved-all .local\device.toml
+~~~
+
+The CLI runs the profile's saved requests in order on one registered explicit TCP session with the configured adapter or bridge and NIC. Each request uses its own optional route and reply selection. The JSON `results` array preserves order and includes the request name, path, and any returned data or error.
+
+| Status | Meaning |
+|---|---|
+| `success` | A valid CIP reply arrived. Check `decode_error` separately when a typed field was selected. |
+| `cip_rejected` | The adapter or router returned a CIP error. Check the general and extended status. The session continues with the next saved request. |
+| `exchange_failed` | The explicit exchange failed and the session ended. Earlier replies are still in the report. |
+| `not_attempted` | The session ended before this request. The CLI runs at most one attempt per request. |
+
+Exit code 0 means every CIP read returned a successful reply. A CIP rejection or lost exchange produces exit code 1 with the per-request report. If the profile contains no requests or the session fails to register, the CLI reports the setup error on stderr.
+
 ## Start offline
 
 ~~~powershell

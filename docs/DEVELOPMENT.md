@@ -30,6 +30,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/gui/app.rs, src/gui/setup.rs and src/gui/explore.rs | Device list, setup, discovery and explicit reader UI |
 | src/gui/{mapping,monitor,outputs,logging,software,run_report}.rs | Focused workflow views and capture reporting |
 | src/bin/eipmaster-cli.rs | Headless commands and capture supervision |
+| src/bin/eipmaster-cli/reads.rs | Single and batch explicit read reports |
 | src/bin/eipmaster-cli/serve.rs | Headless telemetry service and final receipt |
 | src/bin/eipmaster-cli/qualification.rs | Four-run qualification sequence |
 | src/bin/eipmaster-cli/interrupt.rs | Windows console stop handling |
