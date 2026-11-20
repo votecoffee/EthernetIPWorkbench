@@ -1,7 +1,7 @@
 use super::{USAGE, explicit_endpoint, parse_expected_identity};
 use assembly_scanner::{
     explicit::{AttributeWrite, Class3Size, IdentityPin, ReadPath, Route, WriteDraft},
-    model::{ByteSwap, Kind, Selection, hex, parse_hex},
+    model::{ByteSwap, Kind, Selection, parse_hex},
 };
 use serde_json::json;
 use std::{
@@ -172,29 +172,10 @@ fn run(
     action: Action<'_>,
     typed: Option<(Selection, &str)>,
 ) -> Result<bool, String> {
-    let request = &draft.request;
-    let mut report = json!({
-        "adapter_or_bridge": request.adapter_or_bridge,
-        "local_ip": request.local_ip,
-        "route": request.route,
-        "path": request.path,
-        "service": "Set_Attribute_Single",
-        "value_hex": hex(&request.value),
-        "bytes": request.value.len(),
-    });
+    let mut report = draft.report_document();
     if let Some((format, value)) = typed {
         report["encoding"] = json!(format);
         report["typed_value"] = json!(value);
-    }
-    if draft.readback {
-        report["readback_requested"] = json!(true);
-    }
-    if let Some(bytes) = &draft.expected_current {
-        report["expected_current_hex"] = json!(hex(bytes));
-    }
-    if let Some(size) = draft.class3_size {
-        report["class3_size"] = json!(size);
-        report["large_forward_open"] = json!(size.uses_large_forward_open());
     }
     let (success, result) = match action {
         Action::Preview => {

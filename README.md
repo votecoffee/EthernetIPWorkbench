@@ -83,6 +83,8 @@ Choose **Use Class 3** in the write review or pass `write-attribute --connected`
 
 Save a write review as a reusable TOML draft. Reopen it in Explore or preview it with `write-draft <draft.toml>`. The draft preserves the exact bytes and connection options. Each send requires a reviewed target identity. [Save and reopen a write draft](docs/OPERATIONS.md#save-and-reopen-a-write-draft)
 
+Save the latest write result as JSON from Explore to keep the reviewed identity, staged bytes and device replies together. [Save an attribute write receipt](docs/OPERATIONS.md#save-an-attribute-write-receipt)
+
 ~~~powershell
 .\target\release\eipmaster-cli.exe discover 127.0.0.1 127.0.0.1
 .\target\release\eipmaster-cli.exe read 127.0.0.1 127.0.0.1 0x01 1 6

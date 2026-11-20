@@ -140,22 +140,6 @@ pub(super) fn show(
     .unwrap_or(false)
 }
 
-pub(super) fn save_report(report: &SavedReadReport, directory: &Path) -> Result<PathBuf, String> {
-    if directory.as_os_str().is_empty() {
-        return Err("Set an output directory in Logging".into());
-    }
-    let timestamp = chrono::Utc::now()
-        .format("saved-reads-%Y%m%dT%H%M%S%.9fZ.json")
-        .to_string();
-    let path = directory.join(timestamp);
-    let mut text = report.report_json()?;
-    text.push('\n');
-    fs::create_dir_all(directory).map_err(|error| format!("{}: {error}", directory.display()))?;
-    settings_file::write_new(&path, &text)
-        .map_err(|error| format!("{}: {error}", path.display()))?;
-    Ok(path)
-}
-
 pub(super) fn show_result(ui: &mut Ui, result: &SavedReadResult) {
     let status = match &result.outcome {
         SavedReadOutcome::Reply(_) => "Reply",

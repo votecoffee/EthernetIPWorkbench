@@ -477,11 +477,24 @@ mod tests {
     #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode class3-write-gui"]
     fn explore_requires_fresh_review_when_switching_to_class3_write() {
+        exercise_class3_write_receipt(true);
+    }
+
+    #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode class3-write-gui-unconfirmed"]
+    fn explore_saves_unconfirmed_write_receipt() {
+        exercise_class3_write_receipt(false);
+    }
+
+    fn exercise_class3_write_receipt(acknowledged: bool) {
         let ctx = egui::Context::default();
         ctx.style_mut(|style| style.animation_time = 0.0);
         let size = egui::vec2(1240.0, 1100.0);
         let mut device = explore_device(&[]);
         device.settings.input_instance = 154;
+        let directory = crate::gui::tests::temporary("write-receipt");
+        let configured = directory.to_str().unwrap().to_owned();
+        device.preferences.directory.clone_from(&configured);
         let saved = device.snapshot();
         let enter = |device: &mut Device, text: &str| {
             let input = egui::RawInput {
@@ -512,9 +525,7 @@ mod tests {
         wait_for_explore(&mut device);
         let labels = draw(&mut device, &ctx, size);
         for expected in [
-            "Write acknowledged by target",
             "Current value matched the expected bytes",
-            "Readback matched the staged bytes",
             "Forward_Close · confirmed",
         ] {
             assert!(
@@ -522,6 +533,81 @@ mod tests {
                 "{expected}"
             );
         }
+        let outcome = if acknowledged {
+            "acknowledged"
+        } else {
+            "unconfirmed"
+        };
+        let label = if acknowledged {
+            "Write acknowledged by target"
+        } else {
+            "Write outcome unconfirmed"
+        };
+        assert!(labels.iter().any(|(text, _)| text.starts_with(label)));
+        click(&mut device, &ctx, size, "Attribute write result");
+        click(&mut device, &ctx, size, "Save write receipt JSON");
+        wait_for_explore(&mut device);
+
+        let mut files = fs::read_dir(&directory).unwrap();
+        let file = files.next().unwrap().unwrap().path();
+        assert!(files.next().is_none());
+        drop(files);
+        assert!(
+            file.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("attribute-write-")
+        );
+        let text = fs::read_to_string(&file).unwrap();
+        let document: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let timestamp = document["completed_utc"].as_str().unwrap();
+        assert!(
+            chrono::DateTime::parse_from_rfc3339(timestamp).is_ok() && timestamp.ends_with('Z')
+        );
+        assert_eq!(document["adapter_or_bridge"], "127.0.0.1");
+        assert_eq!(
+            document["path"],
+            serde_json::json!({"class": 4, "instance": 154, "attribute": 3})
+        );
+        assert_eq!(document["value_hex"], "A5 16 2C 93");
+        assert_eq!(document["expected_current_hex"], "10 20 30 40");
+        assert_eq!(document["readback_requested"], true);
+        assert_eq!(document["class3_size"], 504);
+        let report = &document["result"];
+        assert_eq!(report["expected_identity"]["serial"], 305419896);
+        assert_eq!(report["observed_identity"]["serial"], 305419896);
+        assert_eq!(report["outcome"], outcome);
+        assert_eq!(report["current_value"]["outcome"], "matched");
+        assert_eq!(report["forward_close"]["outcome"], "confirmed");
+        if acknowledged {
+            assert_eq!(
+                report["readback"],
+                serde_json::json!({"outcome": "matched", "data_hex": "A5 16 2C 93"})
+            );
+        } else {
+            assert_eq!(report["readback"]["outcome"], "skipped");
+            assert!(
+                report["error"]
+                    .as_str()
+                    .unwrap()
+                    .contains("data or sequence")
+            );
+        }
+
+        device.preferences.directory = file.to_str().unwrap().to_owned();
+        click(&mut device, &ctx, size, "Save write receipt JSON");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        assert!(labels.iter().any(|(text, _)| text.starts_with(label)));
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text.starts_with(&format!("{}: ", file.display())))
+        );
+        assert_eq!(fs::read_to_string(&file).unwrap(), text);
+        fs::remove_file(file).unwrap();
+        fs::remove_dir(directory).unwrap();
+        device.preferences.directory = configured;
         assert_eq!(device.snapshot(), saved);
         assert!(device.connection.is_none());
     }

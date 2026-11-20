@@ -1,5 +1,7 @@
 use super::*;
 use assembly_scanner::explicit::{ReadbackOutcome, WriteDraft};
+use chrono::{DateTime, SecondsFormat, Utc};
+use serde_json::json;
 
 pub(super) struct Draft {
     plan: WriteDraft,
@@ -12,6 +14,27 @@ pub(super) struct Draft {
     class3_size: Class3Size,
     current_input: Option<String>,
     pub(super) saved_file: Option<PathBuf>,
+}
+
+pub(super) struct Receipt {
+    draft: WriteDraft,
+    report: WriteReport,
+    completed_utc: DateTime<Utc>,
+}
+
+impl Receipt {
+    fn completed_utc(&self) -> String {
+        self.completed_utc
+            .to_rfc3339_opts(SecondsFormat::Millis, true)
+    }
+
+    fn save(&self, directory: &Path) -> Result<PathBuf, String> {
+        let mut document = self.draft.report_document();
+        document["result"] = json!(self.report);
+        document["completed_utc"] = json!(self.completed_utc());
+        let text = serde_json::to_string_pretty(&document).map_err(|error| error.to_string())?;
+        save_json_report(directory, "attribute-write", &text)
+    }
 }
 
 enum Action {
@@ -117,9 +140,18 @@ impl Explorer {
         }
     }
 
-    pub(super) fn show_attribute_write(&mut self, ui: &mut Ui) {
-        if let Some(result) = &self.write_result {
-            show_result(ui, &result.0, &result.1);
+    pub(super) fn show_attribute_write(&mut self, ui: &mut Ui, directory: &str) {
+        if let Some(receipt) = &self.write_result
+            && show_result(
+                ui,
+                receipt,
+                self.saved_write_receipt.as_deref(),
+                !self.busy() && self.write_draft.is_none(),
+            )
+        {
+            let receipt = Arc::clone(receipt);
+            let directory = PathBuf::from(directory);
+            self.start(move || receipt.save(&directory).map(Response::SavedWriteReceipt));
         }
         let ready = !self.busy();
         let Some(draft) = &mut self.write_draft else {
@@ -215,10 +247,13 @@ impl Explorer {
             Some(Action::Send(pin)) => {
                 let plan = draft.plan.clone();
                 self.write_draft = None;
-                self.write_result = None;
                 self.start(move || {
                     let report = plan.apply(pin)?;
-                    Ok(Response::WriteResult(Box::new((plan.request, report))))
+                    Ok(Response::WriteResult(Arc::new(Receipt {
+                        draft: plan,
+                        report,
+                        completed_utc: Utc::now(),
+                    })))
                 });
             }
             _ => {}
@@ -358,7 +393,9 @@ fn show_identity(ui: &mut Ui, identity: &Identity) {
     ));
 }
 
-fn show_result(ui: &mut Ui, request: &AttributeWrite, report: &WriteReport) {
+fn show_result(ui: &mut Ui, receipt: &Receipt, saved: Option<&Path>, can_save: bool) -> bool {
+    let report = &receipt.report;
+    let request = &receipt.draft.request;
     if matches!(report.outcome, WriteOutcome::Acknowledged { .. }) {
         ui.label(report.outcome.to_string());
     } else {
@@ -387,7 +424,18 @@ fn show_result(ui: &mut Ui, request: &AttributeWrite, report: &WriteReport) {
         }
     }
     ui.collapsing("Attribute write result", |ui| {
+        let save = ui
+            .add_enabled(can_save, egui::Button::new("Save write receipt JSON"))
+            .on_hover_text("Save the result to the output directory in Logging.")
+            .clicked();
+        if let Some(path) = saved {
+            ui.small(format!("Saved {}", path.display()));
+        }
+        ui.small(format!("Completed {}", receipt.completed_utc()));
         show_address(ui, request);
+        if let Some(size) = receipt.draft.class3_size {
+            ui.label(format!("Class 3 · {} bytes requested", size.bytes()));
+        }
         let IdentityPin {
             key: (vendor, device_type, code),
             serial,
@@ -409,7 +457,10 @@ fn show_result(ui: &mut Ui, request: &AttributeWrite, report: &WriteReport) {
         if let Some(data_hex) = report.readback.as_ref().and_then(ReadbackOutcome::data_hex) {
             show_hex(ui, "Readback bytes", data_hex);
         }
-    });
+        save
+    })
+    .body_returned
+    .unwrap_or(false)
 }
 
 fn show_hex(ui: &mut Ui, label: &str, data_hex: &str) {

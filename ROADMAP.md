@@ -56,6 +56,7 @@ The C# examples demonstrate HTTP and shared-memory latest values, retained HTTP 
 - Require an optional exact current-value comparison on the identity-checked session before sending. Explore and CLI show the comparison separately from the write and readback outcomes.
 - Run reviewed Set_Attribute_Single requests over direct or routed Class 3, with standard or Large Forward_Open and a separate close outcome. Verify on physical targets and bridges that support connected writes.
 - Save exact staged write bytes and options in TOML drafts shared by Explore and CLI. Reopen drafts offline and require a fresh identity review before applying.
+- Export the latest Explore write receipt for audit, with the exact staged bytes, completion time and separate write, verification and Forward_Close outcomes.
 - Saved CIP reads support an optional typed reply field with zero-based offsets, byte order and swaps. The GUI and CLI retain the raw response for review.
 - Run all saved CIP requests in profile order on one explicit session from Explore or the CLI. Both report replies, rejections and unattempted requests. Explore can save the batch report as JSON.
 - Unconnected Multiple Service Packet groups direct reads or saved reads with one shared route in Explore, CLI and Rust. The localhost fixture covers successful and mixed replies and separate bridge and target rejections. Verify with a physical target and bridge that support the service.

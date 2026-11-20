@@ -33,7 +33,8 @@ enum Response {
     OpenedWriteDraft(Box<write::Draft>),
     SavedWriteDraft(PathBuf),
     WriteIdentity(Identity),
-    WriteResult(Box<(AttributeWrite, WriteReport)>),
+    WriteResult(Arc<write::Receipt>),
+    SavedWriteReceipt(PathBuf),
 }
 
 struct ReadReply {
@@ -60,7 +61,8 @@ pub(super) struct Explorer {
     notice: Option<String>,
     write_draft: Option<write::Draft>,
     write_draft_path: String,
-    write_result: Option<Box<(AttributeWrite, WriteReport)>>,
+    write_result: Option<Arc<write::Receipt>>,
+    saved_write_receipt: Option<PathBuf>,
 }
 
 impl Default for Explorer {
@@ -84,6 +86,7 @@ impl Default for Explorer {
             write_draft: None,
             write_draft_path: String::new(),
             write_result: None,
+            saved_write_receipt: None,
         }
     }
 }
@@ -125,7 +128,11 @@ impl Explorer {
                     draft.identity = Some(identity);
                 }
             }
-            Ok(Ok(Response::WriteResult(result))) => self.write_result = Some(result),
+            Ok(Ok(Response::WriteResult(result))) => {
+                self.write_result = Some(result);
+                self.saved_write_receipt = None;
+            }
+            Ok(Ok(Response::SavedWriteReceipt(path))) => self.saved_write_receipt = Some(path),
             Ok(Err(error)) => self.notice = Some(error),
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.notice = Some("Explore request ended without a response".into())
@@ -431,7 +438,8 @@ impl Device {
                 let directory = PathBuf::from(self.preferences.directory.trim());
                 explorer.saved_report = None;
                 explorer.start(move || {
-                    batch::save_report(&batch, &directory).map(Response::SavedReport)
+                    save_json_report(&directory, "saved-reads", &batch.report_json()?)
+                        .map(Response::SavedReport)
                 });
             }
             let mut remove = None;
@@ -468,7 +476,7 @@ impl Device {
             ui.label(format!("{} · {} bytes", reply.address, reply.bytes.len()));
             show_reply_payload(ui, &reply.bytes, &reply.interpretation);
         }
-        explorer.show_attribute_write(ui);
+        explorer.show_attribute_write(ui, self.preferences.directory.trim());
         if let Some(address) = selected {
             self.device = address.to_string();
             self.reset_endpoint_status();
@@ -476,6 +484,18 @@ impl Device {
             self.writes_confirmed = false;
         }
     }
+}
+
+fn save_json_report(directory: &Path, prefix: &str, json: &str) -> Result<PathBuf, String> {
+    if directory.as_os_str().is_empty() {
+        return Err("Set an output directory in Logging".into());
+    }
+    let timestamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%.9fZ");
+    let path = directory.join(format!("{prefix}-{timestamp}.json"));
+    fs::create_dir_all(directory).map_err(|error| format!("{}: {error}", directory.display()))?;
+    settings_file::write_new(&path, &format!("{json}\n"))
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    Ok(path)
 }
 
 fn show_reply_payload(ui: &mut Ui, bytes: &[u8], interpretation: &Result<Option<String>, String>) {

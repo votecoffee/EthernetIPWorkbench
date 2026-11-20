@@ -118,6 +118,14 @@ For an authorized identity read, add `--verify` to `write-draft`. The command us
 
 The version 1 file stores the adapter and NIC, the CIP path, an optional route, the exact encoded hex, any expected current hex, the readback choice and an optional Class 3 size. A typed value reopens as its encoded hex. Identity and approval state are session-specific. Keep device-specific drafts in ignored `.local/` or in a separate private location.
 
+#### Save an attribute write receipt
+
+Set the output directory in **Logging**. After an apply attempt returns, expand **Explore → Attribute write result** and select **Save write receipt JSON**. Explore saves the latest result as a new `attribute-write-*.json` file. Save a result before applying the next write if you want to retain both.
+
+The receipt uses the CLI's write-result fields for the exact staged bytes, addresses, route, transport and result. It adds `completed_utc`, the time the Workbench finished the attempt, including any readback or Forward_Close. The result preserves the reviewed and observed identities and distinguishes the write outcome from the current-value check, readback and close. An unconfirmed outcome still means the device may have applied the write.
+
+Saving uses the completed result already in Explore. A disk error leaves that result available so you can select a working directory and save it there. For CLI writes, retain the JSON from stdout and record the exit code separately.
+
 ### Run all saved reads
 
 In **Explore**, expand **Saved reads**, choose a **Read mode**, and select **Read all saved**. The batch runs on the configured adapter or bridge and NIC in **Device**. The mode starts at **Unconnected sequential** in each new application session.

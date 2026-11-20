@@ -1,11 +1,38 @@
 use super::{
     Class3Size, ClassInfo, ConnectedPacketBatch, ConnectedReadBatch, EipError, ReadPath, Route,
-    RoutedReadError, SavedReadBatch, SavedReadOutcome, SavedReadReport,
+    RoutedReadError, SavedReadBatch, SavedReadOutcome, SavedReadReport, WriteDraft,
 };
 use crate::model::{Selection, hex};
 use crate::scanner::CloseOutcome;
 use serde_json::{Value, json};
 use std::net::Ipv4Addr;
+
+impl WriteDraft {
+    /// Describe the exact wire bytes and transport shared by write previews and receipts.
+    pub fn report_document(&self) -> Value {
+        let request = &self.request;
+        let mut document = json!({
+            "adapter_or_bridge": request.adapter_or_bridge,
+            "local_ip": request.local_ip,
+            "route": request.route,
+            "path": request.path,
+            "service": "Set_Attribute_Single",
+            "value_hex": hex(&request.value),
+            "bytes": request.value.len(),
+        });
+        if self.readback {
+            document["readback_requested"] = json!(true);
+        }
+        if let Some(bytes) = &self.expected_current {
+            document["expected_current_hex"] = json!(hex(bytes));
+        }
+        if let Some(size) = self.class3_size {
+            document["class3_size"] = json!(size);
+            document["large_forward_open"] = json!(size.uses_large_forward_open());
+        }
+        document
+    }
+}
 
 impl SavedReadBatch {
     /// Format this batch for the CLI and for saving the GUI results.
