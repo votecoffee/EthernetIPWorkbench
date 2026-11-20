@@ -411,6 +411,7 @@ def main():
                         'unsupported = []\nassembly_definition_sizes = ["T->O size"]\n'
                         '[eds_profile.fields]\n"T->O size" = "4 bytes (Assem101)"\n'
                         '"T->O RPI" = "2000 us (Param1)"\n'
+                        '[eds_profile.device]\nvendor = 0\ndevice_type = 12\nproduct_code = 1\n'
                         '[eds_profile.input_rpi_range]\nparameter = "Param1"\nmin_us = 2000\nmax_us = 1000000\n'
                         '[eds_profile.settings]\n' + defaults.replace("rpi_us = 1000", "rpi_us = 2000") +
                         '[eds_profile.settings.selection]\n' + selection,
@@ -428,6 +429,30 @@ def main():
     assert tomllib.loads(checked.stdout)["input"]["eds_rpi"]["status"] == "within_bounds"
     subprocess.run([exe, "decode-input", embedded, "01 02 03 04"],
                    check=True, capture_output=True, text=True, timeout=5)
+
+    original = embedded.read_bytes()
+    vendor_eds = PROFILE.with_suffix(".eds")
+    compared = subprocess.run([exe, "compare-eds", embedded, vendor_eds], check=True, capture_output=True,
+                              text=True, timeout=5)
+    delta = tomllib.loads(compared.stdout)
+    assert delta["refresh_allowed"] and delta["connection_id"] == "Connection1"
+    assert "refresh_blocker" not in delta
+    assert delta["input_rpi_range"]["previous"]["min_us"] == 2_000
+    assert delta["input_rpi_range"]["updated"]["min_us"] == 1_000
+    assert delta["declarations"]["T->O RPI"]["previous"] == "2000 us (Param1)"
+
+    wrong_product = root / "different-product.eds"
+    wrong_product.write_text(vendor_eds.read_text(encoding="utf-8").replace("ProdCode = 1", "ProdCode = 2"),
+                             encoding="utf-8")
+    compared = subprocess.run([exe, "compare-eds", embedded, wrong_product], check=True, capture_output=True,
+                              text=True, timeout=5)
+    delta = tomllib.loads(compared.stdout)
+    assert not delta["refresh_allowed"] and "different product code" in delta["refresh_blocker"]
+    assert delta["device"]["updated"]["product_code"] == 2
+    assert embedded.read_bytes() == original
+
+    compared = subprocess.run([exe, "compare-eds", PROFILE, vendor_eds], capture_output=True, text=True, timeout=5)
+    assert compared.returncode == 1 and "no saved EDS profile" in compared.stderr
 
     identity, adapter = with_adapter(root, "identity", [exe, "identity", "127.0.0.1", "127.0.0.1"])
     assert identity.returncode == 0, identity.stderr

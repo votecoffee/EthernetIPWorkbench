@@ -65,6 +65,18 @@ The `eds` report includes `output_rpi_range` and `input_rpi_range` when the corr
 
 decode-input accepts exactly input_size bytes for fixed-size profiles or a length within the configured bounds for variable-size profiles. Exclude sequence and Run/Idle headers. It lists every mapped field's source bytes, decoded text value and CSV inclusion. The GUI has the same check under Mappings → Preview input payload. With no named input fields, the primary selection appears as value.
 
+### Compare EDS revisions
+
+Use a named TOML saved with an EDS connection selected and the revised vendor file.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe compare-eds .local\device.toml .local\updated.eds
+~~~
+
+The command finds the same connection ID in the revised EDS and prints a TOML report of changed imported metadata. A change has `previous` and `updated` values when both sides declare it. An added item has only `updated` and a removed item has only `previous`. In `assemblies`, input, output and configuration changes list typed fields by name with their offsets and selections. A rename appears as a removal and an addition.
+
+Check `refresh_allowed` and any `refresh_blocker`. Exit code 0 indicates that comparison completed, including when the revision would be rejected by **Refresh EDS metadata**. An unreadable file, a profile without EDS metadata, or a missing or duplicate connection ID returns a nonzero exit. The comparison runs offline and preserves both files. To see how your effective overrides compare with the revised EDS, use `validate <settings.toml> <updated.eds> <ConnectionN>`.
+
 ## Configure a device
 
 Start from a generic sample and use the device's EDS and manual to establish each value.

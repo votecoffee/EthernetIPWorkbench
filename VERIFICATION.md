@@ -592,3 +592,7 @@ A headless save and load restored the selected loopback EDS profile from the TOM
 ## Refreshing selected EDS metadata
 
 The headless fixture refreshed a revised EDS after the selected connection moved to the second position and its identifier changed case. The updated EDS declared a 4 ms default and 2–8 ms limits. The effective 8 ms request, staged output and configuration bytes, and CSV preferences survived the refresh. Bench and write confirmations reset. A different declared product, missing or duplicate connection IDs, changed assembly path and unsupported replacement metadata were rejected.
+
+## Offline EDS revision comparison
+
+The CLI compared a saved 2 ms input minimum with a revised 1 ms minimum. A file with a different declared product code still returned its changes with refresh blocked. The saved profile bytes were preserved. The CLI also rejected a plain TOML without an EDS snapshot. The Rust test moved one typed field, added one and removed one, then checked the corresponding selections and omitted values in the TOML report. Reordering an otherwise unchanged field produced no change entry.

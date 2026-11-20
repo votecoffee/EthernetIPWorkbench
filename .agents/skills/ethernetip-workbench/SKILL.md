@@ -32,6 +32,8 @@ A named TOML saved with an EDS connection selected includes that profile in `[ed
 
 Use **Device → Refresh EDS metadata** with the current EDS path to update the selected profile while retaining effective settings and staged bytes. Review the offline comparison and save the named TOML again.
 
+Before refreshing, use `compare-eds <settings.toml> <updated.eds>` to review changes to the imported declarations, RPI limits and typed layouts. Check `refresh_allowed` in the output. Use `validate` with the updated EDS to compare the working overrides.
+
 For nested `AssemN` members, review the final offsets and suffixed names in the mapping suggestions. Use a payload with distinct values in each repeated group when testing the mapping.
 
 For a supported target configuration layout, review the CLI `eds` report's `configuration_layout` and use **Device → Configuration and advanced timing → Stage typed configuration values**. Start from the complete configuration hex buffer and verify the exact staged bytes in connection review.

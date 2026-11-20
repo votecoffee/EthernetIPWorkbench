@@ -34,6 +34,7 @@ mod serve;
 const USAGE: &str = "\
 Usage:
   eipmaster-cli eds <vendor.eds>
+  eipmaster-cli compare-eds <settings.toml> <updated.eds>
   eipmaster-cli validate <settings.toml> [<vendor.eds> <ConnectionN>]
   eipmaster-cli decode-input <settings.toml> \"<assembly hex bytes>\"
   eipmaster-cli identity <adapter-or-bridge-ipv4> <local-ipv4> [--route <port/link/...>] [--eds <vendor.eds>]
@@ -202,6 +203,15 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                 toml::to_string_pretty(&report).map_err(|e| e.to_string())?
             );
             Ok(report.connection_valid)
+        }
+        [command, path, eds_path] if command == "compare-eds" => {
+            let saved = settings_file::load_named_profile(Path::new(path))?;
+            let prior = saved.eds_profile.ok_or(
+                "The settings file has no saved EDS profile. Save a profile with an EDS connection selected.",
+            )?;
+            let report = prior.compare_revision(&eds::load(Path::new(eds_path))?)?;
+            print!("{}", report_text(&report)?);
+            Ok(true)
         }
         [command, profile, payload] if command == "decode-input" => {
             let (settings, _) = settings_file::load_profile(Path::new(profile))?;

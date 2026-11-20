@@ -4,8 +4,10 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 mod assembly;
+mod comparison;
 mod identity;
 pub use assembly::AssemblyLayout;
+pub use comparison::{AssemblyChanges, Change, RevisionComparison};
 pub use identity::{DeviceIdentity, IdentityComparison, IdentityDifference};
 
 pub type InputLayout = AssemblyLayout;
@@ -68,16 +70,26 @@ impl Profile {
     /// Locate the corresponding connection in an updated EDS.
     /// Compare imported defaults so effective operator overrides do not affect matching.
     pub fn refresh_index(&self, candidates: &[Self]) -> Result<usize, String> {
+        let index = self.matching_index(candidates)?;
+        self.check_refresh(&candidates[index])?;
+        Ok(index)
+    }
+
+    fn matching_index(&self, candidates: &[Self]) -> Result<usize, String> {
         let mut matches = candidates
             .iter()
             .enumerate()
             .filter(|(_, candidate)| candidate.id.eq_ignore_ascii_case(&self.id));
-        let (index, updated) = matches
+        let (index, _) = matches
             .next()
             .ok_or_else(|| format!("Updated EDS has no {} connection", self.id))?;
         if matches.next().is_some() {
             return Err(format!("Updated EDS has multiple {} connections", self.id));
         }
+        Ok(index)
+    }
+
+    fn check_refresh(&self, updated: &Self) -> Result<(), String> {
         if let (Some(old), Some(new)) = (&self.device, &updated.device)
             && let Some(field) = old.conflicting_product_field(new)
         {
@@ -105,7 +117,7 @@ impl Profile {
                 self.id
             ));
         }
-        Ok(index)
+        Ok(())
     }
 
     pub fn size_from_assembly_definition(&self, field: &str) -> bool {
