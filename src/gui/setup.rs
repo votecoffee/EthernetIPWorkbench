@@ -498,6 +498,39 @@ impl Device {
         } else {
             ui.label("Identity unavailable");
         }
+        if let Some(declared) = self
+            .selected
+            .and_then(|index| self.profiles.get(index))
+            .and_then(|profile| profile.device.as_ref())
+        {
+            if let Some(identity) = self.status.identity.as_ref() {
+                let comparison = declared.compare(identity);
+                if comparison.compared_fields == 0 {
+                    ui.small("The EDS provides no numeric identity fields to compare.");
+                } else if comparison.differences.is_empty() {
+                    ui.small(format!(
+                        "EDS identity matches on {} declared fields.",
+                        comparison.compared_fields
+                    ));
+                } else {
+                    ui.colored_label(AMBER, "Adapter identity differs from the selected EDS.");
+                    for difference in comparison.differences {
+                        ui.small(format!(
+                            "{} · EDS {} · adapter {}",
+                            difference.field, difference.eds, difference.adapter
+                        ));
+                    }
+                }
+            }
+            ui.collapsing("EDS declared identity", |ui| {
+                if let Some(name) = &declared.product_name {
+                    ui.label(name);
+                }
+                for (field, value) in declared.declared_numbers() {
+                    ui.label(format!("{field} · {value}"));
+                }
+            });
+        }
         if ui
             .add_enabled(
                 !self.link_busy() && self.identity_task.is_none(),

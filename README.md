@@ -112,7 +112,7 @@ Keep capture armed to keep the original capture start and sample indexes across 
 2. For EDS setup, enter the vendor EDS path, choose **Import**, and select a connection profile. The importer prefers an available input-only profile. Expand **EDS source values and fields to review** for the imported values and fields needing input. The editable settings below override the imported values. The importer supports literal assembly paths and single-byte bracketed `ParamN` substitutions with declared defaults. It flags incompatible connection masks and unresolved paths.
 3. For manual setup, choose **Manual settings** or load a TOML profile. Set the T→O input and O→T output or heartbeat connection points. Use payload sizes excluding transport headers, and confirm the sizes against the adapter. Enter each RPI in microseconds. Port zero requests an ephemeral local UDP port. Enter the selected NIC's fixed UDP port if the adapter requires it.
 4. Set the Run/Idle option for each direction. Standard Forward_Open allows up to 509 bytes of assembly payload and optional Run/Idle header per direction after the two-byte Class 1 sequence. Enter the optional configuration instance and its hex bytes when required. A configuration payload is applied in Forward_Open. Review the exact bytes before reconnecting to apply changes.
-5. After setting up the profile, choose **Read identity** while disconnected and verify the returned device.
+5. After setting up the profile, choose **Read identity** while disconnected and verify the returned device. The **Device identity** panel compares the returned vendor ID, device type, product code, and revision with the fields declared by the selected EDS.
 6. Prefer a supported **Input-only heartbeat profile** for logging. An exclusive-owner connection can take control immediately and sends the staged bytes. An O→T Run/Idle header asserts Run from the first frame. Confirm ownership and the specific output or configuration bytes before checking the authorization box. On an authorized output connection, **Apply staged outputs** swaps the cyclic buffer.
 7. Open **Mappings** to define named inputs and outputs. The **Inputs** tab shows live named values and an expandable raw-byte view. Save the mapping and connection settings in a named TOML profile.
 
@@ -197,12 +197,12 @@ The GUI report's `[[attempts]]` entries cover the full lifetime of each connecti
 
 ### CLI
 
-The console executable uses the same EDS importer, scanner and CSV writer as the GUI. `eds` lists imported profiles, resolved settings, assembly definition widths, supported input and output mapping suggestions, and unsupported features offline. `validate` checks a TOML profile offline and optionally compares it to one EDS connection profile. It reports connection validity and capture configuration separately. `decode-input` previews mapped values from a supplied payload. `identity` binds to the local IPv4 address and reads the adapter's CIP Identity Object. `capture` checks the expected decimal vendor, device type and product code in the same session before Forward_Open. Use a verified input-only TOML profile with zero output and configuration bytes. The new capture directory's parent must already exist.
+The console executable uses the same EDS importer, scanner and CSV writer as the GUI. `eds` lists declared device identity, imported profiles, resolved settings, assembly definition widths, supported input and output mapping suggestions, and unsupported features offline. `validate` checks a TOML profile offline and optionally compares it to one EDS connection profile. It reports connection validity and capture configuration separately. `decode-input` previews mapped values from a supplied payload. `identity` binds to the local IPv4 address and reads the adapter's CIP Identity Object. Add `--eds <vendor.eds>` to compare the readback with the EDS. `capture` checks the expected decimal vendor, device type and product code in the same session before Forward_Open. Use a verified input-only TOML profile with zero output and configuration bytes. The new capture directory's parent must already exist.
 
 ```powershell
 .\target\release\eipmaster-cli.exe eds samples\loopback.eds
 .\target\release\eipmaster-cli.exe validate samples\loopback.toml samples\loopback.eds Connection1
-.\target\release\eipmaster-cli.exe identity 127.0.0.1 127.0.0.1
+.\target\release\eipmaster-cli.exe identity 127.0.0.1 127.0.0.1 --eds samples/loopback.eds
 .\target\release\eipmaster-cli.exe capture samples\loopback.toml .\.local\console-capture 10 0:12:1
 ```
 

@@ -36,7 +36,7 @@ Usage:
   eipmaster-cli eds <vendor.eds>
   eipmaster-cli validate <settings.toml> [<vendor.eds> <ConnectionN>]
   eipmaster-cli decode-input <settings.toml> \"<assembly hex bytes>\"
-  eipmaster-cli identity <adapter-or-bridge-ipv4> <local-ipv4> [--route <port/link/...>]
+  eipmaster-cli identity <adapter-or-bridge-ipv4> <local-ipv4> [--route <port/link/...>] [--eds <vendor.eds>]
   eipmaster-cli discover <local-ipv4> [<destination-ipv4>]
   eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
   eipmaster-cli read-saved <settings.toml> <name>
@@ -147,8 +147,10 @@ fn run(args: &[OsString]) -> Result<bool, String> {
             )
         }
         [command, path] if command == "eds" => {
+            let profiles = eds::load(Path::new(path))?;
             let result = EdsReport {
-                profiles: eds::load(Path::new(path))?
+                device: profiles.first().and_then(|profile| profile.device.clone()),
+                profiles: profiles
                     .into_iter()
                     .map(|p| {
                         let assembly_definition_sizes = ["O->T size", "T->O size"]
@@ -204,13 +206,20 @@ fn run(args: &[OsString]) -> Result<bool, String> {
             Ok(true)
         }
         [command, adapter, local, options @ ..] if command == "identity" => {
-            let io_route = match options {
-                [] => String::new(),
-                [option, route] if option == "--route" => {
-                    route.to_string_lossy().parse::<Route>()?.to_string()
+            let mut io_route = String::new();
+            let mut eds_device = None;
+            for pair in options.chunks(2) {
+                match pair {
+                    [option, route] if option == "--route" && io_route.is_empty() => {
+                        io_route = route.to_string_lossy().parse::<Route>()?.to_string();
+                    }
+                    [option, path] if option == "--eds" && eds_device.is_none() => {
+                        eds_device =
+                            Some(eds::load_device_identity(Path::new(path))?.unwrap_or_default());
+                    }
+                    _ => return Err(USAGE.into()),
                 }
-                _ => return Err(USAGE.into()),
-            };
+            }
             let settings = Settings {
                 device_ip: adapter
                     .to_string_lossy()
@@ -224,11 +233,14 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                 ..Settings::default()
             };
             settings.validate()?;
+            let identity = read_identity(&settings)?;
             let result = IdentityReport {
                 adapter_ip: settings.device_ip,
                 local_ip: settings.local_ip,
                 io_route: settings.io_route.clone(),
-                identity: read_identity(&settings)?,
+                eds_comparison: eds_device.as_ref().map(|device| device.compare(&identity)),
+                eds_device,
+                identity,
             };
             print!(
                 "{}",
@@ -370,6 +382,8 @@ fn report_text(report: &impl Serialize) -> Result<String, String> {
 
 #[derive(Serialize)]
 struct EdsReport {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    device: Option<eds::DeviceIdentity>,
     profiles: Vec<EdsProfile>,
 }
 
@@ -394,6 +408,10 @@ struct IdentityReport {
     #[serde(skip_serializing_if = "String::is_empty")]
     io_route: String,
     identity: Identity,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    eds_device: Option<eds::DeviceIdentity>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    eds_comparison: Option<eds::IdentityComparison>,
 }
 
 #[derive(Serialize)]

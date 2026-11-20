@@ -148,7 +148,12 @@ def main():
     )
     imported = subprocess.run([exe, "eds", eds], capture_output=True, text=True,
                               timeout=5, creationflags=NO_WINDOW, check=True)
-    eds_profile, = tomllib.loads(imported.stdout)["profiles"]
+    eds_report = tomllib.loads(imported.stdout)
+    assert eds_report["device"] == {
+        "vendor": 0, "device_type": 12, "product_code": 1,
+        "major": 1, "minor": 0, "product_name": "Loopback Adapter",
+    }
+    eds_profile, = eds_report["profiles"]
     assert eds_profile["supported"] and eds_profile["fields"]["Electronic key"] == "1:12:1 1.0"
     assert eds_profile["fields"]["Large Forward_Open"] == "Required by imported connection size"
     assert "input_layout" not in eds_profile
@@ -234,7 +239,24 @@ def main():
         assert row["Ready"] == ("true" if fixture_value & 8 else "false")
 
     identity, _ = run("identity-fallback", "identity", LOCAL, LOCAL)
-    assert tomllib.loads(identity)["identity"]["serial"] == 0x12345678
+    readback = tomllib.loads(identity)
+    assert readback["identity"]["serial"] == 0x12345678 and "eds_comparison" not in readback
+    identity, peer = run("identity-matching-eds", "identity", LOCAL, LOCAL, "--eds", typed_eds)
+    assert tomllib.loads(identity)["eds_comparison"] == {"compared_fields": 5, "differences": []}
+    assert not peer["forward_close"]
+    mismatch_eds = root / "identity-only.eds"
+    mismatch_eds.write_text("[Device]\nVendCode = 0x00;\nProdCode = 7;\nMinRev = 2;\n",
+                            encoding="utf-16")
+    route = "1/2/2/192.0.2.100/1/0"
+    identity, peer = run("identity-routed-eds", "identity", LOCAL, LOCAL,
+                         "--eds", mismatch_eds, "--route", route, mode="routed")
+    readback = tomllib.loads(identity)
+    assert readback["io_route"] == route and readback["identity"]["code"] == 1
+    assert readback["eds_comparison"] == {"compared_fields": 3, "differences": [
+        {"field": "Product code", "eds": 7, "adapter": 1},
+        {"field": "Minor revision", "eds": 2, "adapter": 0},
+    ]}
+    assert not peer["forward_close"]
     read, _ = run("wide-object-path", "read", LOCAL, LOCAL, "0x1234", "0x12345678", "7")
     assert json.loads(read)["data_hex"] == "CA FE"
     all_attrs, _ = run("all-attributes", "read", LOCAL, LOCAL, "1", "1", "all", mode="normal")

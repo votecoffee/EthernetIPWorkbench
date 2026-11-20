@@ -287,6 +287,51 @@ mod tests {
         device.settings.stage_output(2, "-300").unwrap();
         assert_eq!(device.settings.output().unwrap(), [0x11, 0x22, 0xd4, 0xfe]);
     }
+
+    #[test]
+    fn review_shows_the_eds_identity_comparison() {
+        let ctx = egui::Context::default();
+        let mut device = Device::new(1, None);
+        device.profiles = eds::parse(include_str!("../../samples/loopback.eds")).unwrap();
+        device.select_profile(Some(0));
+        device.connect_dialog = true;
+        let identity = scanner::Identity {
+            vendor: 0,
+            device_type: 12,
+            code: 7,
+            major: 1,
+            minor: 2,
+            status: 0,
+            serial: 1234,
+            name: "Fixture".into(),
+        };
+        device.status.identity = Some(identity.clone());
+        let size = egui::vec2(1240.0, 860.0);
+        draw(&mut device, &ctx, size);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Adapter identity differs from the selected EDS.",
+            "Product code · EDS 1 · adapter 7",
+            "Minor revision · EDS 0 · adapter 2",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        device.status.identity = Some(scanner::Identity {
+            code: 1,
+            minor: 0,
+            ..identity
+        });
+        let labels = draw(&mut device, &ctx, size);
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text == "EDS identity matches on 5 declared fields.")
+        );
+        assert!(device.connection.is_none() && device.verified_identity.is_none());
+    }
 }
 
 impl Tab {

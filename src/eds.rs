@@ -4,7 +4,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 mod assembly;
+mod identity;
 pub use assembly::AssemblyLayout;
+pub use identity::{DeviceIdentity, IdentityComparison, IdentityDifference};
 
 pub type InputLayout = AssemblyLayout;
 
@@ -16,6 +18,8 @@ pub struct Profile {
     pub fields: BTreeMap<String, String>,
     pub settings: Settings,
     pub unsupported: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<DeviceIdentity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_layout: Option<InputLayout>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -51,6 +55,14 @@ impl Profile {
 }
 
 pub fn load(path: &Path) -> Result<Vec<Profile>, String> {
+    parse(&read_text(path)?)
+}
+
+pub fn load_device_identity(path: &Path) -> Result<Option<DeviceIdentity>, String> {
+    Ok(parse_entries(&read_text(path)?)?.device_identity())
+}
+
+fn read_text(path: &Path) -> Result<String, String> {
     let bytes = std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
     if bytes.starts_with(&[0xff, 0xfe]) || bytes.starts_with(&[0xfe, 0xff]) {
         let little = bytes[0] == 0xff;
@@ -68,9 +80,9 @@ pub fn load(path: &Path) -> Result<Vec<Profile>, String> {
                 }
             })
             .collect();
-        return parse(&String::from_utf16(&units).map_err(|_| "Invalid UTF-16 EDS file")?);
+        return String::from_utf16(&units).map_err(|_| "Invalid UTF-16 EDS file".into());
     }
-    parse(&String::from_utf8_lossy(&bytes))
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 fn fields(text: &str) -> Vec<String> {
     let mut result = Vec::new();
@@ -150,7 +162,23 @@ fn assembly_path(mut rest: &[u8]) -> Option<(Option<ElectronicKey>, Option<u16>,
     let input = next(0x2c)?;
     rest.is_empty().then_some((key, config, output, input))
 }
-pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
+struct Entries {
+    values: HashMap<(String, String), Vec<String>>,
+    connections: Vec<(String, Vec<String>)>,
+}
+
+impl Entries {
+    fn device_identity(&self) -> Option<DeviceIdentity> {
+        DeviceIdentity::parse(|key| {
+            let [value] = self.values.get(&("device".into(), key.into()))?.as_slice() else {
+                return None;
+            };
+            (!value.is_empty()).then_some(value.as_str())
+        })
+    }
+}
+
+fn parse_entries(text: &str) -> Result<Entries, String> {
     let mut cleaned = String::new();
     let mut quoted = false;
     let mut comment = false;
@@ -209,6 +237,19 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
             statement.push(' ');
         }
     }
+    Ok(Entries {
+        values: entries,
+        connections,
+    })
+}
+
+pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
+    let parsed = parse_entries(text)?;
+    let device = parsed.device_identity();
+    let Entries {
+        values: entries,
+        connections,
+    } = parsed;
     if connections.is_empty() {
         return Err("No ConnectionN profiles found in [Connection Manager]".into());
     }
@@ -239,6 +280,7 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
                 name,
                 fields: BTreeMap::new(),
                 unsupported: Vec::new(),
+                device: device.clone(),
                 input_layout: None,
                 output_layout: None,
                 assembly_definition_sizes: Vec::new(),
@@ -516,6 +558,27 @@ mod tests {
         );
         let variant = sample.replace("2C 65", "2D 00 [Param2]");
         assert!(!parse(&variant).unwrap()[0].unsupported.is_empty());
+    }
+
+    #[test]
+    fn device_identity_keeps_valid_partial_metadata() {
+        let source = include_str!("../samples/loopback.eds")
+            .replace("VendCode = 0", "vEnDcOdE = 0Xab")
+            .replace("ProdType = 12", "ProdType = 12, 13")
+            .replace("ProdCode = 1", "ProdCode = 65536")
+            .replace("MajRev = 1", "MajRev = 0x100")
+            .replace("Loopback Adapter", "Generic, Adapter");
+        let profiles = parse(&source).unwrap();
+        let device = profiles[0].device.as_ref().unwrap();
+        assert_eq!(device.vendor, Some(171));
+        assert_eq!(device.minor, Some(0));
+        assert_eq!(device.product_name.as_deref(), Some("Generic, Adapter"));
+        assert!(
+            device.device_type.is_none() && device.product_code.is_none() && device.major.is_none()
+        );
+        assert!(profiles[0].unsupported.is_empty());
+        let text = toml::to_string(&profiles[0]).unwrap();
+        assert_eq!(toml::from_str::<Profile>(&text).unwrap(), profiles[0]);
     }
 
     #[test]

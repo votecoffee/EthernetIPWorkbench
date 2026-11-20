@@ -432,6 +432,12 @@ The importer tests resolved explicit BOOL members at bits 0 and 7 of byte 0 and 
 
 The CLI imported a synthetic EDS input as byte 0, bit 3 and decoded both states from test payloads. A two-second, 8 ms localhost capture wrote 250 rows. All 127 false and 123 true values matched the fixture's payload at their packet sequence. The CSV buffer reported zero overruns and Forward_Close was confirmed.
 
+## EDS identity comparison
+
+The CLI read all five declared numeric identity values from the upstream OpENer EDS and displayed its product name. The direct localhost Identity Object read matched all five fields of the loopback EDS. A routed localhost read compared three fields from a UTF-16 identity-only EDS and reported the expected product code and minor revision differences. The fixture recorded no cyclic connection exchange during either identity read. [Upstream OpENer sample EDS](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/data/opener_sample_app.eds)
+
+The headless GUI test displayed both differences in **Review connection**, then displayed a five-field match when the readback changed. The importer test covered hexadecimal values, malformed and out-of-range fields, and saved profile round-trip.
+
 ## Read-only software integration
 
 The 8 ms Windows localhost check exercised the HTTP API, MQTT publisher and named shared memory simultaneously. HTTP and the memory mapping stayed open across scanner reconnect. An independent broker fixture dropped its first TCP connection and received fresh MQTT samples after reconnect. HTTP continued while a client held the shared-memory mutex. Shared memory continued while an HTTP client stalled mid-request. The CLI saved 468 CSV rows with zero capture or integration queue overruns. The headless GUI backend test also fetched a live API sample during capture.
