@@ -1,5 +1,5 @@
 use super::*;
-use assembly_scanner::explicit::ReadbackOutcome;
+use assembly_scanner::explicit::{ReadbackOutcome, WriteOptions};
 
 pub(super) struct Draft {
     request: AttributeWrite,
@@ -9,6 +9,8 @@ pub(super) struct Draft {
     format: Selection,
     pub(super) identity: Option<Identity>,
     readback: bool,
+    current_input: Option<String>,
+    expected_current: Option<Vec<u8>>,
 }
 
 enum Action {
@@ -49,6 +51,8 @@ impl Explorer {
                 format: Selection::default(),
                 identity: None,
                 readback: false,
+                current_input: None,
+                expected_current: None,
             })
         };
         match prepare() {
@@ -72,11 +76,17 @@ impl Explorer {
             egui::Modal::new(egui::Id::new("cip-attribute-write")).show(ui.ctx(), |ui| {
                 ui.heading("Review attribute write");
                 show_address(ui, &draft.request);
-                ui.add_enabled_ui(ready, |ui| edit_value(ui, draft));
+                ui.add_enabled_ui(ready, |ui| {
+                    edit_value(ui, draft);
+                    edit_current_value(ui, draft);
+                });
                 ui.add_enabled(ready, egui::Checkbox::new(&mut draft.readback, "Read back after write"))
                     .on_hover_text("Compare the returned bytes from this attribute after the target acknowledges the write.");
                 if let Some(identity) = &draft.identity {
                     show_identity(ui, identity);
+                    if let Some(expected) = &draft.expected_current {
+                        show_hex(ui, "Expected current bytes", &model::hex(expected));
+                    }
                     ui.label(format!("{} bytes to send", draft.request.value.len()));
                     show_reply_payload(ui, &draft.request.value, &Ok(None));
                 }
@@ -117,9 +127,19 @@ impl Explorer {
         match action {
             Some(Action::Verify) => {
                 draft.identity = None;
-                match draft.encode_value() {
-                    Ok(value) => {
+                let values = draft.encode_value().and_then(|value| {
+                    let expected = draft
+                        .current_input
+                        .as_deref()
+                        .map(model::parse_hex)
+                        .transpose()
+                        .map_err(|error| format!("Expected current bytes · {error}"))?;
+                    Ok((value, expected))
+                });
+                match values {
+                    Ok((value, expected)) => {
                         draft.request.value = value;
+                        draft.expected_current = expected;
                         let request = draft.request.clone();
                         self.start(move || {
                             request.read_target_identity().map(Response::WriteIdentity)
@@ -131,19 +151,45 @@ impl Explorer {
             Some(Action::Send(pin)) => {
                 let request = draft.request.clone();
                 let readback = draft.readback;
+                let expected_current = draft.expected_current.clone();
                 self.write_draft = None;
                 self.write_result = None;
                 self.start(move || {
-                    let report = if readback {
-                        request.apply_with_readback(pin)?
-                    } else {
-                        request.apply(pin)?
-                    };
+                    let report = request.apply_with_options(
+                        pin,
+                        WriteOptions {
+                            expected_current: expected_current.as_deref(),
+                            readback,
+                        },
+                    )?;
                     Ok(Response::WriteResult(Box::new((request, report))))
                 });
             }
             _ => {}
         }
+    }
+}
+
+fn edit_current_value(ui: &mut Ui, draft: &mut Draft) {
+    let mut required = draft.current_input.is_some();
+    if ui
+        .checkbox(&mut required, "Require current value")
+        .changed()
+    {
+        draft.current_input = required.then(String::new);
+        draft.identity = None;
+    }
+    if let Some(value) = &mut draft.current_input
+        && ui
+            .add(
+                egui::TextEdit::singleline(value)
+                    .font(egui::TextStyle::Monospace)
+                    .desired_width(360.0)
+                    .hint_text("Expected current value in hex"),
+            )
+            .changed()
+    {
+        draft.identity = None;
     }
 }
 
@@ -219,6 +265,13 @@ fn show_result(ui: &mut Ui, request: &AttributeWrite, report: &WriteReport) {
     } else {
         ui.colored_label(AMBER, report.outcome.to_string());
     }
+    if let Some(check) = &report.current_value {
+        if matches!(check.outcome, ReadbackOutcome::Matched { .. }) {
+            ui.label(check.to_string());
+        } else {
+            ui.colored_label(AMBER, check.to_string());
+        }
+    }
     if let Some(readback) = &report.readback {
         if matches!(readback, ReadbackOutcome::Matched { .. }) {
             ui.label(readback.to_string());
@@ -240,15 +293,22 @@ fn show_result(ui: &mut Ui, request: &AttributeWrite, report: &WriteReport) {
         }
         ui.label(format!("{} staged bytes", request.value.len()));
         show_reply_payload(ui, &request.value, &Ok(None));
-        if let Some(
-            ReadbackOutcome::Matched { data_hex } | ReadbackOutcome::Mismatch { data_hex },
-        ) = &report.readback
-        {
-            ui.label("Readback bytes");
-            egui::ScrollArea::vertical()
-                .id_salt("attribute-readback")
-                .max_height(120.0)
-                .show(ui, |ui| ui.monospace(data_hex));
+        if let Some(check) = &report.current_value {
+            show_hex(ui, "Expected current bytes", &check.expected_hex);
+            if let Some(data_hex) = check.outcome.data_hex() {
+                show_hex(ui, "Current bytes before write", data_hex);
+            }
+        }
+        if let Some(data_hex) = report.readback.as_ref().and_then(ReadbackOutcome::data_hex) {
+            show_hex(ui, "Readback bytes", data_hex);
         }
     });
+}
+
+fn show_hex(ui: &mut Ui, label: &str, data_hex: &str) {
+    ui.label(label);
+    egui::ScrollArea::vertical()
+        .id_salt(label)
+        .max_height(120.0)
+        .show(ui, |ui| ui.monospace(data_hex));
 }

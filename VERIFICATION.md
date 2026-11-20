@@ -664,3 +664,9 @@ Headless Explore preserved write review and displayed the matched readback separ
 Windows CLI previews encoded a Boolean, a signed integer, an F32, a big-endian U32 with reversed word order, and fixed-width UTF-8. Invalid values and incompatible encoding options failed before opening a connection, including with `--apply`. A typed U32 apply sent `A5 16 2C 93` once and matched those bytes on the same session.
 
 Headless Explore first reviewed the little-endian bytes. Switching byte order showed the new bytes and disabled send until another identity review. The subsequent write matched on readback. The raw entry and Explore CLI regression checks passed. The independent OpENer 2.3 localhost target acknowledged a fixed-width typed UTF-8 value and matched all 32 bytes, including zero padding, on readback.
+
+## Current-value check before explicit writes
+
+The Windows localhost fixtures verified one identity query, one current-value read, one write and one readback on the same registered session for successful direct and routed runs. A mismatch retained the returned bytes. A target rejection retained `0x2C` and `0x0302`, a router failure retained `0x0204`, and a dropped reply reported the current value as unavailable. These cases sent no write. The identity-mismatch case skipped the comparison. Preview and malformed expected hex opened no session.
+
+Headless Explore invalidated the pending review after the expected bytes changed. A fresh review then displayed separate matched current-value, acknowledged-write and matched-readback results. OpENer 2.3 compared its prior explicit Assembly value, accepted the typed write and returned all 32 staged bytes. The raw and typed write checks and Explore CLI regressions also passed. Verification used localhost targets.

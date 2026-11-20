@@ -331,6 +331,80 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode explicit-write-gui-current"]
+    fn explore_requires_fresh_review_after_editing_the_expected_current_value() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[]);
+        device.settings.input_instance = 154;
+        let saved = device.snapshot();
+        let enter = |device: &mut Device, events| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                events,
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| device.show(ctx, &[]));
+        };
+
+        click(&mut device, &ctx, size, "Common attributes");
+        click(&mut device, &ctx, size, "Assembly · Data");
+        click(&mut device, &ctx, size, "Stage attribute write");
+        click(&mut device, &ctx, size, "Space-separated hex bytes");
+        enter(&mut device, vec![egui::Event::Text("A5 16 2C 93".into())]);
+        click(&mut device, &ctx, size, "Require current value");
+        click(&mut device, &ctx, size, "Expected current value in hex");
+        enter(&mut device, vec![egui::Event::Text("0x10 20 30".into())]);
+        click(&mut device, &ctx, size, "Verify target identity");
+        wait_for_explore(&mut device);
+        assert!(
+            draw(&mut device, &ctx, size)
+                .iter()
+                .any(|(text, _)| text == "Expected current bytes")
+        );
+        click(&mut device, &ctx, size, "0x10 20 30");
+        enter(
+            &mut device,
+            vec![
+                egui::Event::Key {
+                    key: egui::Key::End,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::Text(" 40".into()),
+            ],
+        );
+        click(&mut device, &ctx, size, "Send reviewed write");
+        assert!(!device.explorer.busy());
+        click(&mut device, &ctx, size, "Verify target identity");
+        wait_for_explore(&mut device);
+        click(&mut device, &ctx, size, "Read back after write");
+        click(&mut device, &ctx, size, "Send reviewed write");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Write acknowledged by target",
+            "Current value matched the expected bytes",
+            "Readback matched the staged bytes",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Attribute write result");
+        assert!(
+            draw(&mut device, &ctx, size)
+                .iter()
+                .any(|(text, _)| text == "Current bytes before write")
+        );
+        assert_eq!(device.snapshot(), saved);
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode class-info"]
     fn explore_reads_class_details_without_changing_the_saved_requests() {
         let ctx = egui::Context::default();

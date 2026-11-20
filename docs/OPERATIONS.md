@@ -72,10 +72,14 @@ Typed entry encodes a complete attribute value. Choose `Bool`, signed or unsigne
 
 Add `--apply <vendor:type:product:serial>` to send to the reviewed target. All four identity fields are decimal. To write through a bridge, use its IP as the first address and pass `--route <port/link/...>`. The write uses unconnected CIP on TCP and sends a single `Set_Attribute_Single` request. Live writes require authorization for the exact target and value.
 
+For a readable attribute, select **Require current value** and enter the expected bytes in hex. Changing these bytes clears the review. The CLI accepts `--expect-current "10 20 30 40"`. Preview records those bytes offline. On apply, the Workbench verifies identity and reads the attribute once on the same session. It sends the write only when the returned bytes match exactly. The comparison and write are separate requests. Another client can change the attribute between them.
+
+The optional `result.current_value` retains `expected_hex` and the comparison outcome, along with the returned `data_hex` or read error. A current-value mismatch or read failure produces `not_sent` and exit code 1. A requested check reports `skipped` when identity verification prevents it.
+
 | Result | Meaning |
 |---|---|
 | `preview` | Validated offline. |
-| `not_sent` | Session setup or identity verification prevented the write. |
+| `not_sent` | Session setup, identity verification or the current-value check prevented the write. |
 | `acknowledged` | The target acknowledged the service. An explicit read of a readable attribute can verify the resulting value. |
 | `rejected` | The target returned a CIP error with its General and Extended Status. |
 | `router_error` | The router returned a CIP error. The target outcome is unconfirmed. |

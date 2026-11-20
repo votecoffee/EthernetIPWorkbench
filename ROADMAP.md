@@ -53,6 +53,7 @@ The C# examples demonstrate HTTP and shared-memory latest values, retained HTTP 
 - Explore, CLI and Rust support a reviewed Set_Attribute_Single write with a full identity check. Simulator coverage includes direct and routed writes, lost acknowledgments and independent OpENer readback. Verify any intended physical writable attributes on an authorized bench.
 - Optional same-session readback compares an acknowledged write with the returned attribute bytes. Reports retain mismatches, transport errors and target or router status separately from the acknowledgment.
 - Stage complete typed attribute values with configurable byte order, word swaps and fixed-width UTF-8. Explore and CLI show the exact bytes before sending.
+- Require an optional exact current-value comparison on the identity-checked session before sending. Explore and CLI show the comparison separately from the write and readback outcomes.
 - Saved CIP reads support an optional typed reply field with zero-based offsets, byte order and swaps. The GUI and CLI retain the raw response for review.
 - Run all saved CIP requests in profile order on one explicit session from Explore or the CLI. Both report replies, rejections and unattempted requests. Explore can save the batch report as JSON.
 - Unconnected Multiple Service Packet groups direct reads or saved reads with one shared route in Explore, CLI and Rust. The localhost fixture covers successful and mixed replies and separate bridge and target rejections. Verify with a physical target and bridge that support the service.

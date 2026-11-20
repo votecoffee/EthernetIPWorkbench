@@ -284,6 +284,9 @@ def check_explicit_write(cli, adapter, root, identity):
                        "--apply", pin, "--readback"]),
             ("after", ["read", *address]),
         ):
+            if name == "write":
+                before = json.loads((root / "before.json").read_text(encoding="utf-8"))
+                args.extend(("--expect-current", before["data_hex"]))
             result = subprocess.run([cli, *args], capture_output=True, timeout=10,
                                     creationflags=subprocess.CREATE_NO_WINDOW)
             (root / f"{name}.json").write_bytes(result.stdout)
@@ -293,10 +296,13 @@ def check_explicit_write(cli, adapter, root, identity):
     after = json.loads((root / "after.json").read_text(encoding="utf-8"))
     assert write["result"]["outcome"] == "acknowledged"
     assert write["typed_value"] == text and write["encoding"]["string_length"] == 32
+    assert write["result"]["current_value"] == {
+        "outcome": "matched", "expected_hex": before["data_hex"], "data_hex": before["data_hex"],
+    }
     assert write["result"]["readback"] == {"outcome": "matched", "data_hex": value}
     assert write["result"]["observed_identity"]["serial"] == identity["serial"]
     assert after["data_hex"] == write["value_hex"] == value and before["data_hex"] != value
-    print("OpENer acknowledged the typed UTF-8 write and matched all 32 bytes on same-session readback.")
+    print("OpENer matched the current bytes, acknowledged the guarded UTF-8 write and matched all 32 bytes on readback.")
 
 
 def check_connected_reads(cli, adapter, root, identity):

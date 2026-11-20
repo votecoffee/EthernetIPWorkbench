@@ -11,6 +11,7 @@ from test_cli import NO_WINDOW, with_adapter
 LOCAL = "127.0.0.1"
 PIN = "0:12:1:305419896"
 VALUE = "A5 16 2C 93"
+CURRENT = "10 20 30 40"
 
 
 def check_writes(exe, root):
@@ -27,6 +28,10 @@ def check_writes(exe, root):
                                     text=True, timeout=6, creationflags=NO_WINDOW)
         incomplete = subprocess.run([*command, "--apply", "0:12:1"], capture_output=True,
                                     text=True, timeout=6, creationflags=NO_WINDOW)
+        current_preview = subprocess.run([*command, "--expect-current", CURRENT], capture_output=True,
+                                         text=True, timeout=6, creationflags=NO_WINDOW)
+        invalid_current = subprocess.run([*command, "--expect-current", "ZZ", "--apply", PIN],
+                                         capture_output=True, text=True, timeout=6, creationflags=NO_WINDOW)
         check_typed_previews(command[:-1], root)
         listener.setblocking(False)
         try:
@@ -50,6 +55,10 @@ def check_writes(exe, root):
     assert json.loads(preview_readback.stdout) == {**report, "readback_requested": True}
     (root / "readback-preview.json").write_text(preview_readback.stdout, encoding="utf-8")
     assert duplicate.returncode == 1 and not duplicate.stdout
+    assert current_preview.returncode == 0 and not current_preview.stderr
+    assert json.loads(current_preview.stdout) == {**report, "route": None, "expected_current_hex": CURRENT}
+    (root / "current-preview.json").write_text(current_preview.stdout, encoding="utf-8")
+    assert invalid_current.returncode == 1 and "Expected current bytes" in invalid_current.stderr
 
     for case, mode, route, pin, expected in (
         ("direct", "explicit-write", None, PIN, "acknowledged"),
@@ -70,6 +79,7 @@ def check_writes(exe, root):
         outcome = report["result"]
         assert outcome["outcome"] == expected
         assert "readback" not in outcome and "readback_requested" not in report
+        assert "current_value" not in outcome and "expected_current_hex" not in report
         assert outcome["observed_identity"]["serial"] == 305419896
         assert outcome["expected_identity"]["serial"] == int(pin.rsplit(":", 1)[1])
         assert peer["registrations"] == 1 and peer["identity_route"] == ("0103" if route else "")
@@ -90,6 +100,44 @@ def check_writes(exe, root):
 
     check_readbacks(command, root)
     check_typed_apply(command[:-1], root)
+    check_current_value(command, root)
+
+
+def check_current_value(command, root):
+    for case, mode, route, pin, current in (
+        ("direct", "explicit-write-current", None, PIN, {"outcome": "matched", "data_hex": CURRENT}),
+        ("routed", "explicit-write-current", "1/3", PIN, {"outcome": "matched", "data_hex": CURRENT}),
+        ("changed", "explicit-write-current-mismatch", None, PIN,
+         {"outcome": "mismatch", "data_hex": "10 20 30 41"}),
+        ("target-error", "explicit-write-current-rejected", None, PIN,
+         {"outcome": "rejected", "general_status": 0x2C, "extended_status": [0x0302]}),
+        ("router-error", "explicit-write-current-router", "1/3", PIN,
+         {"outcome": "router_error", "general_status": 1, "extended_status": [0x0204]}),
+        ("unavailable", "explicit-write-current-no-reply", None, PIN, {"outcome": "unavailable"}),
+        ("identity-mismatch", "explicit-write-review", None, "0:12:1:305419897", {"outcome": "skipped"}),
+    ):
+        args = [*command, "--expect-current", CURRENT, "--apply", pin, "--readback"]
+        if route:
+            args.extend(("--route", route))
+        result, peer = with_adapter(root, f"current-{case}", args, mode)
+        matched = current["outcome"] == "matched"
+        assert result.returncode == int(not matched) and not result.stderr, (result.stdout, result.stderr)
+        report = json.loads(result.stdout)
+        (root / f"current-{case}.json").write_text(result.stdout, encoding="utf-8")
+        assert report["expected_current_hex"] == CURRENT and report["value_hex"] == VALUE
+        assert report["result"]["outcome"] == ("acknowledged" if matched else "not_sent")
+        check = report["result"]["current_value"]
+        if current["outcome"] == "unavailable":
+            assert "reply ended early" in check.pop("error")
+        assert check == {**current, "expected_hex": CURRENT}
+        assert report["result"]["readback"] == ({"outcome": "matched", "data_hex": VALUE}
+                                                if matched else {"outcome": "skipped"})
+        assert peer["registrations"] == 1 and peer["identity_route"] == ("0103" if route else "")
+        assert peer.get("writes", []) == (["10032004249a3003a5162c93"] if matched else [])
+        assert peer.get("readbacks", []) == (["0e032004249a3003"] if matched else [])
+        assert peer.get("current_reads", []) == ([] if case == "identity-mismatch" else ["0e032004249a3003"])
+        if case != "unavailable":
+            assert peer["unregistered"]
 
 
 def check_typed_previews(address, root):
@@ -183,4 +231,4 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
     check_writes(args.exe.resolve(strict=True), args.output.resolve())
-    print("Explicit write preview, typed encoding, identity pin, direct and routed writes, and readback outcomes passed.")
+    print("Explicit write preview, typed encoding, identity pin, current-value checks, and readback outcomes passed.")

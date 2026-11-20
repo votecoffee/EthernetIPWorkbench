@@ -22,6 +22,7 @@ Read the repository skill at [.agents/skills/ethernetip-workbench/SKILL.md](.age
 - Preserve old profiles, CSV columns and sample indexes across reconnects. Distinguish packet sequence gaps, duplicates, late/invalid traffic, CSV overruns, export queue drops and intentional on-change filtering.
 - Keep output staging separate from applying an output buffer. Keep automatic reconnect restricted to identity-pinned input-only sessions.
 - Keep explicit write staging separate from sending. Verify the reviewed target on the write session and preserve unconfirmed outcomes without retrying.
+- Evaluate a requested current-value check after identity verification and before any write. Send only when the comparison matches.
 - Keep the write acknowledgment and optional readback separate. Perform the readback on the same session after acknowledgment.
 - Update the relevant operator documentation, skill routing and verification notes when changing a public command, profile key, export schema or lifecycle.
 

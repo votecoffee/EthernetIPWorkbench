@@ -1,6 +1,6 @@
 use super::{USAGE, explicit_endpoint, parse_expected_identity};
 use assembly_scanner::{
-    explicit::{AttributeWrite, IdentityPin, ReadPath, Route},
+    explicit::{AttributeWrite, IdentityPin, ReadPath, Route, WriteOptions},
     model::{ByteSwap, Kind, Selection, hex, parse_hex},
 };
 use serde_json::json;
@@ -17,6 +17,7 @@ pub(super) fn attribute(
     let mut route: Option<Route> = None;
     let mut apply = None;
     let mut readback = false;
+    let mut expected_current = None;
     let mut kind = None;
     let mut endian = None;
     let mut swap = None;
@@ -39,6 +40,13 @@ pub(super) fn attribute(
                 });
             }
             Some("--readback") if !readback => readback = true,
+            Some("--expect-current") if expected_current.is_none() => {
+                let value = options.next().ok_or(USAGE)?.to_string_lossy();
+                expected_current = Some(
+                    parse_hex(&value)
+                        .map_err(|error| format!("Expected current bytes · {error}"))?,
+                );
+            }
             Some("--type") if kind.is_none() => {
                 let name = options.next().ok_or(USAGE)?.to_string_lossy();
                 kind = Some(
@@ -114,12 +122,17 @@ pub(super) fn attribute(
     if readback {
         report["readback_requested"] = json!(true);
     }
+    if let Some(bytes) = &expected_current {
+        report["expected_current_hex"] = json!(hex(bytes));
+    }
     let success = if let Some(pin) = apply {
-        let result = if readback {
-            request.apply_with_readback(pin)?
-        } else {
-            request.apply(pin)?
-        };
+        let result = request.apply_with_options(
+            pin,
+            WriteOptions {
+                expected_current: expected_current.as_deref(),
+                readback,
+            },
+        )?;
         let success = result.is_success();
         report["result"] = json!(result);
         success

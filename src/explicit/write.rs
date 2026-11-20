@@ -92,16 +92,44 @@ pub enum ReadbackOutcome {
 
 impl fmt::Display for ReadbackOutcome {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.describe(
+            f,
+            "Readback",
+            "the staged bytes",
+            "target acknowledgment required",
+        )
+    }
+}
+
+impl ReadbackOutcome {
+    fn is_match(&self) -> bool {
+        matches!(self, Self::Matched { .. })
+    }
+
+    pub fn data_hex(&self) -> Option<&str> {
         match self {
-            Self::Skipped => f.write_str("Readback skipped · target acknowledgment required"),
-            Self::Matched { .. } => f.write_str("Readback matched the staged bytes"),
-            Self::Mismatch { .. } => f.write_str("Readback differs from the staged bytes"),
+            Self::Matched { data_hex } | Self::Mismatch { data_hex } => Some(data_hex),
+            _ => None,
+        }
+    }
+
+    fn describe(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        check: &str,
+        reference: &str,
+        skipped_reason: &str,
+    ) -> fmt::Result {
+        match self {
+            Self::Skipped => write!(f, "{check} skipped · {skipped_reason}"),
+            Self::Matched { .. } => write!(f, "{check} matched {reference}"),
+            Self::Mismatch { .. } => write!(f, "{check} differs from {reference}"),
             Self::Rejected {
                 general_status,
                 extended_status,
             } => cip_status(
                 f,
-                "Target rejected readback",
+                &format!("{check} rejected by target"),
                 *general_status,
                 extended_status,
             ),
@@ -110,12 +138,37 @@ impl fmt::Display for ReadbackOutcome {
                 extended_status,
             } => cip_status(
                 f,
-                "Router rejected readback",
+                &format!("{check} rejected by router"),
                 *general_status,
                 extended_status,
             ),
-            Self::Unavailable { error } => write!(f, "Readback unavailable · {error}"),
+            Self::Unavailable { error } => write!(f, "{check} unavailable · {error}"),
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct WriteOptions<'a> {
+    /// When present, require an exact read of these bytes before sending.
+    pub expected_current: Option<&'a [u8]>,
+    pub readback: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CurrentValueCheck {
+    pub expected_hex: String,
+    #[serde(flatten)]
+    pub outcome: ReadbackOutcome,
+}
+
+impl fmt::Display for CurrentValueCheck {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.outcome.describe(
+            f,
+            "Current value",
+            "the expected bytes",
+            "verified target identity required",
+        )
     }
 }
 
@@ -140,6 +193,8 @@ pub struct WriteReport {
     #[serde(flatten)]
     pub outcome: WriteOutcome,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_value: Option<CurrentValueCheck>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub readback: Option<ReadbackOutcome>,
 }
 
@@ -147,10 +202,7 @@ impl WriteReport {
     /// True when the target acknowledged the write and any requested readback matched.
     pub fn is_success(&self) -> bool {
         matches!(self.outcome, WriteOutcome::Acknowledged { .. })
-            && self
-                .readback
-                .as_ref()
-                .is_none_or(|outcome| matches!(outcome, ReadbackOutcome::Matched { .. }))
+            && self.readback.as_ref().is_none_or(ReadbackOutcome::is_match)
     }
 }
 
@@ -190,7 +242,7 @@ impl AttributeWrite {
     /// Check the pinned identity and send the reviewed write once on that TCP session.
     /// A router reply or loss of the target reply leaves application of the value unconfirmed.
     pub fn apply(&self, expected_identity: IdentityPin) -> Result<WriteReport, String> {
-        self.apply_request(expected_identity, false)
+        self.apply_with_options(expected_identity, WriteOptions::default())
     }
 
     /// Read the same attribute on the write session after a target acknowledgment.
@@ -199,25 +251,52 @@ impl AttributeWrite {
         &self,
         expected_identity: IdentityPin,
     ) -> Result<WriteReport, String> {
-        self.apply_request(expected_identity, true)
+        self.apply_with_options(
+            expected_identity,
+            WriteOptions {
+                readback: true,
+                ..WriteOptions::default()
+            },
+        )
     }
 
-    fn apply_request(
+    /// Apply a reviewed write with optional checks on the same session.
+    /// The current-value check is a separate read immediately before the write.
+    pub fn apply_with_options(
         &self,
         expected_identity: IdentityPin,
-        verify: bool,
+        options: WriteOptions<'_>,
     ) -> Result<WriteReport, String> {
         let request = self.message()?;
-        let mut readback = verify.then_some(ReadbackOutcome::Skipped);
+        let mut readback = options.readback.then_some(ReadbackOutcome::Skipped);
+        let mut current_value = options.expected_current.map(|bytes| CurrentValueCheck {
+            expected_hex: hex(bytes),
+            outcome: ReadbackOutcome::Skipped,
+        });
         let (observed_identity, outcome) = match self.open_target() {
             Err(error) => (None, WriteOutcome::NotSent { error }),
             Ok((mut session, actual)) => {
                 let outcome = if actual.pin() == expected_identity {
-                    let outcome = self.write_once(&mut session, request);
-                    if verify && matches!(outcome, WriteOutcome::Acknowledged { .. }) {
-                        readback = Some(self.read_back(&mut session));
+                    if let (Some(expected), Some(check)) =
+                        (options.expected_current, &mut current_value)
+                    {
+                        check.outcome = self.compare_value(&mut session, expected);
                     }
-                    outcome
+                    if current_value
+                        .as_ref()
+                        .is_some_and(|check| !check.outcome.is_match())
+                    {
+                        WriteOutcome::NotSent {
+                            error: "Current value check did not pass".into(),
+                        }
+                    } else {
+                        let outcome = self.write_once(&mut session, request);
+                        if options.readback && matches!(outcome, WriteOutcome::Acknowledged { .. })
+                        {
+                            readback = Some(self.compare_value(&mut session, &self.value));
+                        }
+                        outcome
+                    }
                 } else {
                     WriteOutcome::NotSent {
                         error: "Target identity did not match the reviewed device".into(),
@@ -230,6 +309,7 @@ impl AttributeWrite {
             expected_identity,
             observed_identity,
             outcome,
+            current_value,
             readback,
         })
     }
@@ -277,7 +357,7 @@ impl AttributeWrite {
         }
     }
 
-    fn read_back(&self, session: &mut Session) -> ReadbackOutcome {
+    fn compare_value(&self, session: &mut Session, expected: &[u8]) -> ReadbackOutcome {
         let result = match &self.route {
             Some(route) => session.read_routed(self.path, route),
             None => session.read(self.path).map_err(|error| match error {
@@ -286,7 +366,7 @@ impl AttributeWrite {
             }),
         };
         match result {
-            Ok(data) if data == self.value => ReadbackOutcome::Matched {
+            Ok(data) if data == expected => ReadbackOutcome::Matched {
                 data_hex: hex(&data),
             },
             Ok(data) => ReadbackOutcome::Mismatch {
