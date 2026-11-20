@@ -141,6 +141,68 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode saved-reads on localhost"]
+    fn runs_and_displays_saved_reads_from_explore_headlessly() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = Device::new(1, None);
+        device.tab = Tab::Explore;
+        device.preferences.cip_reads = [
+            ("Product name", 7, None),
+            ("Unavailable route", 6, Some("1/7")),
+            ("Serial", 6, Some("1/3")),
+            ("Peer closes", 126, None),
+            ("Later", 4, None),
+        ]
+        .into_iter()
+        .map(
+            |(name, attribute, route)| assembly_scanner::explicit::SavedRead {
+                name: name.into(),
+                path: assembly_scanner::explicit::ReadPath {
+                    class: 1,
+                    instance: 1,
+                    attribute: Some(attribute),
+                },
+                route: route.map(|route| route.parse().unwrap()),
+                selection: None,
+            },
+        )
+        .collect();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Read all saved");
+        let deadline = Instant::now() + std::time::Duration::from_secs(5);
+        while device.explorer.busy() && Instant::now() < deadline {
+            device.explorer.poll();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(!device.explorer.busy());
+        click(&mut device, &ctx, size, "Saved read results");
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Product name · Reply",
+            "Unavailable route · CIP rejection",
+            "Serial · Reply",
+            "Peer closes · Exchange failed",
+            "Later · Not attempted",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Serial · Reply");
+        let labels = draw(&mut device, &ctx, size);
+        for expected in ["Route 1/3", "0x12345678", "0000  78 56 34 12"] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        assert!(device.connection.is_none());
+    }
+
+    #[test]
     fn loading_a_saved_read_restores_its_reply_editor() {
         let ctx = egui::Context::default();
         let size = egui::vec2(1240.0, 860.0);

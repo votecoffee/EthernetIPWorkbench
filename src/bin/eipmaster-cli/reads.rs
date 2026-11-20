@@ -1,5 +1,8 @@
 use assembly_scanner::{
-    explicit::{EipError, ReadPath, Reader, Route, RoutedReadError, SavedRead},
+    explicit::{
+        EipError, ReadPath, Reader, Route, RoutedReadError, SavedRead, SavedReadOutcome,
+        run_saved_reads,
+    },
     model::{Selection, hex},
 };
 use serde_json::{Value, json};
@@ -14,69 +17,61 @@ pub(super) fn single(
 ) -> Result<bool, String> {
     path.validate()?;
     let mut reader = Reader::connect(adapter, local).map_err(|error| error.to_string())?;
-    let (document, success) = read(&mut reader, adapter, path, route, selection)?;
+    let reply = reader.read_request(path, route);
     drop(reader);
+    let document = read_document(adapter, path, route, selection, reply.as_deref())?;
     print_json(&document)?;
-    Ok(success)
+    Ok(reply.is_ok())
 }
 
-pub(super) fn all(adapter: Ipv4Addr, local: Ipv4Addr, reads: &[SavedRead]) -> Result<bool, String> {
-    if reads.is_empty() {
-        return Err("The profile has no saved CIP reads".into());
-    }
-    let mut reader = Reader::connect(adapter, local).map_err(|error| error.to_string())?;
-    let mut session_lost = false;
+pub(super) fn all(
+    adapter: Ipv4Addr,
+    local: Ipv4Addr,
+    reads: Vec<SavedRead>,
+) -> Result<bool, String> {
+    let batch = run_saved_reads(adapter, local, reads)?;
     let mut success = true;
-    let mut results = Vec::with_capacity(reads.len());
-    for saved in reads {
-        let mut document = json!({"path": saved.path, "status": "not_attempted"});
-        if !session_lost {
-            match read(
-                &mut reader,
+    let mut results = Vec::with_capacity(batch.results.len());
+    for entry in batch.results {
+        let saved = entry.request;
+        let report = |reply| {
+            read_document(
                 adapter,
                 saved.path,
                 saved.route.as_ref(),
                 saved.selection,
-            ) {
-                Ok((reply, ok)) => {
-                    document = reply;
-                    document["status"] = json!(if ok { "success" } else { "cip_rejected" });
-                    success &= ok;
-                }
-                Err(error) => {
-                    document["status"] = json!("exchange_failed");
-                    document["error"] = json!(error);
-                    session_lost = true;
-                    success = false;
-                }
-            }
-        }
+                reply,
+            )
+        };
+        let (mut document, status) = match &entry.outcome {
+            SavedReadOutcome::Reply(bytes) => (report(Ok(bytes.as_slice()))?, "success"),
+            SavedReadOutcome::Rejected(error) => (report(Err(error))?, "cip_rejected"),
+            SavedReadOutcome::ExchangeFailed(error) => (
+                json!({"path": saved.path, "error": error.to_string()}),
+                "exchange_failed",
+            ),
+            SavedReadOutcome::NotAttempted => (json!({"path": saved.path}), "not_attempted"),
+        };
+        success &= status == "success";
         if let Some(route) = &saved.route {
             document["route"] = json!(route);
         }
+        document["status"] = json!(status);
         document["name"] = json!(saved.name);
         results.push(document);
     }
-    drop(reader);
     print_json(&json!({"adapter_or_bridge": adapter, "local_ip": local, "results": results}))?;
     Ok(success)
 }
 
-fn read(
-    reader: &mut Reader,
+fn read_document(
     adapter: Ipv4Addr,
     path: ReadPath,
     route: Option<&Route>,
     selection: Option<Selection>,
-) -> Result<(Value, bool), String> {
-    let result = match route {
-        Some(route) => reader.read_routed(path, route),
-        None => reader.read(path).map_err(|error| match error {
-            error @ EipError::Cip { .. } => RoutedReadError::Target(error),
-            error => RoutedReadError::Exchange(error),
-        }),
-    };
-    let mut report = match &result {
+    result: Result<&[u8], &RoutedReadError>,
+) -> Result<Value, String> {
+    let mut report = match result {
         Ok(bytes) => {
             let decoded = path.decode_reply(bytes, selection);
             let mut report = json!({
@@ -108,7 +103,7 @@ fn read(
             "target"
         });
     }
-    Ok((report, result.is_ok()))
+    Ok(report)
 }
 
 fn print_json(document: &Value) -> Result<(), String> {

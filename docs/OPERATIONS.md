@@ -48,11 +48,15 @@ selection = { offset = 2, kind = "I32", big_endian = true, swap = "word_order" }
 
 ### Run all saved reads
 
+In **Explore**, expand **Saved reads** and select **Read all saved**. When the job finishes, expand **Saved read results**. Each row shows the outcome and expands to show the request details, decoded value and raw bytes, or the error. The batch runs on the configured adapter or bridge and NIC in **Device**.
+
+For the same batch headlessly, run:
+
 ~~~powershell
 .\target\release\eipmaster-cli.exe read-saved-all .local\device.toml
 ~~~
 
-The CLI runs the profile's saved requests in order on one registered explicit TCP session with the configured adapter or bridge and NIC. Each request uses its own optional route and reply selection. The JSON `results` array preserves order and includes the request name, path, and any returned data or error.
+The GUI and CLI run the profile's saved requests in order on one registered explicit TCP session. Each request uses its own optional route and reply selection. The CLI's JSON `results` array preserves order and includes the request name, path, and any returned data or error.
 
 | Status | Meaning |
 |---|---|

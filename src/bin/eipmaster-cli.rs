@@ -156,7 +156,7 @@ fn run(args: &[OsString]) -> Result<bool, String> {
             reads::all(
                 settings.device_ip,
                 settings.local_ip,
-                &app.unwrap_or_default().cip_reads,
+                app.unwrap_or_default().cip_reads,
             )
         }
         [command, path] if command == "eds" => {

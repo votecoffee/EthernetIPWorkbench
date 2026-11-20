@@ -1,8 +1,10 @@
 use super::*;
 use assembly_scanner::{
     discovery,
-    explicit::{self, ReadPath, Reader, Route, SavedRead},
+    explicit::{self, ReadPath, Reader, Route, SavedRead, SavedReadBatch},
 };
+
+mod batch;
 
 const PRESETS: [(&str, u32, u32); 9] = [
     ("Identity · Vendor ID", 1, 1),
@@ -19,6 +21,7 @@ const PRESETS: [(&str, u32, u32); 9] = [
 enum Response {
     Discovery(Ipv4Addr, discovery::Report),
     Read(ReadReply),
+    Batch(SavedReadBatch),
 }
 
 struct ReadReply {
@@ -36,6 +39,7 @@ pub(super) struct Explorer {
     name: String,
     selection: Option<Selection>,
     read_result: Option<ReadReply>,
+    saved_batch: Option<SavedReadBatch>,
     discovered: Option<(Ipv4Addr, discovery::Report)>,
     work: Option<mpsc::Receiver<Result<Response, String>>>,
     notice: Option<String>,
@@ -52,6 +56,7 @@ impl Default for Explorer {
             name: String::new(),
             selection: None,
             read_result: None,
+            saved_batch: None,
             discovered: None,
             work: None,
             notice: None,
@@ -82,6 +87,7 @@ impl Explorer {
         match work.try_recv() {
             Ok(Ok(Response::Discovery(nic, report))) => self.discovered = Some((nic, report)),
             Ok(Ok(Response::Read(reply))) => self.read_result = Some(reply),
+            Ok(Ok(Response::Batch(batch))) => self.saved_batch = Some(batch),
             Ok(Err(error)) => self.notice = Some(error),
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.notice = Some("Explore request ended without a response".into())
@@ -324,6 +330,31 @@ impl Device {
             }
         });
         ui.collapsing("Saved reads", |ui| {
+            if ui
+                .add_enabled(
+                    !explorer.busy() && !self.preferences.cip_reads.is_empty(),
+                    egui::Button::new("Read all saved"),
+                )
+                .clicked()
+            {
+                match (self.device.parse::<Ipv4Addr>(), &local) {
+                    (Ok(adapter), Ok(nic)) => {
+                        let nic = *nic;
+                        let reads = self.preferences.cip_reads.clone();
+                        explorer.saved_batch = None;
+                        explorer.start(move || {
+                            explicit::run_saved_reads(adapter, nic, reads).map(Response::Batch)
+                        });
+                    }
+                    _ => {
+                        explorer.notice =
+                            Some("Set adapter and local NIC IPv4 addresses in Device".into())
+                    }
+                }
+            }
+            if let Some(batch) = &explorer.saved_batch {
+                batch::show(ui, batch);
+            }
             let mut remove = None;
             for (index, read) in self.preferences.cip_reads.iter().enumerate() {
                 ui.push_id(index, |ui| {
@@ -355,23 +386,7 @@ impl Device {
         }
         if let Some(reply) = &explorer.read_result {
             ui.label(format!("{} · {} bytes", reply.address, reply.bytes.len()));
-            match &reply.interpretation {
-                Ok(Some(value)) => {
-                    ui.monospace(value);
-                }
-                Err(error) => {
-                    ui.colored_label(AMBER, error);
-                }
-                Ok(None) => {}
-            }
-            egui::ScrollArea::vertical()
-                .id_salt("cip-result")
-                .max_height(240.0)
-                .show(ui, |ui| {
-                    for (row, bytes) in reply.bytes.chunks(16).enumerate() {
-                        ui.monospace(format!("{:04X}  {}", row * 16, model::hex(bytes)));
-                    }
-                });
+            show_reply_payload(ui, &reply.bytes, &reply.interpretation);
         }
         if let Some(address) = selected {
             self.device = address.to_string();
@@ -380,4 +395,27 @@ impl Device {
             self.writes_confirmed = false;
         }
     }
+}
+
+fn show_reply_payload(ui: &mut Ui, bytes: &[u8], interpretation: &Result<Option<String>, String>) {
+    match interpretation {
+        Ok(Some(value)) => {
+            ui.monospace(value);
+        }
+        Err(error) => {
+            ui.colored_label(AMBER, error);
+        }
+        Ok(None) => {}
+    }
+    let row_height = ui.text_style_height(&egui::TextStyle::Monospace);
+    egui::ScrollArea::vertical()
+        .id_salt("cip-result")
+        .max_height(200.0)
+        .show_rows(ui, row_height, bytes.len().div_ceil(16), |ui, rows| {
+            for row in rows {
+                let start = row * 16;
+                let end = (start + 16).min(bytes.len());
+                ui.monospace(format!("{start:04X}  {}", model::hex(&bytes[start..end])));
+            }
+        });
 }

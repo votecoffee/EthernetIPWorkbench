@@ -15,6 +15,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/preflight.rs | Effective configuration, EDS comparisons and offline validation |
 | src/settings_file.rs | Named profiles, workspace migration, preferences and file replacement |
 | src/explicit.rs and src/discovery.rs | Registered TCP exchange, identity, CIP reads, typed reply interpretation and UDP ListIdentity |
+| src/explicit/batch.rs and src/gui/explore/batch.rs | Shared saved-read execution and the Explore batch results |
 | src/scanner.rs and src/scanner/ | Session lifecycle, Forward_Open/Close, cyclic workers and diagnostics |
 | src/scanner/supervision.rs | Blocking read-only runner with identity-pinned reconnects |
 | src/deadline_wait.rs | Windows deadline wait resource |
@@ -72,6 +73,7 @@ Depend on the `assembly-scanner` library with `default-features = false` to omit
 - Load effective settings with `settings_file::load_profile`. Use `load_named_profile` when you also need the embedded EDS profile for preflight or mapping suggestions. Call `Settings::input_mapping` for validated named fields, then `field.selection.decode(payload)` for a typed value. `Settings::preview_input` adds raw bytes, display values and CSV inclusion for inspections.
 - Start a readback with `Connection::start_input(settings, ExpectedIdentity::Device(pin))`. It creates a session without a recorder or exporter. Use `Connection::diagnostics()` for current status and raw input, requested and negotiated intervals, and send/receive measurements. `shutdown()` requests stop and returns the final diagnostics after Forward_Close. Dropping a handle requests stop. Use `shutdown()` when teardown must finish before continuing.
 - Use `discovery::discover(local, destination)` for ListIdentity. Use `explicit::Reader::connect(adapter, local)` and `reader.read(ReadPath { class, instance, attribute })` for direct explicit reads. Connect to the first bridge and use `reader.read_routed(path, &route)` for a routed read. Parse `Route` from the same port/link string accepted by Explore and CLI. Router and target rejections retain numeric status and extended words in separate error variants. The target reply retains its service code, which the reader checks before decoding. [ODVA CIP routing overview](https://www.odva.org/wp-content/uploads/2020/06/PUB00123R1_Common-Industrial_Protocol_and_Family_of_CIP_Networks.pdf#page=28)
+- Use `explicit::run_saved_reads` for the same ordered batch used by Explore and the CLI. Match the typed result for each saved request. A router or target rejection leaves later requests eligible to run. An exchange failure marks the remaining requests unattempted.
 
 ## Build and choose checks
 

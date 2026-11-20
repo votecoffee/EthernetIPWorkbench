@@ -17,7 +17,9 @@ use std::{
     net::{Ipv4Addr, SocketAddr, TcpStream},
     time::{Duration, Instant},
 };
+mod batch;
 mod route;
+pub use batch::{SavedReadBatch, SavedReadOutcome, SavedReadResult, run_saved_reads};
 pub use route::{Route, RoutedReadError};
 pub(crate) const TO_SOCKET: u16 = 0x8001;
 pub(crate) const PORT: u16 = 44818;
@@ -134,6 +136,21 @@ impl Reader {
             ));
         }
         Ok(Self(Some(Session::open(device, local)?)))
+    }
+
+    /// Read an attribute directly or through the supplied route on this session.
+    pub fn read_request(
+        &mut self,
+        path: ReadPath,
+        route: Option<&Route>,
+    ) -> std::result::Result<Vec<u8>, RoutedReadError> {
+        match route {
+            Some(route) => self.read_routed(path, route),
+            None => self.read(path).map_err(|error| match error {
+                error @ EipError::Cip { .. } => RoutedReadError::Target(error),
+                error => RoutedReadError::Exchange(error),
+            }),
+        }
     }
 
     /// Return the CIP application payload. CIP rejections preserve the status words.
