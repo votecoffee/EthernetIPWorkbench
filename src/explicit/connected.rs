@@ -1,7 +1,8 @@
+use super::multiple::{decode_packet, request_packet};
 use super::{
-    Command, EipError, Envelope, Item, Result, RoutedReadError, SavedRead, SavedReadBatch, Session,
-    batch::run_ordered, cpf, is_unicast, item_type, le16, le32, protocol, read_message, reply_body,
-    validate_saved_reads,
+    Command, EipError, Envelope, Item, Result, RoutedReadError, SavedRead, SavedReadBatch,
+    SavedReadResult, Session, batch::run_ordered, cpf, is_unicast, item_type, le16, le32, protocol,
+    read_message, reply_body, validate_saved_reads,
 };
 use crate::scanner::{CloseOutcome, forward_close};
 use ethernetip_connections::forward_open::{
@@ -18,6 +19,11 @@ pub struct ConnectedReadBatch {
     pub forward_close: CloseOutcome,
 }
 
+pub struct ConnectedPacketBatch {
+    pub connection: ConnectedReadBatch,
+    pub packet_error: Option<EipError>,
+}
+
 /// Run direct saved reads over one short-lived Class 3 TCP connection.
 /// A CIP rejection is saved with its request. An exchange failure stops subsequent reads.
 pub fn run_saved_reads_connected(
@@ -25,13 +31,93 @@ pub fn run_saved_reads_connected(
     local: Ipv4Addr,
     reads: Vec<SavedRead>,
 ) -> std::result::Result<ConnectedReadBatch, String> {
+    validate_direct_reads(&reads)?;
+    let (results, forward_close) = with_connection(adapter, local, |session, reply| {
+        let mut sequence = 0u16;
+        run_ordered(reads, |request| {
+            sequence = sequence.wrapping_add(1);
+            let cip = read_message(request.path);
+            connected_exchange(session, reply, sequence, &cip, |data| {
+                Ok(reply_body(data, cip[0])?.to_vec())
+            })
+            .map_err(|error| match error {
+                error @ EipError::Cip { .. } => RoutedReadError::Target(error),
+                error => RoutedReadError::Exchange(error),
+            })
+        })
+    })?;
+    Ok(ConnectedReadBatch {
+        batch: SavedReadBatch {
+            adapter_or_bridge: adapter,
+            local_ip: local,
+            results,
+        },
+        forward_close,
+    })
+}
+
+/// Run a direct Multiple Service Packet on one Class 3 connection.
+/// A whole-packet error leaves the individual outcomes unavailable and retains Forward_Close.
+pub fn run_saved_reads_connected_packet(
+    adapter: Ipv4Addr,
+    local: Ipv4Addr,
+    reads: Vec<SavedRead>,
+) -> std::result::Result<ConnectedPacketBatch, String> {
+    validate_direct_reads(&reads)?;
+    let requests: Vec<_> = reads.iter().map(|entry| read_message(entry.path)).collect();
+    let packet = request_packet(&requests);
+    let limit = usize::from(CONNECTED_SIZE) - 2;
+    if packet.len() > limit {
+        return Err(format!(
+            "Class 3 packet needs {} CIP bytes. The limit is {limit} bytes.",
+            packet.len()
+        ));
+    }
+    let (reply, forward_close) = with_connection(adapter, local, |session, open| {
+        connected_exchange(session, open, 1, &packet, |data| {
+            decode_packet(data, &requests)
+        })
+    })?;
+    let (results, packet_error) = match reply {
+        Ok(outcomes) => (
+            reads
+                .into_iter()
+                .zip(outcomes)
+                .map(|(request, outcome)| SavedReadResult { request, outcome })
+                .collect(),
+            None,
+        ),
+        Err(error) => (Vec::new(), Some(error)),
+    };
+    Ok(ConnectedPacketBatch {
+        connection: ConnectedReadBatch {
+            batch: SavedReadBatch {
+                adapter_or_bridge: adapter,
+                local_ip: local,
+                results,
+            },
+            forward_close,
+        },
+        packet_error,
+    })
+}
+
+fn validate_direct_reads(reads: &[SavedRead]) -> std::result::Result<(), String> {
     if reads.is_empty() {
         return Err("The profile has no saved CIP reads".into());
     }
-    validate_saved_reads(&reads)?;
+    validate_saved_reads(reads)?;
     if reads.iter().any(|request| request.route.is_some()) {
         return Err("Class 3 connected mode requires direct saved reads".into());
     }
+    Ok(())
+}
+
+fn with_connection<T>(
+    adapter: Ipv4Addr,
+    local: Ipv4Addr,
+    run: impl FnOnce(&mut Session, &ForwardOpenResponse) -> T,
+) -> std::result::Result<(T, CloseOutcome), String> {
     if !is_unicast(adapter) || !is_unicast(local) {
         return Err("Enter unicast adapter and local NIC IPv4 addresses".into());
     }
@@ -58,24 +144,9 @@ pub fn run_saved_reads_connected(
             ));
         }
     };
-    let mut sequence = 0u16;
-    let results = run_ordered(reads, |request| {
-        sequence = sequence.wrapping_add(1);
-        let cip = read_message(request.path);
-        connected_read(&mut session, &reply, sequence, &cip).map_err(|error| match error {
-            error @ EipError::Cip { .. } => RoutedReadError::Target(error),
-            error => RoutedReadError::Exchange(error),
-        })
-    });
+    let result = run(&mut session, &reply);
     let forward_close = CloseOutcome::from_result(forward_close(&mut session, &close));
-    Ok(ConnectedReadBatch {
-        batch: SavedReadBatch {
-            adapter_or_bridge: adapter,
-            local_ip: local,
-            results,
-        },
-        forward_close,
-    })
+    Ok((result, forward_close))
 }
 
 fn open_request() -> Result<ForwardOpenRequest> {
@@ -119,12 +190,13 @@ fn decode_open(body: &[u8], open: &ForwardOpenRequest) -> Result<ForwardOpenResp
     Ok(reply)
 }
 
-fn connected_read(
+fn connected_exchange<T>(
     session: &mut Session,
     open: &ForwardOpenResponse,
     sequence: u16,
     cip: &[u8],
-) -> Result<Vec<u8>> {
+    decode: impl FnOnce(&[u8]) -> Result<T>,
+) -> Result<T> {
     let mut payload = sequence.to_le_bytes().to_vec();
     payload.extend_from_slice(cip);
     let items = [
@@ -134,15 +206,14 @@ fn connected_read(
     let (_, response) =
         session.exchange(Command::SendUnitData, &cpf::encode_envelope(0, 0, &items))?;
     let envelope = Envelope::parse(&response)?;
-    connected_reply(&envelope, open.t_to_o_connection_id, sequence, cip[0])
+    decode(connected_payload(
+        &envelope,
+        open.t_to_o_connection_id,
+        sequence,
+    )?)
 }
 
-fn connected_reply(
-    envelope: &Envelope,
-    connection_id: u32,
-    sequence: u16,
-    service: u8,
-) -> Result<Vec<u8>> {
+fn connected_payload(envelope: &Envelope, connection_id: u32, sequence: u16) -> Result<&[u8]> {
     let [address, data] = envelope.items.as_slice() else {
         return Err(protocol(
             "Class 3 reply must contain an address and data item",
@@ -159,7 +230,7 @@ fn connected_reply(
     {
         return Err(protocol("Invalid Class 3 reply data or sequence"));
     }
-    Ok(reply_body(&data.data[2..], service)?.to_vec())
+    Ok(&data.data[2..])
 }
 
 #[cfg(test)]
@@ -173,9 +244,10 @@ mod tests {
             Item::new(item_type::CONNECTED_DATA, vec![2, 0, 0x8e, 0, 0, 0, 7]),
         ];
         let frame = Envelope::parse(&cpf::encode_envelope(0, 0, &items)).unwrap();
-        assert_eq!(connected_reply(&frame, 123, 2, 0x0e).unwrap(), [7]);
-        assert!(connected_reply(&frame, 124, 2, 0x0e).is_err());
-        assert!(connected_reply(&frame, 123, 1, 0x0e).is_err());
-        assert!(connected_reply(&frame, 123, 2, 0x01).is_err());
+        let reply = connected_payload(&frame, 123, 2).unwrap();
+        assert_eq!(reply_body(reply, 0x0e).unwrap(), [7]);
+        assert!(connected_payload(&frame, 124, 2).is_err());
+        assert!(connected_payload(&frame, 123, 1).is_err());
+        assert!(reply_body(reply, 0x01).is_err());
     }
 }

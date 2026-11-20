@@ -46,6 +46,7 @@ For a supported target configuration layout, review the CLI `eds` report's `conf
 - Run the whole list on one registered session with **Explore → Saved reads → Read all saved** or `read-saved-all <settings.toml>`. Check the per-request outcomes, including any unattempted requests after an exchange failure.
 - For direct saved reads on a target that supports unconnected Multiple Service Packet, pass `--multiple-service-packet` to `read-saved-all` and inspect the status of each embedded reply.
 - Use `read-saved-all <settings.toml> --connected` for direct Class 3 reads on a target that supports them. Review both the individual results and `forward_close`.
+- Combine `--connected --multiple-service-packet` when the target supports the packet service on Class 3. Check `packet_error` separately from any embedded result or close error.
 - In **Saved read results**, use **Save JSON** to retain the batch in the directory configured in Logging. It uses the CLI's batch report fields.
 - Use CLI identity for an authorized bounded hardware identity read. capture requires an input-only or listen-only heartbeat profile and an expected decimal identity. Include serial to pin a unit. qualify automates the baseline and three target runs for controlling input-only profiles.
 - Compare device metadata in **Device identity** after **Read identity**, or add `--eds <file>` to CLI identity. Review differences in the declared product codes and revisions before accepting a live device.

@@ -1,7 +1,7 @@
 use assembly_scanner::{
     explicit::{
         ReadPath, Reader, Route, SavedRead, SavedReadOutcome, read_reply_document, run_saved_reads,
-        run_saved_reads_connected, run_saved_reads_packet,
+        run_saved_reads_connected, run_saved_reads_connected_packet, run_saved_reads_packet,
     },
     model::Selection,
 };
@@ -30,6 +30,7 @@ pub(super) enum Mode {
     Sequential,
     Packet,
     Connected,
+    ConnectedPacket,
 }
 
 pub(super) fn all(
@@ -39,6 +40,13 @@ pub(super) fn all(
     mode: Mode,
 ) -> Result<bool, String> {
     let (batch, confirmed) = match mode {
+        Mode::ConnectedPacket => {
+            let packet = run_saved_reads_connected_packet(adapter, local, reads)?;
+            println!("{}", packet.report_json()?);
+            let complete =
+                packet.packet_error.is_none() && packet.connection.forward_close.is_confirmed();
+            (packet.connection.batch, complete)
+        }
         Mode::Connected => {
             let connected = run_saved_reads_connected(adapter, local, reads)?;
             println!("{}", connected.report_json()?);

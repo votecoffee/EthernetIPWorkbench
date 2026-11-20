@@ -79,6 +79,7 @@ Depend on the `assembly-scanner` library with `default-features = false` to omit
 - Use `explicit::run_saved_reads` for the same ordered batch used by Explore and the CLI. Match the typed result for each saved request. A router or target rejection leaves later requests eligible to run. An exchange failure marks the remaining requests unattempted.
 - Use `explicit::run_saved_reads_packet` to pack direct saved reads into one unconnected Message Router request. Each valid embedded reply uses the same typed outcome as the sequential runner.
 - Use `explicit::run_saved_reads_connected` for one direct Class 3 batch. It validates the reply connection ID and CIP sequence and reports the outcome of Forward_Close separately.
+- Use `explicit::run_saved_reads_connected_packet` for one Multiple Service Packet on Class 3. It shares the connection lifecycle and offset decoder with the other read modes.
 
 ## Build and choose checks
 

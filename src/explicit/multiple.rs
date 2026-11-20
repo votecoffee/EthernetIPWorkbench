@@ -47,7 +47,7 @@ impl Reader {
     }
 }
 
-fn request_packet(requests: &[Vec<u8>]) -> Vec<u8> {
+pub(super) fn request_packet(requests: &[Vec<u8>]) -> Vec<u8> {
     // The validated profile contains at most 64 reads, each at most 20 bytes.
     let mut packet = vec![SERVICE, 2, 0x20, 2, 0x24, 1];
     packet.extend_from_slice(&(requests.len() as u16).to_le_bytes());
@@ -62,7 +62,7 @@ fn request_packet(requests: &[Vec<u8>]) -> Vec<u8> {
     packet
 }
 
-fn decode_packet(data: &[u8], requests: &[Vec<u8>]) -> Result<Vec<SavedReadOutcome>> {
+pub(super) fn decode_packet(data: &[u8], requests: &[Vec<u8>]) -> Result<Vec<SavedReadOutcome>> {
     let header = ReplyHeader::parse(data)?;
     if data[0] != (SERVICE | 0x80) {
         return Err(protocol("Unexpected Multiple Service Packet reply service"));

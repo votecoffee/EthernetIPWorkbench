@@ -83,9 +83,19 @@ Use this option with a target that supports unconnected CIP Multiple Service Pac
 .\target\release\eipmaster-cli.exe read-saved-all .local\device.toml --connected
 ~~~
 
-The target must accept a standard Class 3 Forward_Open to its Message Router. This mode requests variable sizes up to 504 bytes per direction, including the two-byte sequence. It sends each direct saved read over TCP in profile order and closes the connection after the batch. The option uses the profile's IPv4 addresses and saved requests. The default sequential mode handles routed reads. Select one CLI mode per invocation. [OpENer Class 3 target](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipclass3connection.c)
+The target must accept a standard Class 3 Forward_Open to its Message Router. This mode requests variable sizes up to 504 bytes per direction, including the two-byte sequence. It sends each direct saved read over TCP in profile order and closes the connection after the batch. The option uses the profile's IPv4 addresses and saved requests. The default sequential mode handles routed reads. [OpENer Class 3 target](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipclass3connection.c)
 
 The JSON includes `forward_close` separately from the read results. A CIP rejection still allows later reads. An exchange failure leaves later requests unattempted. Exit code 0 requires successful CIP replies and a confirmed close. If Forward_Open fails, the CLI reports the setup error on stderr and exits 1.
+
+#### Combine reads on a Class 3 connection
+
+~~~powershell
+.\target\release\eipmaster-cli.exe read-saved-all .local\device.toml --connected --multiple-service-packet
+~~~
+
+The target must support Multiple Service Packet on its Class 3 connection. Both flags can appear in either order. The command sends one packet for all direct saved reads. The connected size leaves 502 bytes for the CIP request or reply. The CLI rejects oversized requests before Forward_Open, and the target controls how much reply data it can return. [Rockwell CIP Multiple Service Packet format](https://literature.rockwellautomation.com/idc/groups/literature/documents/pm/1756-pm020_-en-p.pdf)
+
+Valid embedded replies and rejections appear in `results` in profile order. A whole-packet rejection or an invalid reply produces a `packet_error` and an empty `results` array. The report keeps the separate `forward_close` result. Exit code 0 requires successful reads and a confirmed close.
 
 ## Start offline
 

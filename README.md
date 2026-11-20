@@ -93,6 +93,8 @@ For targets that support unconnected Multiple Service Packet, add `--multiple-se
 
 Add `--connected` to run direct saved reads on one Class 3 connection and report its Forward_Close outcome. [Connected read mode](docs/OPERATIONS.md#run-direct-class-3-connected-reads)
 
+Combine `--connected --multiple-service-packet` to group the saved reads on that Class 3 connection. The report preserves any packet-level error and the close outcome. [Connected packet mode](docs/OPERATIONS.md#combine-reads-on-a-class-3-connection)
+
 ### Save and restore settings
 
 The Windows GUI automatically remembers the device list and selected device in `%LOCALAPPDATA%\EIPMaster\last-session.toml`. It saves edited settings while the window is open and on a normal close. Each setup includes device and NIC settings, imported EDS profiles and overrides, assembly mappings, staged bytes, and CSV and scheduler preferences. An older single-device session opens as **Device 1**. The app starts offline. Confirm the bench and any output or configuration writes again for each device before connecting.

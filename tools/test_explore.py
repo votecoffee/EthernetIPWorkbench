@@ -452,6 +452,34 @@ def main():
         assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
         [request] = peer["explicit_requests"]
         assert bytes.fromhex(request)[:6] == bytes.fromhex("0A 02 20 02 24 01")
+        connected_args = ("--connected", "--multiple-service-packet")
+        case = f"class3-packet-{mode}"
+        result, peer = with_adapter(root, case, [exe, "read-saved-all", packet, *connected_args], "class3-packet")
+        assert result.returncode == (1 if additional else 0), (result.stdout, result.stderr)
+        connected = json.loads(result.stdout)
+        assert connected["forward_close"] == {"outcome": "confirmed"}
+        assert connected["results"] == replies and "packet_error" not in connected
+        assert peer["connected_requests"] == [request]
+        assert peer["registrations"] == 1 and peer["unregistered"] and peer["forward_close"]
+
+    packet = root / "multiple-service-success.toml"
+    result, peer = with_adapter(
+        root, "class3-packet-close-reject", [exe, "read-saved-all", packet, "--multiple-service-packet", "--connected"],
+        "class3-packet-close-reject",
+    )
+    assert result.returncode == 1, (result.stdout, result.stderr)
+    connected = json.loads(result.stdout)
+    assert connected["forward_close"] == {
+        "outcome": "rejected", "general_status": 1, "extended_status": [0x0107],
+    }
+    assert [read["status"] for read in connected["results"]] == ["success"] * 3
+    assert peer["forward_close"] and len(peer["connected_requests"]) == 1
+
+    oversized = root / "class3-packet-oversized.toml"
+    oversized.write_text(source + "".join(saved_request(f"Field {i}", 7) for i in range(50)), encoding="utf-8")
+    result = subprocess.run([exe, "read-saved-all", oversized, "--connected", "--multiple-service-packet"],
+                            capture_output=True, text=True, timeout=4, creationflags=NO_WINDOW)
+    assert result.returncode == 1 and "limit is 502 bytes" in result.stderr
 
     routed_packet = subprocess.run([exe, "read-saved-all", routed_profile, "--multiple-service-packet"],
                                    capture_output=True, text=True, timeout=4, creationflags=NO_WINDOW)

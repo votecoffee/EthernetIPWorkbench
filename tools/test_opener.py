@@ -284,6 +284,21 @@ def check_connected_reads(cli, adapter, root, identity):
         assert trace.count("Class 3 sequence number:") == len(requests)
         assert "ForwardClose: ConnSerNo" in trace
     print("OpENer Class 3 direct reads, partial rejection, sequence tracking and Forward_Close passed.")
+    case = root / "packet-unsupported"
+    case.mkdir()
+    with run_adapter(adapter, case) as log:
+        result = subprocess.run(
+            [cli, "read-saved-all", root / "success/profile.toml", "--connected", "--multiple-service-packet"],
+            capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    (case / "result.json").write_bytes(result.stdout)
+    assert result.returncode == 1, (result.stdout, result.stderr)
+    report = json.loads(result.stdout)
+    assert report["packet_error"] == {"general_status": 0x08, "extended_status": []}
+    assert report["results"] == [] and report["forward_close"] == {"outcome": "confirmed"}
+    trace = log.read_text(encoding="utf-8", errors="replace")
+    assert trace.count("Class 3 sequence number:") == 1 and "ForwardClose: ConnSerNo" in trace
+    print("OpENer rejected the Class 3 Multiple Service Packet with status 0x08 and confirmed close.")
 
 
 @contextmanager

@@ -1,6 +1,6 @@
 use super::{
-    ConnectedReadBatch, EipError, ReadPath, Route, RoutedReadError, SavedReadBatch,
-    SavedReadOutcome,
+    ConnectedPacketBatch, ConnectedReadBatch, EipError, ReadPath, Route, RoutedReadError,
+    SavedReadBatch, SavedReadOutcome,
 };
 use crate::model::{Selection, hex};
 use serde_json::{Value, json};
@@ -52,8 +52,28 @@ impl SavedReadBatch {
 impl ConnectedReadBatch {
     /// Format the read results with the separate Class 3 Forward_Close outcome.
     pub fn report_json(&self) -> Result<String, String> {
+        serde_json::to_string_pretty(&self.report_document()?).map_err(|error| error.to_string())
+    }
+
+    fn report_document(&self) -> Result<Value, String> {
         let mut document = self.batch.report_document()?;
         document["forward_close"] = json!(self.forward_close);
+        Ok(document)
+    }
+}
+
+impl ConnectedPacketBatch {
+    /// Format the results, any whole-packet failure, and the Class 3 close outcome.
+    pub fn report_json(&self) -> Result<String, String> {
+        let mut document = self.connection.report_document()?;
+        if let Some(error) = &self.packet_error {
+            document["packet_error"] = match error {
+                EipError::Cip { status, ext } => {
+                    json!({"general_status": status, "extended_status": ext})
+                }
+                error => json!({"error": error.to_string()}),
+            };
+        }
         serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
     }
 }

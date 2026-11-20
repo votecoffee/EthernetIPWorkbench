@@ -618,3 +618,7 @@ The localhost fixture counted one registered session and one explicit exchange f
 ## Direct Class 3 connected reads
 
 The pinned OpENer 2.3 Windows loopback build accepted a standard Class 3 Forward_Open. It returned the product name and serial in order and confirmed Forward_Close. A separate batch returned CIP status `0x14` for an unsupported attribute between those two reads, returned the later serial and confirmed close. The CLI reported the three results and exited 1. Response tests checked that incorrect connection IDs, sequences and service codes are rejected. The direct and routed unconnected and Class 1 fixture regressions passed. [OpENer Class 3 target](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipclass3connection.c)
+
+## Multiple Service Packet over Class 3
+
+The Windows localhost fixture confirmed one connected exchange and an ordered result for each embedded read. A mixed reply with packet status `0x1E` retained the embedded rejection and later successful replies. A separate test kept all successful reads when Forward_Close was rejected. A 508-byte request was rejected before opening a session because the Class 3 connection allows 502 CIP bytes after the sequence field. The pinned OpENer 2.3 build returned packet-level CIP status `0x08` and confirmed Forward_Close. The CLI reported that rejection separately from close and left the individual results empty. Successful grouped reads still need a physical target test.

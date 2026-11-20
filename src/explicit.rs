@@ -23,7 +23,10 @@ mod multiple;
 mod report;
 mod route;
 pub use batch::{SavedReadBatch, SavedReadOutcome, SavedReadResult, run_saved_reads};
-pub use connected::{ConnectedReadBatch, run_saved_reads_connected};
+pub use connected::{
+    ConnectedPacketBatch, ConnectedReadBatch, run_saved_reads_connected,
+    run_saved_reads_connected_packet,
+};
 pub use multiple::run_saved_reads_packet;
 pub use report::read_reply_document;
 pub use route::{Route, RoutedReadError};

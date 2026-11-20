@@ -43,7 +43,7 @@ Usage:
   eipmaster-cli discover <local-ipv4> [<destination-ipv4>]
   eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
   eipmaster-cli read-saved <settings.toml> <name>
-  eipmaster-cli read-saved-all <settings.toml> [--multiple-service-packet|--connected]
+  eipmaster-cli read-saved-all <settings.toml> [--multiple-service-packet] [--connected]
   eipmaster-cli capture <settings.toml> <new-output-dir> <seconds> <vendor:type:product[:serial]>
   eipmaster-cli serve <settings.toml> <vendor:type:product[:serial]> [<seconds>]
   eipmaster-cli qualify <settings.toml> <new-output-dir> <direct|switched|loopback> <vendor:type:product:serial> [<loopback-seconds>]
@@ -156,6 +156,12 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                 [] => reads::Mode::Sequential,
                 [option] if option == "--multiple-service-packet" => reads::Mode::Packet,
                 [option] if option == "--connected" => reads::Mode::Connected,
+                [first, second]
+                    if first == "--connected" && second == "--multiple-service-packet"
+                        || first == "--multiple-service-packet" && second == "--connected" =>
+                {
+                    reads::Mode::ConnectedPacket
+                }
                 _ => return Err(USAGE.into()),
             };
             let (settings, app) = settings_file::load_profile(Path::new(profile))?;

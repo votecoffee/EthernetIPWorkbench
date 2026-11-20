@@ -257,6 +257,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     stop = threading.Event()
     io = None
     owner = mode == "owner" or mode in VARIABLE_OUTPUT_MAX
+    connected_packet = mode.startswith("class3-packet")
     multicast = mode.startswith("multicast")
     udp_mode = "stall" if mode == "stall-close-reject" else mode
     adapter_ip = tcp.getsockname()[0]
@@ -266,6 +267,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     value_base = (adapter_index % 1000) * 100_000
     report.update(serial_number=serial_number, value_base=value_base)
     path = bytes.fromhex("20 04 24 01 2C 64 2C 65" if owner else "20 04 24 01 2C FE 2C 65")
+    if connected_packet:
+        path = bytes.fromhex("20 02 24 01")
     keyed = mode in ("large-keyed", "routed-io-large")
     if keyed:
         path = bytes.fromhex("34 04 01 00 0C 00 01 00 01 00") + path
@@ -287,14 +290,24 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
             assert status == options == 0
             if cmd == 0x65:
                 assert handle == 0 and request == b"\x01\x00\x00\x00"
-                if mode in ("saved-reads", "multiple-service"):
+                if mode in ("saved-reads", "multiple-service") or connected_packet:
                     report["registrations"] = report.get("registrations", 0) + 1
                 response = request
             elif cmd == 0x66:
                 assert handle == SESSION
-                if mode in ("saved-reads", "multiple-service"):
+                if mode in ("saved-reads", "multiple-service") or connected_packet:
                     report["unregistered"] = True
                 break
+            elif cmd == 0x70 and connected_packet:
+                assert handle == SESSION and ctx == bytes(8) and request[4:6] == b"\0\0"
+                items = rr_items(request)
+                assert set(items) == {0xA1, 0xB1} and items[0xA1] == struct.pack("<I", OT_ID)
+                assert items[0xB1][:2] == b"\x01\x00"
+                packet = items[0xB1][2:]
+                report.setdefault("connected_requests", []).append(packet.hex())
+                cip = multiple_service_reply(packet, attrs)
+                response = (struct.pack("<IHHHHIHH", 0, 0, 2, 0xA1, 4, to, 0xB1, len(cip) + 2)
+                            + b"\x01\x00" + cip)
             elif cmd == 0x6F:
                 assert handle == SESSION
                 items = rr_items(request)
@@ -341,6 +354,14 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                     assert not route, "Read the routed target identity before opening I/O"
                     response = rr_reply(bytes.fromhex("81 00 08 00") if mode == "explicit"
                                         else b"\x81\0\0\0" + b"".join(attrs))
+                elif connected_packet and service == 0x54 and object_class == 6:
+                    assert set(items) == {0, 0xB2} and not items[0]
+                    _, to, serial, vendor, origin = struct.unpack_from("<IIHHI", body, 2)
+                    ot, ot_params, to_rpi, to_params, transport, path_words = struct.unpack_from("<IHIHBB", body, 22)
+                    assert (ot_params, to_params, transport, path_words) == (0x43F8, 0x43F8, 0xA3, 2)
+                    assert body[36:] == path and to and serial and origin
+                    reply = struct.pack("<IIHHIIIBB", OT_ID, to, serial, vendor, origin, ot, to_rpi, 0, 0)
+                    response = rr_reply(bytes.fromhex("D4 00 00 00") + reply)
                 elif service in (0x54, 0x5B) and object_class == 6:
                     assert io is None
                     if route:
@@ -435,7 +456,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                     stop.set()
                     if mode == "close-eof":
                         break
-                    if mode in ("close-reject", "stall-close-reject"):
+                    if mode in ("close-reject", "stall-close-reject", "class3-packet-close-reject"):
                         response = rr_reply(bytes.fromhex("CE 00 01 01 07 01") + body[2:10] + b"\0\0")
                     elif mode == "close-mismatch":
                         wrong_ids = struct.pack("<H", serial ^ 1) + body[4:10]
@@ -466,6 +487,7 @@ def main():
         "slow-input", "pause-different-api",
         "identity-then-owner",
         "explicit", "saved-reads", "multiple-service", "large-keyed", "routed", "variable-input", "large-variable-input",
+        "class3-packet", "class3-packet-close-reject",
         "routed-io", "routed-io-large", "routed-io-rejected-route", "routed-io-unexpected-peer",
         "variable-output", "large-variable-output",
         "multicast", "multicast-missing", "multicast-unicast",
