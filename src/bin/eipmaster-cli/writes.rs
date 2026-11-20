@@ -1,10 +1,41 @@
 use super::{USAGE, explicit_endpoint, parse_expected_identity};
 use assembly_scanner::{
-    explicit::{AttributeWrite, Class3Size, IdentityPin, ReadPath, Route, WriteOptions},
+    explicit::{AttributeWrite, Class3Size, IdentityPin, ReadPath, Route, WriteDraft},
     model::{ByteSwap, Kind, Selection, hex, parse_hex},
 };
 use serde_json::json;
-use std::ffi::{OsStr, OsString};
+use std::{
+    ffi::{OsStr, OsString},
+    path::Path,
+};
+
+enum Action<'a> {
+    Preview,
+    Save(&'a Path),
+    Verify,
+    Apply(IdentityPin),
+}
+
+fn identity_pin(value: &OsStr) -> Result<IdentityPin, String> {
+    let expected = parse_expected_identity(&value.to_string_lossy())?;
+    let serial = expected
+        .serial
+        .ok_or("Apply requires decimal vendor:type:product:serial")?;
+    Ok(IdentityPin {
+        key: expected.key,
+        serial,
+    })
+}
+
+pub(super) fn file(path: &Path, options: &[OsString]) -> Result<bool, String> {
+    let action = match options {
+        [] => Action::Preview,
+        [flag] if flag == "--verify" => Action::Verify,
+        [flag, value] if flag == "--apply" => Action::Apply(identity_pin(value)?),
+        _ => return Err(USAGE.into()),
+    };
+    run(&WriteDraft::load(path)?, action, None)
+}
 
 pub(super) fn attribute(
     adapter: &OsStr,
@@ -16,6 +47,7 @@ pub(super) fn attribute(
     let (adapter_or_bridge, local_ip, _) = explicit_endpoint(adapter, local, &[])?;
     let mut route: Option<Route> = None;
     let mut apply = None;
+    let mut save = None;
     let mut readback = false;
     let mut connected = false;
     let mut connection_size = None;
@@ -31,15 +63,10 @@ pub(super) fn attribute(
                 route = Some(options.next().ok_or(USAGE)?.to_string_lossy().parse()?);
             }
             Some("--apply") if apply.is_none() => {
-                let value = options.next().ok_or(USAGE)?;
-                let expected = parse_expected_identity(&value.to_string_lossy())?;
-                let serial = expected
-                    .serial
-                    .ok_or("Apply requires decimal vendor:type:product:serial")?;
-                apply = Some(IdentityPin {
-                    key: expected.key,
-                    serial,
-                });
+                apply = Some(identity_pin(options.next().ok_or(USAGE)?)?);
+            }
+            Some("--save-draft") if save.is_none() => {
+                save = Some(Path::new(options.next().ok_or(USAGE)?));
             }
             Some("--readback") if !readback => readback = true,
             Some("--connected") if !connected => connected = true,
@@ -101,6 +128,14 @@ pub(super) fn attribute(
     if !connected && connection_size.is_some() {
         return Err("--connection-size requires --connected".into());
     }
+    let action = match (apply, save) {
+        (Some(_), Some(_)) => {
+            return Err("--save-draft and --apply require separate commands".into());
+        }
+        (Some(pin), None) => Action::Apply(pin),
+        (None, Some(path)) => Action::Save(path),
+        (None, None) => Action::Preview,
+    };
     let format = kind.map(|kind| Selection {
         kind,
         big_endian: endian.unwrap_or(false),
@@ -113,13 +148,31 @@ pub(super) fn attribute(
         Some(format) => format.encode_value(&value)?,
         None => parse_hex(&value)?,
     };
-    let request = AttributeWrite {
-        adapter_or_bridge,
-        local_ip,
-        path,
-        route,
-        value: bytes,
+    let draft = WriteDraft {
+        request: AttributeWrite {
+            adapter_or_bridge,
+            local_ip,
+            path,
+            route,
+            value: bytes,
+        },
+        class3_size: connected.then(|| connection_size.unwrap_or_default()),
+        expected_current,
+        readback,
     };
+    run(
+        &draft,
+        action,
+        format.map(|format| (format, value.as_ref())),
+    )
+}
+
+fn run(
+    draft: &WriteDraft,
+    action: Action<'_>,
+    typed: Option<(Selection, &str)>,
+) -> Result<bool, String> {
+    let request = &draft.request;
     let mut report = json!({
         "adapter_or_bridge": request.adapter_or_bridge,
         "local_ip": request.local_ip,
@@ -129,41 +182,43 @@ pub(super) fn attribute(
         "value_hex": hex(&request.value),
         "bytes": request.value.len(),
     });
-    if let Some(format) = format {
+    if let Some((format, value)) = typed {
         report["encoding"] = json!(format);
         report["typed_value"] = json!(value);
     }
-    if readback {
+    if draft.readback {
         report["readback_requested"] = json!(true);
     }
-    if let Some(bytes) = &expected_current {
+    if let Some(bytes) = &draft.expected_current {
         report["expected_current_hex"] = json!(hex(bytes));
     }
-    let class3 = connected.then(|| connection_size.unwrap_or_default());
-    if let Some(size) = class3 {
+    if let Some(size) = draft.class3_size {
         report["class3_size"] = json!(size);
         report["large_forward_open"] = json!(size.uses_large_forward_open());
     }
-    let success = if let Some(pin) = apply {
-        let options = WriteOptions {
-            expected_current: expected_current.as_deref(),
-            readback,
-        };
-        let result = match class3 {
-            Some(size) => request.apply_connected(pin, options, size),
-            None => request.apply_with_options(pin, options),
-        }?;
-        let success = result.is_success();
-        report["result"] = json!(result);
-        success
-    } else {
-        match class3 {
-            Some(size) => request.validate_connected(size)?,
-            None => request.validate()?,
+    let (success, result) = match action {
+        Action::Preview => {
+            draft.validate()?;
+            (true, json!({"outcome": "preview"}))
         }
-        report["result"] = json!({"outcome": "preview"});
-        true
+        Action::Save(path) => {
+            draft.save_new(path)?;
+            report["draft_saved"] = json!(path);
+            (true, json!({"outcome": "preview"}))
+        }
+        Action::Verify => {
+            let identity = draft.read_target_identity()?;
+            (
+                true,
+                json!({"outcome": "identity_read", "observed_identity": identity}),
+            )
+        }
+        Action::Apply(pin) => {
+            let result = draft.apply(pin)?;
+            (result.is_success(), json!(result))
+        }
     };
+    report["result"] = result;
     println!(
         "{}",
         serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?

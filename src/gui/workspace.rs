@@ -405,6 +405,76 @@ mod tests {
     }
 
     #[test]
+    fn explore_saves_and_reopens_an_offline_write_draft() {
+        use assembly_scanner::explicit::WriteDraft;
+
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let path = crate::gui::tests::temporary("write-draft.toml");
+        let enter = |device: &mut Device, text: &str| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                events: vec![egui::Event::Text(text.into())],
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| device.show(ctx, &[]));
+        };
+        let mut device = explore_device(&[]);
+        device.settings.input_instance = 154;
+        click(&mut device, &ctx, size, "Common attributes");
+        click(&mut device, &ctx, size, "Assembly · Data");
+        click(&mut device, &ctx, size, "Stage attribute write");
+        click(&mut device, &ctx, size, "Use Class 3");
+        click(&mut device, &ctx, size, "Space-separated hex bytes");
+        enter(&mut device, "A5 16 2C 93");
+        click(&mut device, &ctx, size, "Require current value");
+        click(&mut device, &ctx, size, "Expected current value in hex");
+        enter(&mut device, "10 20 30 40");
+        click(&mut device, &ctx, size, "Read back after write");
+        click(&mut device, &ctx, size, "Save draft file");
+        click(&mut device, &ctx, size, "Path to a write draft TOML");
+        enter(&mut device, path.to_str().unwrap());
+        click(&mut device, &ctx, size, "Save write draft");
+        wait_for_explore(&mut device);
+
+        let saved = WriteDraft::load(&path).unwrap();
+        assert_eq!(saved.request.path.attribute, Some(3));
+        assert_eq!(saved.request.value, [0xA5, 0x16, 0x2C, 0x93]);
+        assert_eq!(
+            saved.expected_current.as_deref(),
+            Some([0x10, 0x20, 0x30, 0x40].as_slice())
+        );
+        assert_eq!(saved.class3_size.unwrap().bytes(), 504);
+        assert!(saved.readback);
+
+        click(&mut device, &ctx, size, "Cancel");
+        device.device = "192.0.2.42".into();
+        let profile = device.snapshot();
+        click(&mut device, &ctx, size, "Write drafts");
+        click(&mut device, &ctx, size, "Open write draft");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Review attribute write",
+            "Adapter or bridge 127.0.0.1 · Local NIC 127.0.0.1",
+            "A5 16 2C 93",
+            "10 20 30 40",
+            "Connection size",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Send reviewed write");
+        assert!(!device.explorer.busy());
+        assert_eq!(device.snapshot(), profile);
+        assert!(device.connection.is_none());
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode class3-write-gui"]
     fn explore_requires_fresh_review_when_switching_to_class3_write() {
         let ctx = egui::Context::default();

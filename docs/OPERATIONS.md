@@ -103,6 +103,21 @@ The example previews the write offline. Its JSON includes `class3_size` and `lar
 
 An applied Class 3 write reports `result.forward_close` when the scanner attempted to close the connection. Exit code 0 requires the write acknowledgment, a matching readback if requested, and a confirmed close. Check the write outcome before acting on a nonzero exit code. A failed close can accompany an acknowledged write.
 
+#### Save and reopen a write draft
+
+In the write review, open **Save draft file**, enter a new TOML path, and select **Save write draft**. This validates the draft offline. To reuse it, open **Explore → Write drafts**, enter the path, and select **Open write draft**. The review opens at the adapter and NIC addresses from the file. The active device profile stays unchanged. Inspect the address, route and bytes, then select **Verify target identity** before sending.
+
+The CLI can save or preview the same files offline. Use an existing directory and a new filename for the save.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe write-attribute 127.0.0.1 127.0.0.1 4 154 3 "A5 16 2C 93" --expect-current "10 20 30 40" --readback --connected --save-draft .\.local\loopback-write.toml
+.\target\release\eipmaster-cli.exe write-draft .\.local\loopback-write.toml
+~~~
+
+For an authorized identity read, add `--verify` to `write-draft`. The command uses the staged transport and reports `identity_read` with the observed device identity. To send an authorized write, run `write-draft <draft.toml> --apply <vendor:type:product:serial>` with the reviewed decimal identity. Apply checks that identity again on the write session. Save, verify and apply are separate commands.
+
+The version 1 file stores the adapter and NIC, the CIP path, an optional route, the exact encoded hex, any expected current hex, the readback choice and an optional Class 3 size. A typed value reopens as its encoded hex. Identity and approval state are session-specific. Keep device-specific drafts in ignored `.local/` or in a separate private location.
+
 ### Run all saved reads
 
 In **Explore**, expand **Saved reads**, choose a **Read mode**, and select **Read all saved**. The batch runs on the configured adapter or bridge and NIC in **Device**. The mode starts at **Unconnected sequential** in each new application session.

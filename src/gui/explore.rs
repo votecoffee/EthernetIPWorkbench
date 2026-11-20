@@ -30,6 +30,8 @@ enum Response {
     ClassInfo(ClassInfo),
     Batch(SavedReadReport),
     SavedReport(PathBuf),
+    OpenedWriteDraft(Box<write::Draft>),
+    SavedWriteDraft(PathBuf),
     WriteIdentity(Identity),
     WriteResult(Box<(AttributeWrite, WriteReport)>),
 }
@@ -57,6 +59,7 @@ pub(super) struct Explorer {
     work: Option<mpsc::Receiver<Result<Response, String>>>,
     notice: Option<String>,
     write_draft: Option<write::Draft>,
+    write_draft_path: String,
     write_result: Option<Box<(AttributeWrite, WriteReport)>>,
 }
 
@@ -79,6 +82,7 @@ impl Default for Explorer {
             work: None,
             notice: None,
             write_draft: None,
+            write_draft_path: String::new(),
             write_result: None,
         }
     }
@@ -110,6 +114,12 @@ impl Explorer {
             Ok(Ok(Response::ClassInfo(info))) => self.class_info = Some(info),
             Ok(Ok(Response::Batch(batch))) => self.saved_batch = Some(Arc::new(batch)),
             Ok(Ok(Response::SavedReport(path))) => self.saved_report = Some(path),
+            Ok(Ok(Response::OpenedWriteDraft(draft))) => self.write_draft = Some(*draft),
+            Ok(Ok(Response::SavedWriteDraft(path))) => {
+                if let Some(draft) = &mut self.write_draft {
+                    draft.saved_file = Some(path);
+                }
+            }
             Ok(Ok(Response::WriteIdentity(identity))) => {
                 if let Some(draft) = &mut self.write_draft {
                     draft.identity = Some(identity);
@@ -447,6 +457,7 @@ impl Device {
                 self.preferences.cip_reads.remove(index);
             }
         });
+        explorer.show_open_write_draft(ui, self.preferences.cip_class3_size);
         if explorer.busy() {
             ui.spinner();
         }

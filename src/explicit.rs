@@ -1,4 +1,4 @@
-//! EtherNet/IP explicit messaging and read-only CIP requests.
+//! EtherNet/IP explicit messaging for CIP reads and reviewed attribute writes.
 use crate::{
     model::{Selection, Settings},
     scanner::{le16, le32, protocol},
@@ -24,6 +24,7 @@ mod multiple;
 mod report;
 mod route;
 mod write;
+mod write_draft;
 pub use batch::{
     SavedReadBatch, SavedReadMode, SavedReadOutcome, SavedReadReport, SavedReadResult,
     run_saved_reads, run_saved_reads_with_class3_size, run_saved_reads_with_mode,
@@ -39,6 +40,7 @@ pub use route::{Route, RoutedReadError};
 pub use write::{
     AttributeWrite, CurrentValueCheck, ReadbackOutcome, WriteOptions, WriteOutcome, WriteReport,
 };
+pub use write_draft::WriteDraft;
 pub(crate) const TO_SOCKET: u16 = 0x8001;
 pub(crate) const PORT: u16 = 44818;
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(2);

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import socket
 import subprocess
+import tomllib
 
 from test_cli import NO_WINDOW, with_adapter
 
@@ -103,6 +104,97 @@ def check_writes(exe, root):
     check_typed_apply(command[:-1], root)
     check_current_value(command, root)
     check_connected_writes(command, root)
+    check_write_drafts(command, root)
+
+
+def check_write_drafts(command, root):
+    def call(args):
+        return subprocess.run(args, capture_output=True, text=True, timeout=6, creationflags=NO_WINDOW)
+
+    exe = command[0]
+    direct = root / "direct write draft.toml"
+    routed = root / "routed-class3-draft.toml"
+    large_route = "1/2/2/192.0.2.100/1/0"
+    options = ["--expect-current", CURRENT, "--readback"]
+    typed = [*command[:-1], "747873558", "--type", "U32", "--endian", "big", "--swap", "word_order"]
+    with socket.socket() as listener:
+        listener.bind((LOCAL, 44818))
+        listener.listen(1)
+        for draft, save, additional_fields in (
+            (direct, command, {}),
+            (routed, [*typed, "--route", large_route, "--connected", "--connection-size", "4002"],
+             {"route": large_route, "class3_size": 4002}),
+        ):
+            args = [*save, *options, "--save-draft", draft]
+            saved = call(args)
+            assert saved.returncode == 0 and not saved.stderr, (saved.stdout, saved.stderr)
+            report = json.loads(saved.stdout)
+            assert Path(report.pop("draft_saved")) == draft and report["value_hex"] == VALUE
+            report.pop("encoding", None)
+            report.pop("typed_value", None)
+            preview = call([exe, "write-draft", draft])
+            assert preview.returncode == 0 and not preview.stderr
+            assert json.loads(preview.stdout) == report and report["result"] == {"outcome": "preview"}
+            baseline = draft.read_bytes()
+            assert tomllib.loads(baseline.decode()) == {
+                "version": 1, "adapter_or_bridge": LOCAL, "local_ip": LOCAL, "value_hex": VALUE,
+                "expected_current_hex": CURRENT, "readback": True, "path": report["path"],
+                **additional_fields,
+            }
+            exists = call(args)
+            assert exists.returncode == 1 and "Save write draft" in exists.stderr
+            assert draft.read_bytes() == baseline and not exists.stdout
+
+        neither = root / "unused-draft.toml"
+        conflict = call([*command, "--apply", PIN, "--save-draft", neither])
+        assert conflict.returncode == 1 and "separate commands" in conflict.stderr and not neither.exists()
+
+        empty_check = root / "empty-current-draft.toml"
+        saved = call([*command, "--expect-current", "", "--save-draft", empty_check])
+        assert saved.returncode == 0 and not saved.stderr
+        preview = call([exe, "write-draft", empty_check])
+        assert preview.returncode == 0 and json.loads(preview.stdout)["expected_current_hex"] == ""
+
+        valid = routed.read_text(encoding="utf-8")
+        invalid = root / "invalid-draft.toml"
+        for text, error in (
+            (valid.replace("version = 1", "version = 2"), "Unsupported write draft version 2"),
+            (f'apply = "{PIN}"\n{valid}', "unknown field `apply`"),
+            (valid.replace(VALUE, "GG"), "Value bytes"),
+            (valid.replace(CURRENT, "GG"), "Expected current bytes"),
+            (valid.replace("class3_size = 4002", "class3_size = 13"), "needs 12 CIP bytes"),
+            ("#" * (1024 * 1024 + 1), "Write draft exceeds 1 MiB"),
+        ):
+            assert text != valid
+            invalid.write_text(text, encoding="utf-8")
+            rejected = call([exe, "write-draft", invalid, "--apply", PIN])
+            assert rejected.returncode == 1 and error in rejected.stderr and not rejected.stdout, rejected.stderr
+        listener.settimeout(0.1)
+        try:
+            unexpected, _ = listener.accept()
+        except TimeoutError:
+            pass
+        else:
+            unexpected.close()
+            raise AssertionError("Saving, previewing or rejecting a draft opened a network session")
+
+    for draft, mode in ((direct, "explicit-write-current"), (routed, "class3-routed-large-write")):
+        verified, peer = with_adapter(root, f"{draft.stem}-verify", [exe, "write-draft", draft, "--verify"], mode)
+        assert verified.returncode == 0 and not verified.stderr, (verified.stdout, verified.stderr)
+        result = json.loads(verified.stdout)["result"]
+        assert result["outcome"] == "identity_read" and result["observed_identity"]["serial"] == 305419896
+        assert peer["registrations"] == 1 and "writes" not in peer
+        if draft == routed:
+            assert peer["forward_close"] and peer["connected_requests"] == ["010220012401"]
+        applied, peer = with_adapter(root, f"{draft.stem}-apply", [exe, "write-draft", draft, "--apply", PIN], mode)
+        assert applied.returncode == 0 and not applied.stderr, (applied.stdout, applied.stderr)
+        result = json.loads(applied.stdout)["result"]
+        assert result["outcome"] == "acknowledged" and result["current_value"]["outcome"] == "matched"
+        assert result["readback"] == {"outcome": "matched", "data_hex": VALUE}
+        assert peer["writes"] == ["10032004249a3003a5162c93"]
+        if draft == routed:
+            assert result["forward_close"]["outcome"] == "confirmed"
+        (root / f"{draft.stem}-apply.json").write_text(applied.stdout, encoding="utf-8")
 
 
 def check_connected_preflight(command, root):
@@ -300,4 +392,4 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
     check_writes(args.exe.resolve(strict=True), args.output.resolve())
-    print("Unconnected and Class 3 write previews, identity, current-value, readback, and close checks passed.")
+    print("Unconnected and Class 3 write previews, identity, current-value, readback, close, and draft checks passed.")

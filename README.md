@@ -81,6 +81,8 @@ Use **Stage attribute write** in Explore to review and send a documented Set_Att
 
 Choose **Use Class 3** in the write review or pass `write-attribute --connected` for a device that requires connected explicit messaging. Identity verification, the write, and any value checks share the direct or routed Class 3 connection. The result reports Forward_Close separately. [Class 3 attribute writes](docs/OPERATIONS.md#send-a-class-3-attribute-write)
 
+Save a write review as a reusable TOML draft. Reopen it in Explore or preview it with `write-draft <draft.toml>`. The draft preserves the exact bytes and connection options. Each send requires a reviewed target identity. [Save and reopen a write draft](docs/OPERATIONS.md#save-and-reopen-a-write-draft)
+
 ~~~powershell
 .\target\release\eipmaster-cli.exe discover 127.0.0.1 127.0.0.1
 .\target\release\eipmaster-cli.exe read 127.0.0.1 127.0.0.1 0x01 1 6

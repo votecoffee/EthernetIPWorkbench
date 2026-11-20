@@ -1,8 +1,8 @@
 use super::*;
-use assembly_scanner::explicit::{ReadbackOutcome, WriteOptions};
+use assembly_scanner::explicit::{ReadbackOutcome, WriteDraft};
 
 pub(super) struct Draft {
-    request: AttributeWrite,
+    plan: WriteDraft,
     bytes: String,
     typed: bool,
     typed_value: String,
@@ -10,24 +10,52 @@ pub(super) struct Draft {
     pub(super) identity: Option<Identity>,
     connected: bool,
     class3_size: Class3Size,
-    readback: bool,
     current_input: Option<String>,
-    expected_current: Option<Vec<u8>>,
+    pub(super) saved_file: Option<PathBuf>,
 }
 
 enum Action {
     Verify,
+    Save,
     Send(IdentityPin),
     Cancel,
 }
 
 impl Draft {
+    fn new(plan: WriteDraft, class3_default: Class3Size) -> Self {
+        Self {
+            bytes: model::hex(&plan.request.value),
+            typed: false,
+            typed_value: String::new(),
+            format: Selection::default(),
+            identity: None,
+            connected: plan.class3_size.is_some(),
+            class3_size: plan.class3_size.unwrap_or(class3_default),
+            current_input: plan.expected_current.as_deref().map(model::hex),
+            plan,
+            saved_file: None,
+        }
+    }
+
     fn encode_value(&self) -> Result<Vec<u8>, String> {
         if self.typed {
             self.format.encode_value(&self.typed_value)
         } else {
             model::parse_hex(&self.bytes)
         }
+    }
+
+    fn compile(&self) -> Result<WriteDraft, String> {
+        let mut plan = self.plan.clone();
+        plan.request.value = self.encode_value()?;
+        plan.expected_current = self
+            .current_input
+            .as_deref()
+            .map(model::parse_hex)
+            .transpose()
+            .map_err(|error| format!("Expected current bytes · {error}"))?;
+        plan.class3_size = self.connected.then_some(self.class3_size);
+        Ok(plan)
     }
 }
 
@@ -50,19 +78,15 @@ impl Explorer {
                 value: Vec::new(),
             };
             request.validate()?;
-            Ok::<_, String>(Draft {
-                request,
-                bytes: String::new(),
-                typed: false,
-                typed_value: String::new(),
-                format: Selection::default(),
-                identity: None,
-                connected: false,
+            Ok::<_, String>(Draft::new(
+                WriteDraft {
+                    request,
+                    class3_size: None,
+                    expected_current: None,
+                    readback: false,
+                },
                 class3_size,
-                readback: false,
-                current_input: None,
-                expected_current: None,
-            })
+            ))
         };
         match prepare() {
             Ok(draft) => {
@@ -70,6 +94,26 @@ impl Explorer {
                 self.write_draft = Some(draft);
             }
             Err(error) => self.notice = Some(error),
+        }
+    }
+
+    pub(super) fn show_open_write_draft(&mut self, ui: &mut Ui, class3_default: Class3Size) {
+        let idle = !self.busy() && self.write_draft.is_none();
+        let open = ui
+            .collapsing("Write drafts", |ui| {
+                ui.add_enabled_ui(idle, |ui| {
+                    draft_file_control(ui, &mut self.write_draft_path, "Open write draft")
+                })
+                .inner
+            })
+            .body_returned
+            .unwrap_or(false);
+        if open {
+            let path = PathBuf::from(self.write_draft_path.trim());
+            self.start(move || {
+                let draft = Draft::new(WriteDraft::load(&path)?, class3_default);
+                Ok(Response::OpenedWriteDraft(Box::new(draft)))
+            });
         }
     }
 
@@ -84,27 +128,38 @@ impl Explorer {
         let response =
             egui::Modal::new(egui::Id::new("cip-attribute-write")).show(ui.ctx(), |ui| {
                 ui.heading("Review attribute write");
-                show_address(ui, &draft.request);
+                show_address(ui, &draft.plan.request);
                 ui.add_enabled_ui(ready, |ui| {
                     edit_transport(ui, draft);
                     edit_value(ui, draft);
                     edit_current_value(ui, draft);
                 });
-                ui.add_enabled(ready, egui::Checkbox::new(&mut draft.readback, "Read back after write"))
+                ui.add_enabled(ready, egui::Checkbox::new(&mut draft.plan.readback, "Read back after write"))
                     .on_hover_text("Compare the returned bytes from this attribute after the target acknowledges the write.");
                 if let Some(identity) = &draft.identity {
                     show_identity(ui, identity);
-                    if let Some(expected) = &draft.expected_current {
+                    if let Some(expected) = &draft.plan.expected_current {
                         show_hex(ui, "Expected current bytes", &model::hex(expected));
                     }
-                    ui.label(format!("{} bytes to send", draft.request.value.len()));
-                    show_reply_payload(ui, &draft.request.value, &Ok(None));
+                    ui.label(format!("{} bytes to send", draft.plan.request.value.len()));
+                    show_reply_payload(ui, &draft.plan.request.value, &Ok(None));
                 }
+                let save = ui.collapsing("Save draft file", |ui| {
+                    if let Some(path) = &draft.saved_file {
+                        ui.small(format!("Saved {}", path.display()));
+                    }
+                    ui.add_enabled_ui(ready, |ui| {
+                        draft_file_control(ui, &mut self.write_draft_path, "Save write draft")
+                    }).inner
+                }).body_returned.unwrap_or(false);
                 if let Some(notice) = &self.notice {
                     ui.colored_label(AMBER, notice);
                 }
                 if !ready {
                     ui.spinner();
+                }
+                if save {
+                    return Some(Action::Save);
                 }
                 ui.horizontal_wrapped(|ui| {
                     if ui
@@ -137,54 +192,51 @@ impl Explorer {
         match action {
             Some(Action::Verify) => {
                 draft.identity = None;
-                let values = draft.encode_value().and_then(|value| {
-                    let expected = draft
-                        .current_input
-                        .as_deref()
-                        .map(model::parse_hex)
-                        .transpose()
-                        .map_err(|error| format!("Expected current bytes · {error}"))?;
-                    Ok((value, expected))
-                });
-                match values {
-                    Ok((value, expected)) => {
-                        draft.request.value = value;
-                        draft.expected_current = expected;
-                        let request = draft.request.clone();
-                        let class3 = draft.connected.then_some(draft.class3_size);
+                match draft.compile() {
+                    Ok(plan) => {
+                        draft.plan = plan.clone();
                         self.start(move || {
-                            match class3 {
-                                Some(size) => request.read_target_identity_connected(size),
-                                None => request.read_target_identity(),
-                            }
-                            .map(Response::WriteIdentity)
+                            plan.read_target_identity().map(Response::WriteIdentity)
                         });
                     }
                     Err(error) => self.notice = Some(error),
                 }
             }
+            Some(Action::Save) => {
+                let path = PathBuf::from(self.write_draft_path.trim());
+                match draft.compile() {
+                    Ok(plan) => self.start(move || {
+                        plan.save_new(&path)?;
+                        Ok(Response::SavedWriteDraft(path))
+                    }),
+                    Err(error) => self.notice = Some(error),
+                }
+            }
             Some(Action::Send(pin)) => {
-                let request = draft.request.clone();
-                let readback = draft.readback;
-                let expected_current = draft.expected_current.clone();
-                let class3 = draft.connected.then_some(draft.class3_size);
+                let plan = draft.plan.clone();
                 self.write_draft = None;
                 self.write_result = None;
                 self.start(move || {
-                    let options = WriteOptions {
-                        expected_current: expected_current.as_deref(),
-                        readback,
-                    };
-                    let report = match class3 {
-                        Some(size) => request.apply_connected(pin, options, size),
-                        None => request.apply_with_options(pin, options),
-                    }?;
-                    Ok(Response::WriteResult(Box::new((request, report))))
+                    let report = plan.apply(pin)?;
+                    Ok(Response::WriteResult(Box::new((plan.request, report))))
                 });
             }
             _ => {}
         }
     }
+}
+
+fn draft_file_control(ui: &mut Ui, path: &mut String, button: &str) -> bool {
+    ui.horizontal_wrapped(|ui| {
+        ui.add(
+            egui::TextEdit::singleline(path)
+                .desired_width(280.0)
+                .hint_text("Path to a write draft TOML"),
+        );
+        ui.add_enabled(!path.trim().is_empty(), egui::Button::new(button))
+            .clicked()
+    })
+    .inner
 }
 
 fn edit_transport(ui: &mut Ui, draft: &mut Draft) {
@@ -250,14 +302,20 @@ fn edit_value(ui: &mut Ui, draft: &mut Draft) {
         changed || previous != draft.format
     } else {
         ui.label("Attribute data in hex");
-        ui.add(
-            egui::TextEdit::multiline(&mut draft.bytes)
-                .font(egui::TextStyle::Monospace)
-                .desired_width(360.0)
-                .desired_rows(2)
-                .hint_text("Space-separated hex bytes"),
-        )
-        .changed()
+        egui::ScrollArea::vertical()
+            .id_salt("edit-write-bytes")
+            .max_height(100.0)
+            .show(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::multiline(&mut draft.bytes)
+                        .font(egui::TextStyle::Monospace)
+                        .desired_width(360.0)
+                        .desired_rows(2)
+                        .hint_text("Space-separated hex bytes"),
+                )
+                .changed()
+            })
+            .inner
     };
     if changed_mode || changed_value {
         draft.identity = None;

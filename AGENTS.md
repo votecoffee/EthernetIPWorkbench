@@ -22,6 +22,7 @@ Read the repository skill at [.agents/skills/ethernetip-workbench/SKILL.md](.age
 - Preserve old profiles, CSV columns and sample indexes across reconnects. Distinguish packet sequence gaps, duplicates, late/invalid traffic, CSV overruns, export queue drops and intentional on-change filtering.
 - Keep output staging separate from applying an output buffer. Keep automatic reconnect restricted to identity-pinned input-only sessions.
 - Keep explicit write staging separate from sending. Verify the reviewed target on the write session and preserve unconfirmed outcomes without retrying.
+- Write drafts carry the endpoint, encoded bytes and checks. Keep approval and reviewed identity out of draft files. Opening or saving a draft must be offline.
 - Evaluate a requested current-value check after identity verification and before any write. Send only when the comparison matches.
 - Keep the write acknowledgment and optional readback separate. Perform the readback on the same session after acknowledgment.
 - For a Class 3 write, keep Forward_Close separate from the write acknowledgment and any readback.
