@@ -34,6 +34,16 @@ pub struct IdentityDifference {
 }
 
 impl DeviceIdentity {
+    pub(super) fn conflicting_product_field(&self, other: &Self) -> Option<&'static str> {
+        [
+            ("vendor ID", self.vendor, other.vendor),
+            ("device type", self.device_type, other.device_type),
+            ("product code", self.product_code, other.product_code),
+        ]
+        .into_iter()
+        .find_map(|(label, old, new)| old.zip(new).filter(|(old, new)| old != new).map(|_| label))
+    }
+
     pub(super) fn parse<'a>(get: impl Fn(&str) -> Option<&'a str>) -> Option<Self> {
         let word = |key| u16::try_from(number(get(key)?)?).ok();
         let byte = |key| u8::try_from(number(get(key)?)?).ok();

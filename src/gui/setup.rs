@@ -59,10 +59,21 @@ impl Device {
         title(ui, "Device setup");
         ui.label("Choose an EDS connection or enter the assembly settings, then read identity before connecting.");
         ui.add_enabled_ui(!self.link_busy() && !self.capturing, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label("EDS file");
-                ui.text_edit_singleline(&mut self.eds_path);
-                if ui.button("Import").clicked() {
+                ui.add(egui::TextEdit::singleline(&mut self.eds_path).hint_text("Path to an EDS file"));
+                if self.selected.is_some()
+                    && ui.button("Refresh EDS metadata")
+                        .on_hover_text("Update the selected connection's EDS data and keep your current settings.")
+                        .clicked()
+                {
+                    self.refresh_eds();
+                }
+                let import = if self.selected.is_some() { "Import defaults" } else { "Import" };
+                if ui.button(import)
+                    .on_hover_text("Load the EDS and apply the preferred connection's defaults.")
+                    .clicked()
+                {
                     match eds::load(Path::new(&self.eds_path)) {
                         Ok(profiles) => {
                             self.profiles = profiles;
@@ -442,6 +453,30 @@ impl Device {
                 self.connect(reserved_ports);
             }
         });
+    }
+    pub(super) fn refresh_eds(&mut self) {
+        let Some(selected) = self.selected else {
+            return;
+        };
+        self.notice = None;
+        let result = eds::load(Path::new(&self.eds_path)).and_then(|profiles| {
+            let index = self.profiles[selected].refresh_index(&profiles)?;
+            Ok((profiles, index))
+        });
+        match result {
+            Ok((profiles, index)) => {
+                self.profiles = profiles;
+                self.selected = Some(index);
+                self.configuration_entries.clear();
+                self.bench_confirmed = false;
+                self.writes_confirmed = false;
+                self.error = None;
+                self.notice = Some(
+                    "Refreshed EDS metadata. Review the changes in Offline profile check.".into(),
+                );
+            }
+            Err(error) => self.error = Some(error),
+        }
     }
     pub(super) fn select_profile(&mut self, i: Option<usize>) {
         self.selected = i;

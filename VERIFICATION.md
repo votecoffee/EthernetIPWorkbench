@@ -588,3 +588,7 @@ The Windows localhost fixture returned `78 56 34 12` for both direct and routed 
 ## Named TOML with EDS metadata
 
 A headless save and load restored the selected loopback EDS profile from the TOML alone, including its original 1 ms RPI and typed layout alongside an 8 ms effective override. The source filename was absent from the TOML and the loaded profile required fresh bench confirmation and write approval. The CLI regression loaded an embedded profile for preflight, reported an input RPI override below the embedded minimum, and used the external EDS when explicitly supplied. Plain TOML and payload decoding also passed.
+
+## Refreshing selected EDS metadata
+
+The headless fixture refreshed a revised EDS after the selected connection moved to the second position and its identifier changed case. The updated EDS declared a 4 ms default and 2–8 ms limits. The effective 8 ms request, staged output and configuration bytes, and CSV preferences survived the refresh. Bench and write confirmations reset. A different declared product, missing or duplicate connection IDs, changed assembly path and unsupported replacement metadata were rejected.

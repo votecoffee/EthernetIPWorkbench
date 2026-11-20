@@ -92,6 +92,8 @@ To keep a named setup, open Profiles… and enter a TOML path in **Settings TOML
 
 Saving with an EDS connection selected includes that profile’s imported values, identity, RPI limits, and mapping suggestions. The TOML reopens with your effective settings and works by itself. The CLI `validate` command uses the saved EDS metadata automatically. [Named profile format](docs/OPERATIONS.md#start-offline)
 
+To update that metadata, enter the revised EDS path in **Device** and choose **Refresh EDS metadata**. Review the comparison in **Offline profile check** and save the TOML again. Your effective settings, mappings, and staged bytes carry through the refresh.
+
 ### Work with multiple adapters
 
 Choose **Add device**, give the setup a name, then enter its settings or load a named TOML profile. Use the **Devices** list to switch between setups while other connections and captures keep running. Each setup has its own identity, connection state, counters, staged bytes, write confirmation, and capture controls. Stop capture and disconnect the selected device before removing its setup.

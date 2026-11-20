@@ -26,9 +26,11 @@ For an Exclusive Owner profile, review **EDS output mapping suggestions** or the
 
 An EDS size with a `member widths` source was calculated from the assembly layout. Confirm it against the device configuration before opening either cyclic direction.
 
-Check the advertised O→T and T→O RPI bounds in **Offline profile check** or the CLI `validate` report's `eds_rpi` tables. Reimport older saved EDS profiles to refresh the bounds. Treat a bound warning as advisory and record Forward_Open actual intervals and observed packet spacing separately during bench qualification.
+Check the advertised O→T and T→O RPI bounds in **Offline profile check** or the CLI `validate` report's `eds_rpi` tables. Treat a bound warning as advisory and record Forward_Open actual intervals and observed packet spacing separately during bench qualification.
 
 A named TOML saved with an EDS connection selected includes that profile in `[eds_profile]`. Load it to restore the effective settings and the EDS comparison. Run `validate` with the TOML alone to use the snapshot, or pass the current EDS and connection ID to compare against a vendor update.
+
+Use **Device → Refresh EDS metadata** with the current EDS path to update the selected profile while retaining effective settings and staged bytes. Review the offline comparison and save the named TOML again.
 
 For nested `AssemN` members, review the final offsets and suffixed names in the mapping suggestions. Use a payload with distinct values in each repeated group when testing the mapping.
 

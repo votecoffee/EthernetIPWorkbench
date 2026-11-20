@@ -65,6 +65,49 @@ pub struct Profile {
 }
 
 impl Profile {
+    /// Locate the corresponding connection in an updated EDS.
+    /// Compare imported defaults so effective operator overrides do not affect matching.
+    pub fn refresh_index(&self, candidates: &[Self]) -> Result<usize, String> {
+        let mut matches = candidates
+            .iter()
+            .enumerate()
+            .filter(|(_, candidate)| candidate.id.eq_ignore_ascii_case(&self.id));
+        let (index, updated) = matches
+            .next()
+            .ok_or_else(|| format!("Updated EDS has no {} connection", self.id))?;
+        if matches.next().is_some() {
+            return Err(format!("Updated EDS has multiple {} connections", self.id));
+        }
+        if let (Some(old), Some(new)) = (&self.device, &updated.device)
+            && let Some(field) = old.conflicting_product_field(new)
+        {
+            return Err(format!("Updated EDS declares a different {field}"));
+        }
+        if !updated.unsupported.is_empty() {
+            return Err(format!(
+                "Updated {} has unsupported settings. {}",
+                self.id,
+                updated.unsupported.join(". ")
+            ));
+        }
+        let connection = |profile: &Self| {
+            let settings = &profile.settings;
+            (
+                settings.role(),
+                settings.input_instance,
+                settings.output_instance,
+                settings.config_instance,
+            )
+        };
+        if connection(self) != connection(updated) {
+            return Err(format!(
+                "Updated {} changes the role or assembly path",
+                self.id
+            ));
+        }
+        Ok(index)
+    }
+
     pub fn size_from_assembly_definition(&self, field: &str) -> bool {
         if self
             .assembly_definition_sizes
@@ -579,6 +622,55 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn refresh_matches_the_connection_id_and_rejects_ambiguous_or_changed_connections() {
+        let mut profiles = parse(include_str!("../samples/loopback.eds")).unwrap();
+        let prior = profiles.remove(0);
+        let mut updated = prior.clone();
+        updated.id.make_ascii_lowercase();
+        updated.device.as_mut().unwrap().major = Some(2);
+        let mut other = prior.clone();
+        other.id = "Connection2".into();
+        assert_eq!(prior.refresh_index(&[other, updated.clone()]), Ok(1));
+        assert!(
+            prior
+                .refresh_index(&[])
+                .unwrap_err()
+                .contains("no Connection1")
+        );
+        assert!(
+            prior
+                .refresh_index(&[prior.clone(), updated.clone()])
+                .unwrap_err()
+                .contains("multiple Connection1")
+        );
+
+        let mut changed_path = updated.clone();
+        changed_path.settings.input_instance += 1;
+        assert!(
+            prior
+                .refresh_index(&[changed_path])
+                .unwrap_err()
+                .contains("assembly path")
+        );
+        let mut unsupported = updated.clone();
+        unsupported.unsupported.push("Unresolved format".into());
+        assert!(
+            prior
+                .refresh_index(&[unsupported])
+                .unwrap_err()
+                .contains("Unresolved format")
+        );
+
+        updated.device.as_mut().unwrap().product_code = Some(2);
+        assert!(
+            prior
+                .refresh_index(&[updated])
+                .unwrap_err()
+                .contains("different product code")
+        );
+    }
 
     #[test]
     fn imports_directional_rpi_bounds_independently_of_defaults() {

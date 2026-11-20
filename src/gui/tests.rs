@@ -701,6 +701,73 @@ fn run_report_keeps_loopback_reconnect_attempts() {
 }
 
 #[test]
+fn refreshing_eds_keeps_the_effective_setup_and_staged_bytes() {
+    let directory = temporary("refresh-eds");
+    fs::create_dir(&directory).unwrap();
+    let path = directory.join("updated.eds");
+    let base = include_str!("../../samples/loopback.eds")
+        .replace("0x02010002", "0x04010002")
+        .replace("0x22440305", "0x22440405")
+        .replace("Param1,0,,", "Param1,2,,")
+        .replace("    0,,", "    2,,")
+        .replace("2C FE", "2C 66");
+    let mut device = Device::new(1, None);
+    device.profiles = eds::parse(&base).unwrap();
+    device.select_profile(Some(0));
+    device.eds_path = path.display().to_string();
+    device.settings.input_rpi_us = 8_000;
+    device.settings.output_hex = "12 34".into();
+    device.settings.config_hex = "56 78".into();
+    device.current().unwrap().validate().unwrap();
+    device.preferences.rotate_seconds = 12;
+    device.bench_confirmed = true;
+    device.writes_confirmed = true;
+    device.configuration_entries.push("123".into());
+    let settings = device.settings.clone();
+    let profiles = device.profiles.clone();
+
+    fs::write(&path, base.replace("ProdCode = 1", "ProdCode = 2")).unwrap();
+    device.refresh_eds();
+    assert!(
+        device
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("different product code")
+    );
+    assert_eq!(device.profiles, profiles);
+    assert_eq!(device.selected, Some(0));
+    assert!(device.bench_confirmed && device.writes_confirmed);
+
+    let (_, connection) = base.split_once("Connection1 =").unwrap();
+    let revised = base
+        .replace("MajRev = 1", "MajRev = 2")
+        .replace("1000,1000000,1000", "2000,8000,4000")
+        .replace(
+            "Connection1 =",
+            &format!("Connection2 ={connection}\nconnection1 ="),
+        );
+    fs::write(&path, revised).unwrap();
+    device.refresh_eds();
+    assert!(device.error.is_none(), "{:?}", device.error);
+    assert_eq!(device.selected, Some(1));
+    let imported = &device.profiles[1];
+    assert_eq!(imported.device.as_ref().unwrap().major, Some(2));
+    assert_eq!(
+        imported.input_rpi_range.as_ref().unwrap().min_us,
+        Some(2_000)
+    );
+    assert_eq!(imported.settings.input_rpi_us, 4_000);
+    assert_eq!(device.settings, settings);
+    assert_eq!(device.preferences.rotate_seconds, 12);
+    assert!(!device.bench_confirmed && !device.writes_confirmed);
+    assert!(device.configuration_entries.is_empty());
+    assert!(device.connection.is_none());
+    fs::remove_file(path).unwrap();
+    fs::remove_dir(directory).unwrap();
+}
+
+#[test]
 fn named_profile_restores_imported_eds_and_preserves_overrides() {
     let directory = temporary("named-eds");
     fs::create_dir(&directory).unwrap();
