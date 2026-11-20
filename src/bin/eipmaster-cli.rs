@@ -46,7 +46,7 @@ Usage:
   eipmaster-cli discover <local-ipv4> [<destination-ipv4>]
   eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
   eipmaster-cli class-info <adapter-or-bridge-ipv4> <local-ipv4> <class> [--route <port/link/...>]
-  eipmaster-cli write-attribute <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute> \"<hex bytes>\" [--route <port/link/...>] [--apply <vendor:type:product:serial>] [--readback]
+  eipmaster-cli write-attribute <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute> \"<value>\" [--type <Kind>] [--endian <little|big>] [--swap <none|bytes_in_words|word_order>] [--text-bytes <count>] [--route <port/link/...>] [--apply <vendor:type:product:serial>] [--readback]
   eipmaster-cli read-saved <settings.toml> <name>
   eipmaster-cli read-saved-all <settings.toml> [--multiple-service-packet] [--connected]
   eipmaster-cli capture <settings.toml> <new-output-dir> <seconds> <vendor:type:product[:serial]>
@@ -54,6 +54,7 @@ Usage:
   eipmaster-cli qualify <settings.toml> <new-output-dir> <direct|switched|loopback> <vendor:type:product:serial> [<loopback-seconds>]
 
 Capture and serve require a read-only heartbeat profile (input-only or listen-only). The scheduler defaults to deadline.
+Write-attribute accepts hex bytes by default and previews offline until an identity is supplied with --apply.
 Serve runs the enabled software feeds without CSV until a console stop or an optional wall-clock duration limit.
 [app].auto_reconnect opts in to input-only recovery. Listen-only sessions use manual reconnect.
 The expected Identity Object values are decimal and checked before Forward_Open.

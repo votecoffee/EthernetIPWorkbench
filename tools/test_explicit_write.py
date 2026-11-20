@@ -27,6 +27,7 @@ def check_writes(exe, root):
                                     text=True, timeout=6, creationflags=NO_WINDOW)
         incomplete = subprocess.run([*command, "--apply", "0:12:1"], capture_output=True,
                                     text=True, timeout=6, creationflags=NO_WINDOW)
+        check_typed_previews(command[:-1], root)
         listener.setblocking(False)
         try:
             unexpected, _ = listener.accept()
@@ -88,6 +89,52 @@ def check_writes(exe, root):
             assert "read exchange" not in outcome["error"]
 
     check_readbacks(command, root)
+    check_typed_apply(command[:-1], root)
+
+
+def check_typed_previews(address, root):
+    for name, input_value, options, payload in (
+        ("bool", "true", ["--type", "Bool"], "01"),
+        ("signed", "-2", ["--type", "I16"], "FE FF"),
+        ("float", "1.5", ["--type", "F32"], "00 00 C0 3F"),
+        ("swapped", "747873558",
+         ["--type", "U32", "--endian", "big", "--swap", "word_order"], VALUE),
+        ("utf8", "\u00e9", ["--type", "Utf8", "--text-bytes", "4"], "C3 A9 00 00"),
+    ):
+        result = subprocess.run([*address, input_value, *options], capture_output=True, text=True,
+                                encoding="utf-8", timeout=6, creationflags=NO_WINDOW)
+        assert result.returncode == 0 and not result.stderr, (result.stdout, result.stderr)
+        report = json.loads(result.stdout)
+        assert report["value_hex"] == payload and report["bytes"] == len(bytes.fromhex(payload))
+        assert report["typed_value"] == input_value and report["encoding"]["kind"] == options[1]
+        assert report["result"] == {"outcome": "preview"}
+        (root / f"typed-{name}.json").write_text(result.stdout, encoding="utf-8")
+
+    for value, options, message in (
+        ("256", ["--type", "U8"], "valid U8"),
+        ("\u00e9", ["--type", "Utf8", "--text-bytes", "1"], "fit the fixed byte length"),
+        ("FF", ["--endian", "big"], "require --type"),
+        ("7", ["--type", "U16", "--swap", "word_order"], "This swap needs"),
+        ("7", ["--type", "U16", "--text-bytes", "4"], "fixed text length requires Utf8"),
+    ):
+        result = subprocess.run([*address, value, *options, "--apply", PIN],
+                                capture_output=True, text=True, timeout=6, creationflags=NO_WINDOW)
+        assert result.returncode == 1 and not result.stdout and message in result.stderr, result
+
+
+def check_typed_apply(address, root):
+    args = [*address, "747873558", "--type", "U32", "--endian", "big",
+            "--swap", "word_order", "--apply", PIN, "--readback"]
+    result, peer = with_adapter(root, "typed-apply", args, "explicit-write-readback")
+    assert result.returncode == 0 and not result.stderr, (result.stdout, result.stderr)
+    report = json.loads(result.stdout)
+    (root / "typed-apply.json").write_text(result.stdout, encoding="utf-8")
+    assert report["value_hex"] == VALUE and report["typed_value"] == "747873558"
+    assert report["encoding"]["big_endian"] and report["encoding"]["swap"] == "word_order"
+    assert report["result"]["outcome"] == "acknowledged"
+    assert report["result"]["readback"] == {"outcome": "matched", "data_hex": VALUE}
+    assert peer["registrations"] == 1 and peer["unregistered"]
+    assert peer["writes"] == ["10032004249a3003a5162c93"] and peer["readbacks"] == ["0e032004249a3003"]
 
 
 def check_readbacks(command, root):
@@ -136,4 +183,4 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
     check_writes(args.exe.resolve(strict=True), args.output.resolve())
-    print("Explicit write preview, identity pin, direct and routed writes, and readback outcomes passed.")
+    print("Explicit write preview, typed encoding, identity pin, direct and routed writes, and readback outcomes passed.")

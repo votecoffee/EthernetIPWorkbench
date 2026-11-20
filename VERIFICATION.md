@@ -658,3 +658,9 @@ In the headless GUI, editing a reviewed value cleared the approved identity. Two
 The Windows localhost fixture verified the reviewed identity, one write, and one Get_Attribute_Single in the same registered session. Direct and routed readbacks matched the four staged bytes. In other cases, the write remained acknowledged while readback reported differing bytes, target status `0x2C`, router extended status `0x0204`, or a lost reply. Those applies returned exit code 1. Readback was skipped for a blocked, rejected, or unconfirmed write. Preview with the readback option opened no connection.
 
 Headless Explore preserved write review and displayed the matched readback separately. The independent OpENer 2.3 software target matched all 32 bytes on the write session and returned the same value on a subsequent separate read. The Explore and Class 1 CLI regression suite passed. Physical-device verification remains open.
+
+## Typed explicit write entry
+
+Windows CLI previews encoded a Boolean, a signed integer, an F32, a big-endian U32 with reversed word order, and fixed-width UTF-8. Invalid values and incompatible encoding options failed before opening a connection, including with `--apply`. A typed U32 apply sent `A5 16 2C 93` once and matched those bytes on the same session.
+
+Headless Explore first reviewed the little-endian bytes. Switching byte order showed the new bytes and disabled send until another identity review. The subsequent write matched on readback. The raw entry and Explore CLI regression checks passed. The independent OpENer 2.3 localhost target acknowledged a fixed-width typed UTF-8 value and matched all 32 bytes, including zero padding, on readback.

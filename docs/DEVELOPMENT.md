@@ -81,6 +81,7 @@ Depend on the `assembly-scanner` library with `default-features = false` to omit
 - Use `explicit::run_saved_reads_with_mode` for the four modes shared by Explore and the CLI. The returned report retains the selected mode, per-read results, any packet error and the Class 3 Forward_Close outcome.
 - Use `explicit::read_class_info` to inspect common class attributes at instance zero, directly or through a route. It shares the sequential batch transport and preserves raw replies and CIP statuses. `ClassInfo::is_usable` applies the CLI exit rule for partial support.
 - Use `explicit::AttributeWrite::validate` to check a proposed write offline and `read_target_identity` to obtain its identity for review. Call `apply` with the reviewed `IdentityPin` to send once. Match the `WriteOutcome` and preserve the difference between a target rejection and an unconfirmed outcome.
+- Use `model::Selection::encode_value` to encode one complete typed attribute value. It shares the assembly mapping encoder. Pass its returned bytes to `AttributeWrite` for offline preview and review.
 - Use `AttributeWrite::apply_with_readback` for a readable target attribute. `WriteReport::readback` retains the comparison or read failure separately, and `WriteReport::is_success` also requires a match when requested.
 - Use `explicit::run_saved_reads` for the default ordered batch. Match the typed result for each saved request. A router or target rejection leaves later requests eligible to run. An exchange failure marks the remaining requests unattempted.
 - Use `explicit::run_saved_reads_packet` to pack direct saved reads or reads with one shared route into one unconnected Message Router request. Routed packets reuse the single-read Unconnected Send envelope and router/target reply distinction. Each valid embedded reply uses the same typed outcome as the sequential runner.
@@ -103,7 +104,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 | Change | Headless check |
 |---|---|
 | Profiles, mapping, CLI and capture | python tools/test_cli.py target/release/eipmaster-cli.exe .local/cli-check-01 |
-| Explicit write preview, identity pin, write and readback outcomes | python tools/test_explicit_write.py target/release/eipmaster-cli.exe .local/write-check-01 |
+| Explicit write preview, typed encoding, identity pin, write and readback outcomes | python tools/test_explicit_write.py target/release/eipmaster-cli.exe .local/write-check-01 |
 | EDS assembly-member sizes and mapping suggestions, discovery, class inspection, direct and routed reads, saved requests, target identity, keyed and routed cyclic I/O | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
 | Variable-size T→O, EDS provenance, CSV and all three exports | python tools/test_variable_input.py target/release/eipmaster-cli.exe .local/variable-check-01 |
 | Multicast T→O, returned endpoints and failed setup cleanup | python tools/test_multicast.py target/release/eipmaster-cli.exe .local/multicast-check-01 |
@@ -124,7 +125,7 @@ Use `--multicast --seconds 3` to also verify OpENer's adapter-selected multicast
 
 Run the ignored test `explore_reads_class_details_without_changing_the_saved_requests` with the localhost fixture in `class-info` mode to verify routed class inspection from Explore.
 
-Run the ignored test `explore_requires_fresh_review_after_editing_a_staged_write` with the localhost fixture in `explicit-write-gui` mode to verify that editing a staged value clears the write review and that Explore shows the matched readback.
+Run the ignored tests `explore_requires_fresh_review_after_editing_a_staged_write` and `explore_previews_typed_bytes_and_clears_review_on_format_change` with separate localhost fixtures in `explicit-write-gui` mode. They verify review invalidation, the encoded preview, and the matched readback.
 
 The release GUI tests exercise mode selection and routed-request gating headlessly. The ignored test `explore_runs_a_multiple_service_packet_on_one_route` uses the localhost fixture in `multiple-service` mode. The ignored test `explore_retains_the_class3_route_on_a_packet_rejection` uses `class3-routed-packet-unsupported`. The ignored test `explore_requests_and_reports_the_selected_large_class3_size` uses `class3-large-packet`. The ignored test `explore_displays_connected_packet_results_and_rejected_close` uses `class3-packet-close-reject`. The ignored test `explore_displays_connected_packet_rejection_and_confirmed_close` uses the pinned OpENer adapter on localhost. Run each test with its matching peer listening, using `cargo test --locked --offline --release --bin assembly-scanner <test_name> -- --ignored`.
 Use `--listen-only --seconds 3` to check rejection without a controller and two sequential listener captures on the same producer. This test adapts the pinned Windows loopback build so the fixture keeps its shared UDP socket across connection opens and closes and handles `WSAEWOULDBLOCK` as a retryable receive result.

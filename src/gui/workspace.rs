@@ -285,6 +285,52 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode explicit-write-gui"]
+    fn explore_previews_typed_bytes_and_clears_review_on_format_change() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[]);
+        device.settings.input_instance = 154;
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Common attributes");
+        click(&mut device, &ctx, size, "Assembly · Data");
+        click(&mut device, &ctx, size, "Stage attribute write");
+        click(&mut device, &ctx, size, "Enter typed value");
+        click(&mut device, &ctx, size, "Typed attribute value");
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+            events: vec![egui::Event::Text("2769693843".into())],
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| device.show(ctx, &[]));
+        let label = |device: &mut Device, expected| {
+            assert!(
+                draw(device, &ctx, size)
+                    .iter()
+                    .any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        };
+        label(&mut device, "Encoded value · 4 bytes");
+        label(&mut device, "0000  93 2C 16 A5");
+        click(&mut device, &ctx, size, "Verify target identity");
+        wait_for_explore(&mut device);
+        label(&mut device, "4 bytes to send");
+        click(&mut device, &ctx, size, "Big endian");
+        label(&mut device, "0000  A5 16 2C 93");
+        click(&mut device, &ctx, size, "Send reviewed write");
+        assert!(!device.explorer.busy());
+        click(&mut device, &ctx, size, "Verify target identity");
+        wait_for_explore(&mut device);
+        click(&mut device, &ctx, size, "Read back after write");
+        click(&mut device, &ctx, size, "Send reviewed write");
+        wait_for_explore(&mut device);
+        label(&mut device, "Readback matched the staged bytes");
+        assert_eq!(device.snapshot(), saved);
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode class-info"]
     fn explore_reads_class_details_without_changing_the_saved_requests() {
         let ctx = egui::Context::default();

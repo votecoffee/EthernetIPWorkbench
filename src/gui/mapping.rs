@@ -1,9 +1,19 @@
 use super::*;
 
 pub(super) fn edit_selection(ui: &mut Ui, selection: &mut Selection) {
+    edit_format(ui, selection, true);
+}
+
+pub(super) fn edit_value_format(ui: &mut Ui, selection: &mut Selection) {
+    edit_format(ui, selection, false);
+}
+
+fn edit_format(ui: &mut Ui, selection: &mut Selection, addressed: bool) {
     ui.horizontal_wrapped(|ui| {
-        ui.label("Byte offset");
-        ui.add(egui::DragValue::new(&mut selection.offset));
+        if addressed {
+            ui.label("Byte offset");
+            ui.add(egui::DragValue::new(&mut selection.offset));
+        }
         egui::ComboBox::from_id_salt("field-kind")
             .selected_text(format!("{:?}", selection.kind))
             .show_ui(ui, |ui| {
@@ -14,6 +24,9 @@ pub(super) fn edit_selection(ui: &mut Ui, selection: &mut Selection) {
         if selection.kind == Kind::Utf8 {
             selection.bit = None;
             selection.swap = ByteSwap::None;
+            if !addressed {
+                selection.big_endian = false;
+            }
             ui.label("Text bytes");
             ui.add(
                 egui::DragValue::new(selection.string_length.get_or_insert(1))
@@ -21,9 +34,11 @@ pub(super) fn edit_selection(ui: &mut Ui, selection: &mut Selection) {
             );
         } else {
             selection.string_length = None;
-            let mut bit = selection.bit.is_some();
-            if ui.checkbox(&mut bit, "Single bit").changed() {
-                selection.bit = bit.then_some(0);
+            if addressed {
+                let mut bit = selection.bit.is_some();
+                if ui.checkbox(&mut bit, "Single bit").changed() {
+                    selection.bit = bit.then_some(0);
+                }
             }
             if let Some(bit) = &mut selection.bit {
                 selection.swap = ByteSwap::None;

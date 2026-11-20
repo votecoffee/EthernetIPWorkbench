@@ -1,7 +1,7 @@
 use super::{USAGE, explicit_endpoint, parse_expected_identity};
 use assembly_scanner::{
     explicit::{AttributeWrite, IdentityPin, ReadPath, Route},
-    model::{hex, parse_hex},
+    model::{ByteSwap, Kind, Selection, hex, parse_hex},
 };
 use serde_json::json;
 use std::ffi::{OsStr, OsString};
@@ -10,40 +10,93 @@ pub(super) fn attribute(
     adapter: &OsStr,
     local: &OsStr,
     path: ReadPath,
-    bytes: &OsStr,
+    value: &OsStr,
     options: &[OsString],
 ) -> Result<bool, String> {
     let (adapter_or_bridge, local_ip, _) = explicit_endpoint(adapter, local, &[])?;
     let mut route: Option<Route> = None;
     let mut apply = None;
     let mut readback = false;
+    let mut kind = None;
+    let mut endian = None;
+    let mut swap = None;
+    let mut text_bytes = None;
     let mut options = options.iter();
     while let Some(option) = options.next() {
-        if option == "--route" && route.is_none() {
-            let value = options.next().ok_or(USAGE)?;
-            route = Some(value.to_string_lossy().parse()?);
-        } else if option == "--apply" && apply.is_none() {
-            let value = options.next().ok_or(USAGE)?;
-            let expected = parse_expected_identity(&value.to_string_lossy())?;
-            let serial = expected
-                .serial
-                .ok_or("Apply requires decimal vendor:type:product:serial")?;
-            apply = Some(IdentityPin {
-                key: expected.key,
-                serial,
-            });
-        } else if option == "--readback" && !readback {
-            readback = true;
-        } else {
-            return Err(USAGE.into());
+        match option.to_str() {
+            Some("--route") if route.is_none() => {
+                route = Some(options.next().ok_or(USAGE)?.to_string_lossy().parse()?);
+            }
+            Some("--apply") if apply.is_none() => {
+                let value = options.next().ok_or(USAGE)?;
+                let expected = parse_expected_identity(&value.to_string_lossy())?;
+                let serial = expected
+                    .serial
+                    .ok_or("Apply requires decimal vendor:type:product:serial")?;
+                apply = Some(IdentityPin {
+                    key: expected.key,
+                    serial,
+                });
+            }
+            Some("--readback") if !readback => readback = true,
+            Some("--type") if kind.is_none() => {
+                let name = options.next().ok_or(USAGE)?.to_string_lossy();
+                kind = Some(
+                    Kind::ALL
+                        .into_iter()
+                        .find(|kind| format!("{kind:?}").eq_ignore_ascii_case(&name))
+                        .ok_or_else(|| format!("Unknown typed value kind {name:?}"))?,
+                );
+            }
+            Some("--endian") if endian.is_none() => {
+                endian = Some(match options.next().and_then(|value| value.to_str()) {
+                    Some("little") => false,
+                    Some("big") => true,
+                    _ => return Err("Byte order must be little or big".into()),
+                });
+            }
+            Some("--swap") if swap.is_none() => {
+                swap = Some(match options.next().and_then(|value| value.to_str()) {
+                    Some("none") => ByteSwap::None,
+                    Some("bytes_in_words") => ByteSwap::BytesInWords,
+                    Some("word_order") => ByteSwap::WordOrder,
+                    _ => return Err("Swap must be none, bytes_in_words, or word_order".into()),
+                });
+            }
+            Some("--text-bytes") if text_bytes.is_none() => {
+                text_bytes = Some(
+                    options
+                        .next()
+                        .ok_or(USAGE)?
+                        .to_string_lossy()
+                        .parse()
+                        .map_err(|_| "Text byte length must be an integer")?,
+                );
+            }
+            _ => return Err(USAGE.into()),
         }
     }
+    if kind.is_none() && (endian.is_some() || swap.is_some() || text_bytes.is_some()) {
+        return Err("Byte order, swap, and text length options require --type".into());
+    }
+    let format = kind.map(|kind| Selection {
+        kind,
+        big_endian: endian.unwrap_or(false),
+        swap: swap.unwrap_or_default(),
+        string_length: text_bytes,
+        ..Selection::default()
+    });
+    let value = value.to_string_lossy();
+    let bytes = match format {
+        Some(format) => format.encode_value(&value)?,
+        None => parse_hex(&value)?,
+    };
     let request = AttributeWrite {
         adapter_or_bridge,
         local_ip,
         path,
         route,
-        value: parse_hex(&bytes.to_string_lossy())?,
+        value: bytes,
     };
     let mut report = json!({
         "adapter_or_bridge": request.adapter_or_bridge,
@@ -54,6 +107,10 @@ pub(super) fn attribute(
         "value_hex": hex(&request.value),
         "bytes": request.value.len(),
     });
+    if let Some(format) = format {
+        report["encoding"] = json!(format);
+        report["typed_value"] = json!(value);
+    }
     if readback {
         report["readback_requested"] = json!(true);
     }

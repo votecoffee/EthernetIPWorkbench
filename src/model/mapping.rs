@@ -201,7 +201,11 @@ impl Selection {
             return self
                 .string_length
                 .filter(|&size| (1..=MAX_LARGE_ASSEMBLY_BYTES).contains(&size))
-                .ok_or_else(|| "UTF-8 needs a fixed byte length between 1 and 509".into());
+                .ok_or_else(|| {
+                    format!(
+                        "UTF-8 needs a fixed byte length between 1 and {MAX_LARGE_ASSEMBLY_BYTES}"
+                    )
+                });
         }
         Ok(self.kind.width())
     }
@@ -286,6 +290,22 @@ impl Selection {
         }
         self.swap.apply(target);
         Ok(())
+    }
+
+    /// Encode one complete value, such as the payload of an explicit attribute write.
+    pub fn encode_value(self, value: &str) -> Result<Vec<u8>, String> {
+        if self.offset != 0 || self.bit.is_some() {
+            return Err("A complete value uses byte offset zero and no bit selection".into());
+        }
+        if self.kind != Kind::Utf8 && self.string_length.is_some() {
+            return Err("A fixed text length requires Utf8".into());
+        }
+        if self.kind == Kind::Utf8 && self.big_endian {
+            return Err("UTF-8 uses its original byte order".into());
+        }
+        let mut bytes = vec![0; self.validated_width()?];
+        self.encode(value, &mut bytes)?;
+        Ok(bytes)
     }
 }
 

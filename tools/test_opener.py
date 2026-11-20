@@ -275,11 +275,13 @@ def check_explicit_write(cli, adapter, root, identity):
     pin = ":".join(str(identity[field]) for field in ("vendor", "device_type", "code", "serial"))
     address = [ADAPTER, "127.0.0.1", "4", "154", "3"]
     # Assembly 154 is the sample application's dedicated explicit data buffer.
-    value = bytes(range(32)).hex(" ").upper()
+    text = "Bench \u00e9"
+    value = text.encode("utf-8").ljust(32, b"\0").hex(" ").upper()
     with run_adapter(adapter, root):
         for name, args in (
             ("before", ["read", *address]),
-            ("write", ["write-attribute", *address, value, "--apply", pin, "--readback"]),
+            ("write", ["write-attribute", *address, text, "--type", "Utf8", "--text-bytes", "32",
+                       "--apply", pin, "--readback"]),
             ("after", ["read", *address]),
         ):
             result = subprocess.run([cli, *args], capture_output=True, timeout=10,
@@ -290,10 +292,11 @@ def check_explicit_write(cli, adapter, root, identity):
     write = json.loads((root / "write.json").read_text(encoding="utf-8"))
     after = json.loads((root / "after.json").read_text(encoding="utf-8"))
     assert write["result"]["outcome"] == "acknowledged"
+    assert write["typed_value"] == text and write["encoding"]["string_length"] == 32
     assert write["result"]["readback"] == {"outcome": "matched", "data_hex": value}
     assert write["result"]["observed_identity"]["serial"] == identity["serial"]
     assert after["data_hex"] == write["value_hex"] == value and before["data_hex"] != value
-    print("OpENer acknowledged Set_Attribute_Single and matched all 32 bytes on same-session readback.")
+    print("OpENer acknowledged the typed UTF-8 write and matched all 32 bytes on same-session readback.")
 
 
 def check_connected_reads(cli, adapter, root, identity):

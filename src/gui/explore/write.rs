@@ -4,6 +4,9 @@ use assembly_scanner::explicit::ReadbackOutcome;
 pub(super) struct Draft {
     request: AttributeWrite,
     bytes: String,
+    typed: bool,
+    typed_value: String,
+    format: Selection,
     pub(super) identity: Option<Identity>,
     readback: bool,
 }
@@ -12,6 +15,16 @@ enum Action {
     Verify,
     Send(IdentityPin),
     Cancel,
+}
+
+impl Draft {
+    fn encode_value(&self) -> Result<Vec<u8>, String> {
+        if self.typed {
+            self.format.encode_value(&self.typed_value)
+        } else {
+            model::parse_hex(&self.bytes)
+        }
+    }
 }
 
 impl Explorer {
@@ -31,6 +44,9 @@ impl Explorer {
             Ok::<_, String>(Draft {
                 request,
                 bytes: String::new(),
+                typed: false,
+                typed_value: String::new(),
+                format: Selection::default(),
                 identity: None,
                 readback: false,
             })
@@ -56,15 +72,7 @@ impl Explorer {
             egui::Modal::new(egui::Id::new("cip-attribute-write")).show(ui.ctx(), |ui| {
                 ui.heading("Review attribute write");
                 show_address(ui, &draft.request);
-                ui.label("Attribute data in hex");
-                let edit = egui::TextEdit::multiline(&mut draft.bytes)
-                    .font(egui::TextStyle::Monospace)
-                    .desired_width(360.0)
-                    .desired_rows(2)
-                    .hint_text("Space-separated hex bytes");
-                if ui.add_enabled(ready, edit).changed() {
-                    draft.identity = None;
-                }
+                ui.add_enabled_ui(ready, |ui| edit_value(ui, draft));
                 ui.add_enabled(ready, egui::Checkbox::new(&mut draft.readback, "Read back after write"))
                     .on_hover_text("Compare the returned bytes from this attribute after the target acknowledges the write.");
                 if let Some(identity) = &draft.identity {
@@ -109,7 +117,7 @@ impl Explorer {
         match action {
             Some(Action::Verify) => {
                 draft.identity = None;
-                match model::parse_hex(&draft.bytes) {
+                match draft.encode_value() {
                     Ok(value) => {
                         draft.request.value = value;
                         let request = draft.request.clone();
@@ -135,6 +143,48 @@ impl Explorer {
                 });
             }
             _ => {}
+        }
+    }
+}
+
+fn edit_value(ui: &mut Ui, draft: &mut Draft) {
+    let changed_mode = ui.checkbox(&mut draft.typed, "Enter typed value").changed();
+    let changed_value = if draft.typed {
+        let previous = draft.format;
+        super::super::mapping::edit_value_format(ui, &mut draft.format);
+        ui.label("Attribute value");
+        let changed = ui
+            .add(
+                egui::TextEdit::singleline(&mut draft.typed_value)
+                    .desired_width(360.0)
+                    .hint_text("Typed attribute value"),
+            )
+            .changed();
+        changed || previous != draft.format
+    } else {
+        ui.label("Attribute data in hex");
+        ui.add(
+            egui::TextEdit::multiline(&mut draft.bytes)
+                .font(egui::TextStyle::Monospace)
+                .desired_width(360.0)
+                .desired_rows(2)
+                .hint_text("Space-separated hex bytes"),
+        )
+        .changed()
+    };
+    if changed_mode || changed_value {
+        draft.identity = None;
+    }
+    if draft.typed && draft.identity.is_none() {
+        match draft.encode_value() {
+            Ok(bytes) => {
+                ui.label(format!("Encoded value · {} bytes", bytes.len()));
+                show_reply_payload(ui, &bytes, &Ok(None));
+            }
+            Err(error) if !draft.typed_value.is_empty() => {
+                ui.colored_label(AMBER, error);
+            }
+            Err(_) => {}
         }
     }
 }

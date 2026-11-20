@@ -59,13 +59,16 @@ The routed command takes the first bridge's address. The JSON keeps each reply's
 
 ### Review and send an attribute write
 
-Use the documented writable class, instance and attribute. In **Explore**, enter the address and optional CIP route, and select **Stage attribute write**. Enter the value in space-separated hex using the device's wire format. Select **Verify target identity**, then review the device's name and identity, the NIC, address, route and exact bytes before selecting **Send reviewed write**. Changing the bytes clears the prior review. The send checks the full identity on the same registered session that carries the write. [Set_Attribute_Single reference](https://product-help.schneider-electric.com/Machine%20Expert/V2.2/en/EtherNetIP_Services/EtherNetIP_Services/modules/set-attribute-si.html)
+Use the documented writable class, instance and attribute. In **Explore**, enter the address and optional CIP route, and select **Stage attribute write**. Enter space-separated hex or select **Enter typed value**, choose a format, and inspect the encoded bytes. Select **Verify target identity**, then review the device's name and identity, the NIC, address, route and exact bytes before selecting **Send reviewed write**. Changing the value or its encoding clears the prior review. The send checks the full identity on the same registered session that carries the write. [Set_Attribute_Single reference](https://product-help.schneider-electric.com/Machine%20Expert/V2.2/en/EtherNetIP_Services/EtherNetIP_Services/modules/set-attribute-si.html)
 
-The following command previews the request offline. It shows the exact value, path and route as JSON.
+Both commands below preview the same bytes offline. The typed report also retains the entered value and encoding.
 
 ~~~powershell
 .\target\release\eipmaster-cli.exe write-attribute 127.0.0.1 127.0.0.1 4 154 3 "A5 16 2C 93"
+.\target\release\eipmaster-cli.exe write-attribute 127.0.0.1 127.0.0.1 4 154 3 747873558 --type U32 --endian big --swap word_order
 ~~~
+
+Typed entry encodes a complete attribute value. Choose `Bool`, signed or unsigned 8-, 16-, 32- or 64-bit integers such as `I16` or `U32`, `F32`, `F64`, or `Utf8`. Numeric values default to little endian. Use `--endian big` and `--swap bytes_in_words` or `--swap word_order` when specified by the device. `Utf8` encodes a fixed-width field padded with zero bytes to the width given by `--text-bytes`. Supply raw hex for a structured or length-prefixed attribute.
 
 Add `--apply <vendor:type:product:serial>` to send to the reviewed target. All four identity fields are decimal. To write through a bridge, use its IP as the first address and pass `--route <port/link/...>`. The write uses unconnected CIP on TCP and sends a single `Set_Attribute_Single` request. Live writes require authorization for the exact target and value.
 
