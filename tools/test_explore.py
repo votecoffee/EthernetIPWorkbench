@@ -550,6 +550,49 @@ def main():
                             capture_output=True, text=True, timeout=4, creationflags=NO_WINDOW)
     assert result.returncode == 1 and "limit is 502 bytes" in result.stderr
 
+    for label, route in (("direct", None), ("routed", multi_hop)):
+        large = root / f"class3-large-{label}.toml"
+        reads = "".join(saved_request(f"Field {i}", 7, f'route = "{route}"\n' if route else "")
+                        for i in range(50))
+        large.write_text(source + "\n[app]\ncip_class3_size = 4002\n" + reads, encoding="utf-8")
+        mode = "class3-routed-large-packet" if route else "class3-large-packet"
+        result, peer = with_adapter(root, mode, [exe, "read-saved-all", large, *connected_args], mode)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        reply = json.loads(result.stdout)
+        assert reply["class3_size"] == 4002 and reply["large_forward_open"] is True
+        assert reply.get("connection_route") == route and reply["forward_close"] == {"outcome": "confirmed"}
+        assert len(reply["results"]) == 50 and all(item["status"] == "success" for item in reply["results"])
+        assert peer["class3_size"] == 4002 and peer["open_service"] == 0x5B
+        [request] = peer["connected_requests"]
+        assert len(bytes.fromhex(request)) == 508 and min(peer["connected_reply_sizes"]) > 504
+        assert peer["unregistered"] and peer["forward_close"] and "cyclic_io" not in peer
+        if route:
+            assert peer["open_path_hex"] == peer["close_path_hex"] == multi_hop_path
+
+    standard = root / "class3-standard-511.toml"
+    standard.write_text(source + "\n[app]\ncip_class3_size = 511\n" + product_name, encoding="utf-8")
+    result, peer = with_adapter(root, "class3-sized", [exe, "read-saved-all", standard, "--connected"], "class3-sized")
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    reply = json.loads(result.stdout)
+    assert reply["class3_size"] == 511 and reply["large_forward_open"] is False
+    assert peer["class3_size"] == 511 and peer["open_service"] == 0x54 and peer["forward_close"]
+
+    result, peer = with_adapter(
+        root, "class3-large-open-reject",
+        [exe, "read-saved-all", root / "class3-large-direct.toml", *connected_args], "class3-large-open-reject",
+    )
+    assert result.returncode == 1 and not result.stdout
+    assert "Class 3 Large Forward_Open" in result.stderr and "0x0126" in result.stderr and "0x01F8" in result.stderr
+    assert peer["open_service"] == 0x5B and peer["registrations"] == 1 and peer["unregistered"]
+    assert "connected_requests" not in peer and not peer["forward_close"]
+
+    for size, message in ((8, "read needs 8 CIP bytes"), (4003, "Class 3 connection size must be")):
+        invalid_size = root / f"class3-size-{size}.toml"
+        invalid_size.write_text(source + f"\n[app]\ncip_class3_size = {size}\n" + product_name, encoding="utf-8")
+        result = subprocess.run([exe, "read-saved-all", invalid_size, "--connected"],
+                                capture_output=True, text=True, timeout=4, creationflags=NO_WINDOW)
+        assert result.returncode == 1 and message in result.stderr, (result.stdout, result.stderr)
+
     for route, error, status in [
         ("1/7", "CIP router rejected Unconnected Send", "0x0311"),
         ("1/8", "CIP target rejected read", "0x08"),

@@ -254,7 +254,7 @@ def check_multicast(cli, adapter, root, identity, seconds):
 def check_connected_reads(cli, adapter, root, identity):
     root.mkdir()
     source = PROFILE.read_text(encoding="utf-8")
-    for name, rejected in (("success", False), ("mixed", True)):
+    for name, rejected, size in (("success", False, 504), ("mixed", True, 504), ("large", False, 4002)):
         case = root / name
         case.mkdir()
         profile = case / "profile.toml"
@@ -262,7 +262,8 @@ def check_connected_reads(cli, adapter, root, identity):
         if rejected:
             requests.append(("Unsupported attribute", 127))
         requests.append(("Serial number", 6))
-        profile.write_text(source + "".join(
+        size_override = f"\ncip_class3_size = {size}\n" if size != 504 else ""
+        profile.write_text(source + size_override + "".join(
             f'\n[[app.cip_reads]]\nname = "{label}"\npath = {{ class = 1, instance = 1, attribute = {attribute} }}\n'
             for label, attribute in requests
         ), encoding="utf-8")
@@ -273,6 +274,7 @@ def check_connected_reads(cli, adapter, root, identity):
         assert result.returncode == int(rejected), (result.stdout, result.stderr)
         report = json.loads(result.stdout)
         replies = report["results"]
+        assert report["class3_size"] == size and report["large_forward_open"] == (size > 511)
         assert report["forward_close"] == {"outcome": "confirmed"}
         assert [reply["name"] for reply in replies] == [item[0] for item in requests]
         assert replies[0]["decoded"] == identity["name"]
@@ -281,9 +283,11 @@ def check_connected_reads(cli, adapter, root, identity):
         if rejected:
             assert replies[1]["status"] == "cip_rejected" and replies[1]["general_status"] == 0x14
         trace = log.read_text(encoding="utf-8", errors="replace")
+        if size > 511:
+            assert "notify: calling LargeForwardOpen service" in trace
         assert trace.count("Class 3 sequence number:") == len(requests)
         assert "ForwardClose: ConnSerNo" in trace
-    print("OpENer Class 3 direct reads, partial rejection, sequence tracking and Forward_Close passed.")
+    print("OpENer Class 3 standard and large opens, direct reads, partial rejection and Forward_Close passed.")
     case = root / "packet-unsupported"
     case.mkdir()
     with run_adapter(adapter, case) as log:

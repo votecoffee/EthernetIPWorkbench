@@ -813,6 +813,7 @@ fn named_profile_loads_preferences_and_requires_confirmation_to_replace() {
     app.device = "127.0.0.2".into();
     app.settings.io_route = "1/2/2/127.0.0.3/1/0".into();
     app.preferences.capacity = 200;
+    app.preferences.cip_class3_size = 4002.try_into().unwrap();
     app.preferences
         .cip_reads
         .push(assembly_scanner::explicit::SavedRead {
@@ -854,6 +855,7 @@ fn named_profile_loads_preferences_and_requires_confirmation_to_replace() {
     assert_eq!(app.device, "127.0.0.2");
     assert_eq!(app.settings.io_route, "1/2/2/127.0.0.3/1/0");
     assert_eq!(app.preferences.capacity, 800);
+    assert_eq!(app.preferences.cip_class3_size.bytes(), 4002);
     assert_eq!(app.preferences.rotate_bytes, 4_096);
     assert_eq!(app.preferences.cip_reads.len(), 1);
     assert_eq!(app.preferences.cip_reads[0].name, "Serial");

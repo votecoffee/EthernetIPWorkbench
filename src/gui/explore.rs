@@ -1,7 +1,9 @@
 use super::*;
 use assembly_scanner::{
     discovery,
-    explicit::{self, ReadPath, Reader, Route, SavedRead, SavedReadMode, SavedReadReport},
+    explicit::{
+        self, Class3Size, ReadPath, Reader, Route, SavedRead, SavedReadMode, SavedReadReport,
+    },
 };
 use std::sync::Arc;
 
@@ -340,6 +342,7 @@ impl Device {
             if batch::controls(
                 ui,
                 &mut explorer.batch_mode,
+                &mut self.preferences.cip_class3_size,
                 &self.preferences.cip_reads,
                 explorer.work.is_none(),
             ) {
@@ -348,11 +351,14 @@ impl Device {
                         let nic = *nic;
                         let reads = self.preferences.cip_reads.clone();
                         let mode = explorer.batch_mode;
+                        let size = self.preferences.cip_class3_size;
                         explorer.saved_batch = None;
                         explorer.saved_report = None;
                         explorer.start(move || {
-                            explicit::run_saved_reads_with_mode(adapter, nic, reads, mode)
-                                .map(Response::Batch)
+                            explicit::run_saved_reads_with_class3_size(
+                                adapter, nic, reads, mode, size,
+                            )
+                            .map(Response::Batch)
                         });
                     }
                     _ => {

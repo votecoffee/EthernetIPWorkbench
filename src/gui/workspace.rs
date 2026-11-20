@@ -309,6 +309,7 @@ mod tests {
     fn explore_connected_packet(
         adapter: &str,
         route: Option<&str>,
+        class3_size: u16,
     ) -> (Device, egui::Context, egui::Vec2) {
         let ctx = egui::Context::default();
         ctx.style_mut(|style| style.animation_time = 0.0);
@@ -319,6 +320,7 @@ mod tests {
             ("Serial", 6, route),
         ]);
         device.device = adapter.into();
+        device.preferences.cip_class3_size = class3_size.try_into().unwrap();
         click(&mut device, &ctx, size, "Saved reads");
         click(&mut device, &ctx, size, "Unconnected sequential");
         click(&mut device, &ctx, size, "Class 3 Multiple Service Packet");
@@ -386,7 +388,7 @@ mod tests {
     #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode class3-packet-close-reject"]
     fn explore_displays_connected_packet_results_and_rejected_close() {
-        let (mut device, ctx, size) = explore_connected_packet("127.0.0.1", None);
+        let (mut device, ctx, size) = explore_connected_packet("127.0.0.1", None, 504);
         let labels = draw(&mut device, &ctx, size);
         for expected in [
             "Product name · Reply",
@@ -409,7 +411,7 @@ mod tests {
     #[test]
     #[ignore = "requires the pinned OpENer adapter on localhost"]
     fn explore_displays_connected_packet_rejection_and_confirmed_close() {
-        let (mut device, ctx, size) = explore_connected_packet("127.0.0.2", None);
+        let (mut device, ctx, size) = explore_connected_packet("127.0.0.2", None, 504);
         let labels = draw(&mut device, &ctx, size);
         assert!(
             labels
@@ -431,7 +433,7 @@ mod tests {
     #[ignore = "requires tools/loopback_adapter.py --mode class3-routed-packet-unsupported"]
     fn explore_retains_the_class3_route_on_a_packet_rejection() {
         let route = "1/2/2/192.0.2.100/1/0";
-        let (mut device, ctx, size) = explore_connected_packet("127.0.0.1", Some(route));
+        let (mut device, ctx, size) = explore_connected_packet("127.0.0.1", Some(route), 504);
         let labels = draw(&mut device, &ctx, size);
         assert!(
             labels
@@ -452,6 +454,28 @@ mod tests {
         assert_eq!(report["connection_route"], route);
         assert_eq!(report["results"], serde_json::json!([]));
         assert_eq!(report["packet_error"]["general_status"], 0x08);
+        assert_eq!(report["forward_close"]["outcome"], "confirmed");
+    }
+
+    #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode class3-large-packet"]
+    fn explore_requests_and_reports_the_selected_large_class3_size() {
+        let (mut device, ctx, size) = explore_connected_packet("127.0.0.1", None, 4002);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Class 3 connection size",
+            "Large Forward_Open · 4002 bytes requested",
+            "Serial · Reply",
+            "Forward_Close · confirmed",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        let report = save_explore_report(&mut device, &ctx, size);
+        assert_eq!(report["class3_size"], 4002);
+        assert_eq!(report["large_forward_open"], true);
         assert_eq!(report["forward_close"]["outcome"], "confirmed");
     }
 

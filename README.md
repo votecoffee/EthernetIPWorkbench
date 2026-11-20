@@ -93,6 +93,8 @@ For targets that support unconnected Multiple Service Packet, add `--multiple-se
 
 Add `--connected` to run saved reads on one Class 3 connection and report its Forward_Close outcome. Leave all routes unset for a direct connection, or set the same route on every saved read and enter the first bridge's IP in **Device**. [Connected read mode](docs/OPERATIONS.md#run-class-3-connected-reads)
 
+In a Class 3 mode, **Class 3 connection size** defaults to 504 bytes per direction. Set a larger supported size in Explore or through `[app].cip_class3_size` for CLI profiles. Sizes above 511 bytes use Large Forward_Open. [Class 3 connection size](docs/OPERATIONS.md#choose-a-class-3-connection-size)
+
 Combine `--connected --multiple-service-packet` to group the saved reads on that Class 3 connection. The report preserves any packet-level error and the close outcome. [Connected packet mode](docs/OPERATIONS.md#combine-reads-on-a-class-3-connection)
 
 ### Save and restore settings

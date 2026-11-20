@@ -1,6 +1,7 @@
 use super::{
-    EipError, Reader, Route, RoutedReadError, SavedRead, run_saved_reads_connected,
-    run_saved_reads_connected_packet, run_saved_reads_packet, validate_saved_reads,
+    Class3Size, EipError, Reader, Route, RoutedReadError, SavedRead,
+    connected::{run_connected_packet_sized, run_connected_sized},
+    run_saved_reads_packet, validate_saved_reads,
 };
 use crate::scanner::CloseOutcome;
 use std::net::Ipv4Addr;
@@ -65,6 +66,8 @@ pub struct SavedReadReport {
     pub batch: SavedReadBatch,
     /// Path used by a routed Class 3 connection.
     pub connection_route: Option<Route>,
+    /// Requested symmetric size when the batch used Class 3.
+    pub class3_size: Option<Class3Size>,
     pub forward_close: Option<CloseOutcome>,
     pub packet_error: Option<EipError>,
 }
@@ -92,28 +95,48 @@ pub fn run_saved_reads_with_mode(
     reads: Vec<SavedRead>,
     mode: SavedReadMode,
 ) -> Result<SavedReadReport, String> {
-    let (batch, connection_route, forward_close, packet_error) = match mode {
-        SavedReadMode::Sequential => (run_saved_reads(adapter, local, reads)?, None, None, None),
+    run_saved_reads_with_class3_size(adapter, local, reads, mode, Class3Size::default())
+}
+
+/// Run a saved batch with the given size for Class 3 modes.
+pub fn run_saved_reads_with_class3_size(
+    adapter: Ipv4Addr,
+    local: Ipv4Addr,
+    reads: Vec<SavedRead>,
+    mode: SavedReadMode,
+    size: Class3Size,
+) -> Result<SavedReadReport, String> {
+    let (batch, connection_route, class3_size, forward_close, packet_error) = match mode {
+        SavedReadMode::Sequential => (
+            run_saved_reads(adapter, local, reads)?,
+            None,
+            None,
+            None,
+            None,
+        ),
         SavedReadMode::Packet => (
             run_saved_reads_packet(adapter, local, reads)?,
             None,
             None,
             None,
+            None,
         ),
         SavedReadMode::Connected => {
-            let connected = run_saved_reads_connected(adapter, local, reads)?;
+            let connected = run_connected_sized(adapter, local, reads, size)?;
             (
                 connected.batch,
                 connected.route,
+                Some(connected.size),
                 Some(connected.forward_close),
                 None,
             )
         }
         SavedReadMode::ConnectedPacket => {
-            let packet = run_saved_reads_connected_packet(adapter, local, reads)?;
+            let packet = run_connected_packet_sized(adapter, local, reads, size)?;
             (
                 packet.connection.batch,
                 packet.connection.route,
+                Some(packet.connection.size),
                 Some(packet.connection.forward_close),
                 packet.packet_error,
             )
@@ -123,6 +146,7 @@ pub fn run_saved_reads_with_mode(
         mode,
         batch,
         connection_route,
+        class3_size,
         forward_close,
         packet_error,
     })

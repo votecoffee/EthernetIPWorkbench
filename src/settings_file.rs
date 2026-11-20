@@ -1,4 +1,4 @@
-use crate::{capture, eds, integration, model::Settings, scanner::Schedule};
+use crate::{capture, eds, explicit::Class3Size, integration, model::Settings, scanner::Schedule};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},
@@ -19,6 +19,8 @@ pub struct Preferences {
     pub auto_reconnect: bool,
     #[serde(skip_serializing_if = "integration::Options::is_disabled")]
     pub integration: integration::Options,
+    #[serde(skip_serializing_if = "Class3Size::is_default")]
+    pub cip_class3_size: Class3Size,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub cip_reads: Vec<crate::explicit::SavedRead>,
 }
@@ -34,6 +36,7 @@ impl Default for Preferences {
             schedule: Schedule::Deadline,
             auto_reconnect: false,
             integration: integration::Options::default(),
+            cip_class3_size: Class3Size::default(),
             cip_reads: Vec::new(),
         }
     }

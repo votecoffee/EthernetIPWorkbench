@@ -1,7 +1,7 @@
 use assembly_scanner::{
     explicit::{
-        ReadPath, Reader, Route, SavedRead, SavedReadMode, read_reply_document,
-        run_saved_reads_with_mode,
+        Class3Size, ReadPath, Reader, Route, SavedRead, SavedReadMode, read_reply_document,
+        run_saved_reads_with_class3_size,
     },
     model::Selection,
 };
@@ -31,8 +31,9 @@ pub(super) fn all(
     local: Ipv4Addr,
     reads: Vec<SavedRead>,
     mode: SavedReadMode,
+    size: Class3Size,
 ) -> Result<bool, String> {
-    let report = run_saved_reads_with_mode(adapter, local, reads, mode)?;
+    let report = run_saved_reads_with_class3_size(adapter, local, reads, mode, size)?;
     println!("{}", report.report_json()?);
     Ok(report.is_complete())
 }

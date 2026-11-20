@@ -13,6 +13,7 @@ fn mode_label(mode: SavedReadMode) -> &'static str {
 pub(super) fn controls(
     ui: &mut Ui,
     mode: &mut SavedReadMode,
+    class3_size: &mut Class3Size,
     reads: &[SavedRead],
     ready: bool,
 ) -> bool {
@@ -48,7 +49,39 @@ pub(super) fn controls(
             format!("{error}. Choose Unconnected sequential to run this list."),
         );
     }
+    if matches!(
+        mode,
+        SavedReadMode::Connected | SavedReadMode::ConnectedPacket
+    ) {
+        ui.add_enabled_ui(ready, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Class 3 connection size");
+                let mut bytes = class3_size.bytes();
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut bytes)
+                            .range(Class3Size::RANGE)
+                            .suffix(" bytes"),
+                    )
+                    .on_hover_text("Includes the two-byte sequence in each direction.")
+                    .changed()
+                    && let Ok(size) = Class3Size::try_from(bytes)
+                {
+                    *class3_size = size;
+                }
+                ui.small(class3_open_name(*class3_size));
+            });
+        });
+    }
     run
+}
+
+fn class3_open_name(size: Class3Size) -> &'static str {
+    if size.uses_large_forward_open() {
+        "Large Forward_Open"
+    } else {
+        "Forward_Open"
+    }
 }
 
 pub(super) fn show(
@@ -67,6 +100,13 @@ pub(super) fn show(
         ));
         if let Some(route) = &report.connection_route {
             ui.small(format!("Connection route · {route}"));
+        }
+        if let Some(size) = report.class3_size {
+            ui.small(format!(
+                "{} · {} bytes requested",
+                class3_open_name(size),
+                size.bytes()
+            ));
         }
         if let Some(error) = &report.packet_error {
             ui.colored_label(AMBER, format!("Multiple Service Packet failed · {error}"));

@@ -94,11 +94,24 @@ Each embedded CIP rejection keeps its status words in the JSON report and produc
 .\target\release\eipmaster-cli.exe read-saved-all .local\device.toml --connected
 ~~~
 
-The target must accept a standard Class 3 Forward_Open to its Message Router. This mode requests variable sizes up to 504 bytes per direction, including the two-byte sequence. It sends each saved read over TCP in profile order and closes the connection after the batch. [OpENer Class 3 target](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipclass3connection.c)
+The target must accept a Class 3 Forward_Open to its Message Router. The default request uses standard Forward_Open and asks for a variable size up to 504 bytes in each direction, including the two-byte sequence. The scanner sends each saved read over TCP in profile order and closes the connection after the batch. [OpENer Class 3 target](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipclass3connection.c)
 
 For a routed batch, set `device_ip` to the first bridge's IPv4 address and put the same `route` on every saved read. The scanner puts that route before the Message Router in both Forward_Open and Forward_Close. The bridge carries the connected read traffic on the same TCP session. This route comes from the saved reads. [pycomm3 Class 3 path construction](https://github.com/ottowayi/pycomm3/blob/master/pycomm3/cip_driver.py)
 
 The JSON includes `forward_close` separately from the read results and includes `connection_route` for routed Class 3 batches. A CIP rejection still allows later reads. An exchange failure leaves later requests unattempted. Exit code 0 requires successful CIP replies and a confirmed close. If Forward_Open fails, the CLI reports the setup error on stderr with the route when used and exits 1.
+
+#### Choose a Class 3 connection size
+
+Select a Class 3 read mode in **Explore → Saved reads** and edit **Class 3 connection size**. The profile saves the size, and the CLI reads the same preference when run with `--connected`. To set it by hand, add the key to the existing `[app]` table or create the table if needed.
+
+~~~toml
+[app]
+cip_class3_size = 4002
+~~~
+
+The Workbench accepts 8–4,002 bytes and uses Large Forward_Open (0x5B) for values above 511. Choose a size supported by the target and every bridge in the path. The two-byte sequence counts toward the requested size. A rejected open shows the service and CIP status words. Some devices return a supported size in an additional status word. [Rockwell Large Forward_Open limits and status words](https://www.rockwellautomation.com/en-fi/docs/rslinx-classic/4-60/rslinx-classic-help-ditamap/software-development-kit/introducing-rslinx-classic-sdk/api-function-reference/cip-communications/understanding-cip-communication/dtl_cip_large_conn_open-rtn-value.html)
+
+The Class 3 JSON fields `class3_size` and `large_forward_open` record the requested size and service used. This setting applies to saved reads over Class 3. Cyclic I/O has its own connection sizes and Forward_Open setting.
 
 #### Combine reads on a Class 3 connection
 
@@ -106,7 +119,7 @@ The JSON includes `forward_close` separately from the read results and includes 
 .\target\release\eipmaster-cli.exe read-saved-all .local\device.toml --connected --multiple-service-packet
 ~~~
 
-The target must support Multiple Service Packet on its Class 3 connection. Both flags can appear in either order. The command sends one packet for a direct batch or a batch with one shared route. The connected size leaves 502 bytes for the CIP request or reply. The CLI rejects oversized requests before Forward_Open, and the target controls how much reply data it can return. [Rockwell CIP Multiple Service Packet format](https://literature.rockwellautomation.com/idc/groups/literature/documents/pm/1756-pm020_-en-p.pdf)
+The target must support Multiple Service Packet on its Class 3 connection. Both flags can appear in either order. The command sends one packet for a direct batch or a batch with one shared route. The default size leaves 502 bytes for the CIP request or reply. Deduct two bytes from a custom size to get the usable CIP limit. Oversized requests are rejected before Forward_Open, and incoming replies must fit the same requested size. [Rockwell CIP Multiple Service Packet format](https://literature.rockwellautomation.com/idc/groups/literature/documents/pm/1756-pm020_-en-p.pdf)
 
 Valid embedded replies and rejections appear in `results` in profile order. A whole-packet rejection or an invalid reply produces a `packet_error` and an empty `results` array. The report keeps the separate `forward_close` result. Exit code 0 requires successful reads and a confirmed close.
 

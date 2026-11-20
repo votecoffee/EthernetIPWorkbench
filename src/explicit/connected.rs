@@ -4,19 +4,78 @@ use super::{
     SavedReadMode, SavedReadResult, Session, batch::run_ordered, cpf, is_unicast, item_type, le16,
     le32, protocol, read_message, reply_body, validate_saved_reads,
 };
-use crate::scanner::{CloseOutcome, forward_close};
+use crate::scanner::{CloseOutcome, encode_large_open, forward_close};
 use ethernetip_connections::forward_open::{
     ForwardCloseRequest, ForwardOpenRequest, ForwardOpenResponse, NetworkConnectionParameters,
 };
-use std::net::Ipv4Addr;
+use std::{net::Ipv4Addr, ops::RangeInclusive};
 
 const MESSAGE_ROUTER: [u8; 4] = [0x20, 2, 0x24, 1];
-const CONNECTED_SIZE: u16 = 504;
 const RPI_US: u32 = 2_000_000;
+
+/// Requested symmetric Class 3 connection size, including the two-byte sequence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(try_from = "u16", into = "u16")]
+pub struct Class3Size(u16);
+
+impl Class3Size {
+    pub const RANGE: RangeInclusive<u16> = 8..=4002;
+
+    pub fn bytes(self) -> u16 {
+        self.0
+    }
+
+    pub fn uses_large_forward_open(self) -> bool {
+        self.0 > 0x01ff
+    }
+
+    pub(crate) fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    fn check_request(self, bytes: usize, kind: &str) -> std::result::Result<(), String> {
+        let limit = usize::from(self.0) - 2;
+        if bytes > limit {
+            return Err(format!(
+                "Class 3 {kind} needs {bytes} CIP bytes. The limit is {limit} bytes."
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl Default for Class3Size {
+    fn default() -> Self {
+        Self(504)
+    }
+}
+
+impl TryFrom<u16> for Class3Size {
+    type Error = String;
+
+    fn try_from(size: u16) -> std::result::Result<Self, Self::Error> {
+        if Self::RANGE.contains(&size) {
+            Ok(Self(size))
+        } else {
+            Err(format!(
+                "Class 3 connection size must be {}–{} bytes",
+                Self::RANGE.start(),
+                Self::RANGE.end()
+            ))
+        }
+    }
+}
+
+impl From<Class3Size> for u16 {
+    fn from(size: Class3Size) -> Self {
+        size.bytes()
+    }
+}
 
 pub struct ConnectedReadBatch {
     pub batch: SavedReadBatch,
     pub route: Option<Route>,
+    pub size: Class3Size,
     pub forward_close: CloseOutcome,
 }
 
@@ -32,14 +91,26 @@ pub fn run_saved_reads_connected(
     local: Ipv4Addr,
     reads: Vec<SavedRead>,
 ) -> std::result::Result<ConnectedReadBatch, String> {
+    run_connected_sized(adapter, local, reads, Class3Size::default())
+}
+
+pub(super) fn run_connected_sized(
+    adapter: Ipv4Addr,
+    local: Ipv4Addr,
+    reads: Vec<SavedRead>,
+    size: Class3Size,
+) -> std::result::Result<ConnectedReadBatch, String> {
     let route = connection_route(&reads)?;
+    for request in &reads {
+        size.check_request(read_message(request.path).len(), "read")?;
+    }
     let (results, forward_close) =
-        with_connection(adapter, local, route.as_ref(), |session, reply| {
+        with_connection(adapter, local, route.as_ref(), size, |session, reply| {
             let mut sequence = 0u16;
             run_ordered(reads, |request| {
                 sequence = sequence.wrapping_add(1);
                 let cip = read_message(request.path);
-                connected_exchange(session, reply, sequence, &cip, |data| {
+                connected_exchange(session, reply, sequence, &cip, size, |data| {
                     Ok(reply_body(data, cip[0])?.to_vec())
                 })
                 .map_err(|error| match error {
@@ -55,6 +126,7 @@ pub fn run_saved_reads_connected(
             results,
         },
         route,
+        size,
         forward_close,
     })
 }
@@ -66,19 +138,22 @@ pub fn run_saved_reads_connected_packet(
     local: Ipv4Addr,
     reads: Vec<SavedRead>,
 ) -> std::result::Result<ConnectedPacketBatch, String> {
+    run_connected_packet_sized(adapter, local, reads, Class3Size::default())
+}
+
+pub(super) fn run_connected_packet_sized(
+    adapter: Ipv4Addr,
+    local: Ipv4Addr,
+    reads: Vec<SavedRead>,
+    size: Class3Size,
+) -> std::result::Result<ConnectedPacketBatch, String> {
     let route = connection_route(&reads)?;
     let requests: Vec<_> = reads.iter().map(|entry| read_message(entry.path)).collect();
     let packet = request_packet(&requests);
-    let limit = usize::from(CONNECTED_SIZE) - 2;
-    if packet.len() > limit {
-        return Err(format!(
-            "Class 3 packet needs {} CIP bytes. The limit is {limit} bytes.",
-            packet.len()
-        ));
-    }
+    size.check_request(packet.len(), "packet")?;
     let (reply, forward_close) =
-        with_connection(adapter, local, route.as_ref(), |session, open| {
-            connected_exchange(session, open, 1, &packet, |data| {
+        with_connection(adapter, local, route.as_ref(), size, |session, open| {
+            connected_exchange(session, open, 1, &packet, size, |data| {
                 decode_packet(data, &requests)
             })
         })?;
@@ -101,6 +176,7 @@ pub fn run_saved_reads_connected_packet(
                 results,
             },
             route,
+            size,
             forward_close,
         },
         packet_error,
@@ -119,6 +195,7 @@ fn with_connection<T>(
     adapter: Ipv4Addr,
     local: Ipv4Addr,
     route: Option<&Route>,
+    size: Class3Size,
     run: impl FnOnce(&mut Session, &ForwardOpenResponse) -> T,
 ) -> std::result::Result<(T, CloseOutcome), String> {
     if !is_unicast(adapter) || !is_unicast(local) {
@@ -126,13 +203,18 @@ fn with_connection<T>(
     }
 
     let mut session = Session::open(adapter, local).map_err(|error| error.to_string())?;
-    let open = open_request(route).map_err(|error| error.to_string())?;
+    let open = open_request(route, size).map_err(|error| error.to_string())?;
+    let (service, request, name) = if size.uses_large_forward_open() {
+        (0x5b, encode_large_open(&open), "Large Forward_Open")
+    } else {
+        (0x54, open.encode(), "Forward_Open")
+    };
     let operation = || match route {
-        Some(route) => format!("Class 3 Forward_Open via {route}"),
-        None => "Class 3 Forward_Open".to_owned(),
+        Some(route) => format!("Class 3 {name} via {route}"),
+        None => format!("Class 3 {name}"),
     };
     let (body, _) = session
-        .cip(0x54, 6, &open.encode(), None)
+        .cip(service, 6, &request, None)
         .map_err(|error| format!("{}: {error}", operation()))?;
     let close = ForwardCloseRequest {
         priority_tick: open.priority_tick,
@@ -154,7 +236,7 @@ fn with_connection<T>(
     Ok((result, forward_close))
 }
 
-fn open_request(route: Option<&Route>) -> Result<ForwardOpenRequest> {
+fn open_request(route: Option<&Route>, size: Class3Size) -> Result<ForwardOpenRequest> {
     let mut ids = [0; 10];
     getrandom::fill(&mut ids).map_err(|error| protocol(error.to_string()))?;
     let params = NetworkConnectionParameters {
@@ -162,7 +244,7 @@ fn open_request(route: Option<&Route>) -> Result<ForwardOpenRequest> {
         connection_type: 2,
         priority: 0,
         variable_size: true,
-        size: CONNECTED_SIZE,
+        size: size.bytes(),
     };
     let mut connection_path = route.map(Route::port_segments).unwrap_or_default();
     connection_path.extend(MESSAGE_ROUTER);
@@ -202,6 +284,7 @@ fn connected_exchange<T>(
     open: &ForwardOpenResponse,
     sequence: u16,
     cip: &[u8],
+    size: Class3Size,
     decode: impl FnOnce(&[u8]) -> Result<T>,
 ) -> Result<T> {
     let mut payload = sequence.to_le_bytes().to_vec();
@@ -217,10 +300,16 @@ fn connected_exchange<T>(
         &envelope,
         open.t_to_o_connection_id,
         sequence,
+        size,
     )?)
 }
 
-fn connected_payload(envelope: &Envelope, connection_id: u32, sequence: u16) -> Result<&[u8]> {
+fn connected_payload(
+    envelope: &Envelope,
+    connection_id: u32,
+    sequence: u16,
+    size: Class3Size,
+) -> Result<&[u8]> {
     let [address, data] = envelope.items.as_slice() else {
         return Err(protocol(
             "Class 3 reply must contain an address and data item",
@@ -232,10 +321,16 @@ fn connected_payload(envelope: &Envelope, connection_id: u32, sequence: u16) -> 
         return Err(protocol("Mismatched Class 3 reply connection ID"));
     }
     if data.type_id != item_type::CONNECTED_DATA
-        || data.data.len() > usize::from(CONNECTED_SIZE)
         || data.data.get(..2) != Some(sequence.to_le_bytes().as_slice())
     {
         return Err(protocol("Invalid Class 3 reply data or sequence"));
+    }
+    if data.data.len() > usize::from(size.bytes()) {
+        return Err(protocol(format!(
+            "Class 3 reply has {} bytes, beyond the requested {} bytes",
+            data.data.len(),
+            size.bytes()
+        )));
     }
     Ok(&data.data[2..])
 }
@@ -251,10 +346,26 @@ mod tests {
             Item::new(item_type::CONNECTED_DATA, vec![2, 0, 0x8e, 0, 0, 0, 7]),
         ];
         let frame = Envelope::parse(&cpf::encode_envelope(0, 0, &items)).unwrap();
-        let reply = connected_payload(&frame, 123, 2).unwrap();
+        let size = Class3Size::default();
+        let reply = connected_payload(&frame, 123, 2, size).unwrap();
         assert_eq!(reply_body(reply, 0x0e).unwrap(), [7]);
-        assert!(connected_payload(&frame, 124, 2).is_err());
-        assert!(connected_payload(&frame, 123, 1).is_err());
+        assert!(connected_payload(&frame, 124, 2, size).is_err());
+        assert!(connected_payload(&frame, 123, 1, size).is_err());
         assert!(reply_body(reply, 0x01).is_err());
+    }
+
+    #[test]
+    fn class3_reply_size_counts_the_sequence_for_either_open_service() {
+        let size = Class3Size::try_from(512).unwrap();
+        assert!(size.uses_large_forward_open());
+        let mut payload = vec![0; 512];
+        payload[..2].copy_from_slice(&1u16.to_le_bytes());
+        let items = [
+            Item::connected_address(123),
+            Item::new(item_type::CONNECTED_DATA, payload),
+        ];
+        let frame = Envelope::parse(&cpf::encode_envelope(0, 0, &items)).unwrap();
+        assert_eq!(connected_payload(&frame, 123, 1, size).unwrap().len(), 510);
+        assert!(connected_payload(&frame, 123, 1, Class3Size::try_from(511).unwrap()).is_err());
     }
 }

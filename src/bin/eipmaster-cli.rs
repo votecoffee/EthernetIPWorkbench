@@ -165,11 +165,13 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                 _ => return Err(USAGE.into()),
             };
             let (settings, app) = settings_file::load_profile(Path::new(profile))?;
+            let app = app.unwrap_or_default();
             reads::all(
                 settings.device_ip,
                 settings.local_ip,
-                app.unwrap_or_default().cip_reads,
+                app.cip_reads,
                 mode,
+                app.cip_class3_size,
             )
         }
         [command, path] if command == "eds" => {

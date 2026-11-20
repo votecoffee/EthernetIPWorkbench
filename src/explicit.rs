@@ -24,10 +24,10 @@ mod report;
 mod route;
 pub use batch::{
     SavedReadBatch, SavedReadMode, SavedReadOutcome, SavedReadReport, SavedReadResult,
-    run_saved_reads, run_saved_reads_with_mode,
+    run_saved_reads, run_saved_reads_with_class3_size, run_saved_reads_with_mode,
 };
 pub use connected::{
-    ConnectedPacketBatch, ConnectedReadBatch, run_saved_reads_connected,
+    Class3Size, ConnectedPacketBatch, ConnectedReadBatch, run_saved_reads_connected,
     run_saved_reads_connected_packet,
 };
 pub use multiple::run_saved_reads_packet;

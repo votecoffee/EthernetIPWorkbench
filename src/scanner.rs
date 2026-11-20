@@ -542,7 +542,7 @@ fn params(
         size: size + 2 + 4 * u16::from(header),
     }
 }
-fn encode_large_open(open: &ForwardOpenRequest) -> Vec<u8> {
+pub(crate) fn encode_large_open(open: &ForwardOpenRequest) -> Vec<u8> {
     // The two network parameter words are the only fields that change width.
     // Preserve the full sizes when widening; standard encoding masks to 9 bits.
     fn large(params: NetworkConnectionParameters) -> [u8; 4] {
