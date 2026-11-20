@@ -32,6 +32,7 @@ The C# examples demonstrate HTTP and shared-memory latest values, retained HTTP 
 
 - Suggest input mappings from explicit, fixed-width layouts in EDS connection profiles. The GUI can add reviewed suggestions without changing CSV selection. The CLI reports the raw mappings for reuse in saved settings.
 - Suggest output mappings from declared O→T layouts in Exclusive Owner profiles. The GUI adds reviewed field definitions for typed staging and the CLI reports the same definitions offline.
+- Suggest packed Boolean mappings from explicit one-bit BOOL members in EDS input and output layouts.
 - Resolve omitted cyclic payload sizes from complete EDS assembly member lists. The GUI and CLI identify the result as a layout width for bench review.
 
 - [Verify a second documented adapter family](https://github.com/votecoffee/EthernetIPWorkbench/issues/7). The [OpENer software adapter check](VERIFICATION.md#opener-compatibility) covers the upstream EDS, identity, assembly decoding, and sustained unicast input-only capture. Physical device acceptance remains separate.

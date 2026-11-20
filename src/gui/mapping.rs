@@ -307,9 +307,13 @@ fn choose_suggestions(
         .max_height(160.0)
         .show(ui, |ui| {
             for field in &candidates {
+                let bit = field
+                    .selection
+                    .bit
+                    .map_or_else(String::new, |bit| format!(", bit {bit}"));
                 ui.label(format!(
-                    "{} · byte {} · {:?}",
-                    field.name, field.selection.offset, field.selection.kind
+                    "{} · byte {}{bit} · {:?}",
+                    field.name, field.selection.offset, field.selection.kind,
                 ));
             }
         });

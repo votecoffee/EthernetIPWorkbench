@@ -221,11 +221,16 @@ mod tests {
         let source = include_str!("../../samples/loopback.eds")
             .replace(
                 "[Assembly]",
-                "Param2 = 0,,,0,0xC3,2,\"Command value\";\nParam3 = 0,,,0,0xC6,1,\"Mode\";\n[Assembly]",
+                concat!(
+                    "Param2 = 0,,,0,0xC3,2,\"Command value\";\n",
+                    "Param3 = 0,,,0,0xC6,1,\"Mode\";\n",
+                    "Param4 = 0,,,0,0xC1,,\"Enable\";\n",
+                    "[Assembly]"
+                ),
             )
             .replace(
                 "[Connection Manager]",
-                "Assem102 = \"Outputs\", \"\", ,0x0001,,,8,Param3,8,,,Param2;\n[Connection Manager]",
+                "Assem102 = \"Outputs\", \"\", ,0x0001,,,8,Param3,3,,1,Param4,4,,,Param2;\n[Connection Manager]",
             )
             .replace("0x02010002", "0x04010002")
             .replace("0x22440305", "0x22440405")
@@ -258,17 +263,28 @@ mod tests {
         );
         device.settings.output_instance = 102;
         click(&mut device, &ctx, size, "EDS output mapping suggestions");
-        click(&mut device, &ctx, size, "Add to named outputs (1)");
+        let labels = draw(&mut device, &ctx, size);
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text == "Enable · byte 1, bit 3 · Bool")
+        );
+        click(&mut device, &ctx, size, "Add to named outputs (2)");
 
-        assert_eq!(device.settings.output_fields.len(), 2);
+        assert_eq!(device.settings.output_fields.len(), 3);
         assert_eq!(device.settings.output_fields[0], existing);
-        assert_eq!(device.settings.output_fields[1].name, "Command_value");
+        assert_eq!(device.settings.output_fields[1].name, "Enable");
+        assert_eq!(device.settings.output_fields[2].name, "Command_value");
         assert_eq!(device.output_entries, ["17"]);
         assert_eq!(device.settings.output_hex, "11 22 33 44");
         assert_eq!(device.settings.config_hex, "AA BB");
         assert!(!device.writes_confirmed && !device.bench_confirmed);
         assert!(device.connection.is_none());
-        device.settings.stage_output(1, "-300").unwrap();
+        device.settings.stage_output(1, "true").unwrap();
+        assert_eq!(device.settings.output().unwrap(), [0x11, 0x2a, 0x33, 0x44]);
+        device.settings.stage_output(1, "false").unwrap();
+        assert_eq!(device.settings.output().unwrap(), [0x11, 0x22, 0x33, 0x44]);
+        device.settings.stage_output(2, "-300").unwrap();
         assert_eq!(device.settings.output().unwrap(), [0x11, 0x22, 0xd4, 0xfe]);
     }
 }

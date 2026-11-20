@@ -426,6 +426,12 @@ The CLI imported 32 uniquely named U8 fields from the upstream OpENer owner prof
 
 A headless GUI test clicked through the mapping workflow. It covered an overridden assembly instance, an existing name, a pending typed entry, staged output and configuration bytes, and the authorization flags. An explicit subsequent staging operation encoded `-300` into the two mapped bytes. The localhost owner regression also verified the 2, 12, 5 and 2-byte output length transitions with Run/Idle, zero invalid O→T packets, and confirmed Forward_Close.
 
+## Packed Boolean EDS members
+
+The importer tests resolved explicit BOOL members at bits 0 and 7 of byte 0 and bit 0 of byte 1. They also checked an aligned byte BOOL, adjacent numeric data, and unsupported member declarations. The headless GUI displayed byte 1, bit 3 for an imported output and verified that setting and clearing it in the staged buffer preserved the other bits in that byte.
+
+The CLI imported a synthetic EDS input as byte 0, bit 3 and decoded both states from test payloads. A two-second, 8 ms localhost capture wrote 250 rows. All 127 false and 123 true values matched the fixture's payload at their packet sequence. The CSV buffer reported zero overruns and Forward_Close was confirmed.
+
 ## Read-only software integration
 
 The 8 ms Windows localhost check exercised the HTTP API, MQTT publisher and named shared memory simultaneously. HTTP and the memory mapping stayed open across scanner reconnect. An independent broker fixture dropped its first TCP connection and received fresh MQTT samples after reconnect. HTTP continued while a client held the shared-memory mutex. Shared memory continued while an HTTP client stalled mid-request. The CLI saved 468 CSV rows with zero capture or integration queue overruns. The headless GUI backend test also fetched a live API sample during capture.

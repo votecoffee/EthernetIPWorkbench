@@ -3,6 +3,8 @@ use crate::model::{CAPTURE_METADATA, CaptureField, Kind, Selection};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
+const CIP_BOOL: u32 = 0xc1;
+
 /// Raw mapping candidates from the assembly format named by the connection.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -103,10 +105,19 @@ fn parameter_field<'a>(
     parameter: &impl Fn(&str) -> Option<&'a Vec<String>>,
 ) -> Option<(String, Selection)> {
     let definition = parameter_definition(reference, parameter)?;
-    let (kind, bytes) = parameter_type(definition)?;
-    if offset % 8 != 0 || bits != bytes * 8 {
-        return None;
-    }
+    let byte_size = definition.get(5)?;
+    let (kind, bit) = if bits == 1
+        && number(definition.get(4)?) == Some(CIP_BOOL)
+        && (byte_size.is_empty() || number(byte_size) == Some(1))
+    {
+        (Kind::Bool, Some((offset % 8) as u8))
+    } else {
+        let (kind, bytes) = parameter_type(definition)?;
+        if offset % 8 != 0 || bits != bytes * 8 {
+            return None;
+        }
+        (kind, None)
+    };
     let name = definition.get(6)?.trim();
     let name = if name.is_empty() { reference } else { name };
     Some((
@@ -114,6 +125,7 @@ fn parameter_field<'a>(
         Selection {
             offset: (offset / 8) as usize,
             kind,
+            bit,
             ..Selection::default()
         },
     ))
@@ -133,6 +145,7 @@ fn parameter_definition<'a>(
 
 fn parameter_type(definition: &[String]) -> Option<(Kind, u32)> {
     let (kind, bytes) = match number(definition.get(4)?)? {
+        CIP_BOOL => (Kind::Bool, 1),
         0xc2 => (Kind::I8, 1),
         0xc3 => (Kind::I16, 2),
         0xc4 => (Kind::I32, 4),
@@ -168,6 +181,69 @@ fn mapping_name(name: &str, used: &mut HashSet<String>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Value;
+
+    #[test]
+    fn maps_boolean_members_across_byte_boundaries() {
+        let source = include_str!("../../samples/loopback.eds")
+            .replace(
+                "[Assembly]",
+                concat!(
+                    "Param2 = 0,,,0,0xC1,,\"Ready\";\n",
+                    "Param3 = 0,,,0,0xC1,1,\"Fault\";\n",
+                    "Param4 = 0,,,0,0xC1,2,\"Invalid BOOL\";\n",
+                    "Param5 = 0,,,0,0xC6,1,\"Counter\";\n",
+                    "[Assembly]"
+                ),
+            )
+            .replace(
+                "4, 0x0000,,,32,;",
+                ", 0x0000,,,1,Param2,6,,1,Param3,1,Param2,1,Param4,1,Param5,5,,,Param3,8,Param5;",
+            );
+        let profiles = super::super::parse(&source).unwrap();
+        assert_eq!(profiles[0].settings.input_size, 4);
+        let layout = profiles[0].input_layout.as_ref().unwrap();
+        assert_eq!(layout.skipped_members, 2);
+        let fields: Vec<_> = layout
+            .fields
+            .iter()
+            .map(|field| {
+                let selection = field.selection;
+                (
+                    field.name.as_str(),
+                    selection.offset,
+                    selection.bit,
+                    selection.kind,
+                )
+            })
+            .collect();
+        assert_eq!(
+            fields,
+            [
+                ("Ready", 0, Some(0), Kind::Bool),
+                ("Fault", 0, Some(7), Kind::Bool),
+                ("Ready_2", 1, Some(0), Kind::Bool),
+                ("Fault_2", 2, None, Kind::Bool),
+                ("Counter", 3, None, Kind::U8),
+            ]
+        );
+        let bytes = [0x80, 0x01, 0x00, 42];
+        let values: Vec<_> = layout
+            .fields
+            .iter()
+            .map(|field| field.selection.decode(&bytes))
+            .collect();
+        assert_eq!(
+            values,
+            [
+                Some(Value::Bool(false)),
+                Some(Value::Bool(true)),
+                Some(Value::Bool(true)),
+                Some(Value::Bool(false)),
+                Some(Value::Unsigned(42)),
+            ]
+        );
+    }
 
     #[test]
     fn import_uses_declared_offsets_and_types_only() {

@@ -156,8 +156,9 @@ def main():
     typed_eds = root / "typed-input.eds"
     typed_eds.write_text(
         PROFILE.with_suffix(".eds").read_text(encoding="utf-8")
-        .replace("[Assembly]", 'Param2 = 0,,,0,0xC3,2,"Net weight";\n[Assembly]')
-        .replace("4, 0x0000,,,32,;", ", 0x0000,,,16,,,Param2;"),
+        .replace("[Assembly]", 'Param2 = 0,,,0,0xC3,2,"Net weight";\n'
+                              'Param3 = 0,,,0,0xC1,,"Ready";\n[Assembly]')
+        .replace("4, 0x0000,,,32,;", ", 0x0000,,,3,,1,Param3,12,,,Param2;"),
         encoding="utf-8",
     )
     imported = subprocess.run([exe, "eds", typed_eds], capture_output=True, text=True,
@@ -168,9 +169,10 @@ def main():
     assert typed_profile["assembly_definition_sizes"] == ["T->O size"]
     layout = typed_profile["input_layout"]
     assert layout["format"] == "Assem101" and layout["skipped_members"] == 0
-    assert layout["fields"] == [{
-        "name": "Net_weight", "selection": {"offset": 2, "kind": "I16", "big_endian": False},
-    }]
+    assert layout["fields"] == [
+        {"name": "Ready", "selection": {"offset": 0, "kind": "Bool", "bit": 3, "big_endian": False}},
+        {"name": "Net_weight", "selection": {"offset": 2, "kind": "I16", "big_endian": False}},
+    ]
     preflight = subprocess.run([exe, "validate", PROFILE, typed_eds, typed_profile["id"]],
                                capture_output=True, text=True, timeout=5, creationflags=NO_WINDOW,
                                check=True)
@@ -179,10 +181,24 @@ def main():
     size = next(row for row in verified["origins"] if row["field"] == "T->O size")
     assert size["state"] == "assembly_definition" and size["eds_size_is_layout"]
 
+    mapped = root / "typed-input.toml"
+    source = PROFILE.read_text(encoding="utf-8")
+    for field in layout["fields"]:
+        source += f'\n[[input_fields]]\nname = "{field["name"]}"\n[input_fields.selection]\n'
+        for key in ("kind", "offset", "bit"):
+            if key in field["selection"]:
+                source += f'{key} = {json.dumps(field["selection"][key])}\n'
+    mapped.write_text(source.replace("= 1000", "= 8000"), encoding="utf-8")
+    for payload, expected in [("08 00 D4 FE", "true"), ("F7 FF D4 FE", "false")]:
+        preview = subprocess.run([exe, "decode-input", mapped, payload], capture_output=True, text=True,
+                                 timeout=5, creationflags=NO_WINDOW, check=True)
+        assert [field["value"] for field in tomllib.loads(preview.stdout)["fields"]] == [expected, "-300"]
+
     owner_eds = root / "typed-owner.eds"
     owner_eds.write_text(
         typed_eds.read_text(encoding="utf-8")
-        .replace("[Connection Manager]", 'Assem102 = "Outputs", "", ,0x0001,,,16,,,Param2;\n[Connection Manager]')
+        .replace("[Connection Manager]", 'Assem102 = "Outputs", "", ,0x0001,,,3,,1,Param3,12,,,Param2;\n'
+                                         '[Connection Manager]')
         .replace("0x02010002", "0x04010002")
         .replace("0x22440305", "0x22440405")
         .replace("Param1,0,,", "Param1,,Assem102,")
@@ -203,6 +219,19 @@ def main():
         result, peer = with_adapter(root, case, [exe, *command], mode)
         assert result.returncode == 0, (result.stdout, result.stderr)
         return result.stdout, peer
+
+    capture_dir = root / "packed-bool-csv"
+    receipt, peer = run("packed-bool", "capture", mapped, capture_dir, "2", "0:12:1", mode="normal")
+    report = tomllib.loads(receipt)
+    assert report["forward_close"] == {"outcome": "confirmed"} and peer["forward_close"]
+    part, = capture_dir.glob("*.csv")
+    with part.open(newline="", encoding="utf-8") as stream:
+        rows = list(csv.DictReader(stream))
+    assert len(rows) == report["written"] and report["buffer_overruns"] == 0
+    assert {row["Ready"] for row in rows} == {"true", "false"}
+    for row in rows:
+        fixture_value = peer["value_base"] + int(row["packet_sequence"]) // 16
+        assert row["Ready"] == ("true" if fixture_value & 8 else "false")
 
     identity, _ = run("identity-fallback", "identity", LOCAL, LOCAL)
     assert tomllib.loads(identity)["identity"]["serial"] == 0x12345678
