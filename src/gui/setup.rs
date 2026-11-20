@@ -222,7 +222,7 @@ impl Device {
                 }
                 ui.checkbox(&mut s.large_forward_open, "Use Large Forward_Open");
                 let mut keyed = s.electronic_key.is_some();
-                if ui.checkbox(&mut keyed, "Use electronic key (exact mode)").changed() {
+                if ui.checkbox(&mut keyed, "Use electronic key").changed() {
                     s.electronic_key = keyed.then(|| {
                         self.status.identity.as_ref().map_or_else(model::ElectronicKey::default, |id| model::ElectronicKey {
                             vendor: id.vendor,
@@ -230,10 +230,13 @@ impl Device {
                             product: id.code,
                             major: id.major,
                             minor: id.minor,
+                            compatible: false,
                         })
                     });
                 }
                 if let Some(key) = s.electronic_key.as_mut() {
+                    ui.checkbox(&mut key.compatible, "Compatible revision matching")
+                        .on_hover_text("The adapter decides whether it supports the requested revision.");
                     egui::Grid::new("electronic-key").num_columns(2).show(ui, |ui| {
                         number(ui, "Vendor", &mut key.vendor);
                         number(ui, "Device type", &mut key.device_type);
@@ -374,10 +377,8 @@ impl Device {
             ui.label("Large Forward_Open");
         }
         if let Some(key) = self.settings.electronic_key {
-            ui.label(format!(
-                "Electronic key · {}:{}:{} · rev {}.{} (exact mode)",
-                key.vendor, key.device_type, key.product, key.major, key.minor
-            ));
+            let exact = if key.compatible { "" } else { " (exact mode)" };
+            ui.label(format!("Electronic key · {key}{exact}"));
         }
         if !self.settings.input_only {
             if let Some(min) = self.settings.output_min_size {

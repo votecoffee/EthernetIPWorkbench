@@ -164,7 +164,15 @@ For TOML set `listen_only = true`, `input_only = true`, and `input_multicast = t
 
 Start the controlling multicast connection first. CIP general status `0x01` with extended status `0x0119` means the target found no controlling connection for the input assembly. Use normal GUI logging or CLI `capture`. Listen-only uses manual reconnect. CLI `qualify` changes the requested rates and requires a controlling input-only profile. If the controller or another process owns the local multicast receive address and port, use a separate supported host or NIC for the listener.
 
-Configure the optional `[electronic_key]` table with decimal `vendor`, `device_type`, `product`, `major` and `minor` fields. The EDS importer handles a supported leading format 4 electronic key, UTF-16 with a BOM, and 16-bit Assembly class segments. Review the imported Large Forward_Open setting when the declared size exceeds the standard limit. Device payload and supported services still need checking against the adapter.
+### Configure an electronic key
+
+In **Device → Configuration and advanced timing**, enable **Use electronic key** and enter the documented identity fields and revision. Exact mode is the default. Choose **Compatible revision matching** when the adapter supports the requested revision in that mode. The Workbench sends the mode in the format 4 key for standard and Large Forward_Open. The adapter decides whether to accept it. The live Identity Object check and serial pin still apply under their existing rules. [OpENer key encoding](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipelectronickey.c#L81) · [OpENer key matching](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipconnectionmanager.c#L1263)
+
+Configure the optional `[electronic_key]` TOML table with decimal `vendor`, `device_type`, `product`, `major` and `minor` fields. Set `compatible = true` for compatible mode. Use a nonzero vendor, device type, product code and minor revision in compatible mode, with major revision from 1 to 127. Enter the major revision itself. The encoder sets the compatibility bit. [ODVA compatible key test notes](https://www.odva.org/wp-content/uploads/2023/10/EtherNetIPReleaseNotes.pdf)
+
+The EDS importer preserves the mode from a leading format 4 electronic key. It also handles UTF-16 with a BOM and 16-bit Assembly class segments. Review the imported Large Forward_Open setting when the declared size exceeds the standard limit.
+
+### Review device identity
 
 In the GUI, import the EDS, choose a connection profile, review provenance and edit overrides. Use Manual settings when entering the connection directly. Read identity and verify vendor, device type, product code and serial before connecting. A successful identity read pins the next manual connection to that unit. Changing the addresses or cyclic route, or loading a profile, clears the pin.
 

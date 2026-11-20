@@ -221,12 +221,10 @@ fn assembly_path(mut rest: &[u8]) -> Option<(Option<ElectronicKey>, Option<u16>,
             vendor: u16::from_le_bytes([segment[2], segment[3]]),
             device_type: u16::from_le_bytes([segment[4], segment[5]]),
             product: u16::from_le_bytes([segment[6], segment[7]]),
-            major: segment[8],
+            major: segment[8] & 0x7f,
             minor: segment[9],
+            compatible: segment[8] & 0x80 != 0,
         };
-        if key.vendor == 0 || !(1..=127).contains(&key.major) {
-            return None;
-        }
         rest = path;
         Some(key)
     } else {
@@ -503,13 +501,10 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
             {
                 s.electronic_key = key;
                 if let Some(key) = key {
-                    origin.insert(
-                        "Electronic key".into(),
-                        format!(
-                            "{}:{}:{} {}.{}",
-                            key.vendor, key.device_type, key.product, key.major, key.minor
-                        ),
-                    );
+                    origin.insert("Electronic key".into(), key.to_string());
+                    if let Err(error) = key.validate() {
+                        issues.push(error.into());
+                    }
                 }
                 s.config_instance = config;
                 s.output_instance = output;

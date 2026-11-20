@@ -604,3 +604,9 @@ The localhost fixture counted one registration for a batch containing direct and
 The headless Explore test activated **Read all saved** against the localhost fixture. It verified a direct reply, a router rejection, a later routed reply, an exchange failure and an unattempted request in the displayed order. Expanding the routed reply showed its route, decoded serial and raw bytes. The fixture counted one registration and four attempted requests. The CLI regression passed against the same shared batch runner.
 
 The same headless test checked **Save JSON** with an empty directory setting, then saved the partial batch twice into a new directory. Two separate timestamped files contained identical JSON, including the router status words, the routed serial reply and the unattempted request. The adapter still counted one registration and four attempted requests. The CLI regression passed with the same shared report formatter.
+
+## Compatible format 4 electronic keying
+
+The Windows localhost EDS fixture imported a compatible key from a UTF-16 file and retained its mode in preflight. It rejected a compatible TOML key with minor revision zero. A headless GUI test verified that changing the mode clears the previous write confirmation and that connection review displays the selected mode.
+
+The pinned OpENer 2.3 adapter accepted a 2.2 compatible key using standard Forward_Open. The three-second input-only capture requested and negotiated 30 ms in both directions, wrote 101 rows with zero sequence gaps or buffer overruns, and confirmed Forward_Close. The same 2.2 revision in exact mode returned CIP general status `0x01` and extended status `0x0116` before cyclic I/O. The existing exact-key Large Forward_Open and routed fixture checks also passed. [OpENer key handling](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipconnectionmanager.c#L1263)

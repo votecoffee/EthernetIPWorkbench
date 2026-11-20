@@ -106,7 +106,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 
 The CLI check defaults to 8 ms. --rpi-us 1000 exercises the same cases at 1 ms. A timing failure must retain its receipt and unchanged watchdog configuration for diagnosis. Failed trials remain evidence alongside any later success.
 
-Add `--explore --seconds 3` to the OpENer check for a short interoperability run covering discovery, a direct CIP read and keyed Large Forward_Open after the standard connection.
+Add `--explore --seconds 3` to the OpENer check for a short interoperability run covering discovery, a direct CIP read, keyed Large Forward_Open and a comparison of exact and compatible keys for an older minor revision.
 Use `--multicast --seconds 3` to also verify OpENer's adapter-selected multicast group and CSV capture.
 Use `--listen-only --seconds 3` to check rejection without a controller and two sequential listener captures on the same producer. This test adapts the pinned Windows loopback build so the fixture keeps its shared UDP socket across connection opens and closes and handles `WSAEWOULDBLOCK` as a retryable receive result.
 

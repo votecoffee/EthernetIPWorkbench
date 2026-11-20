@@ -141,6 +141,35 @@ mod tests {
     }
 
     #[test]
+    fn edits_and_reviews_compatible_electronic_keying() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = Device::new(1, None);
+        device.settings.electronic_key = Some(model::ElectronicKey {
+            vendor: 1,
+            device_type: 12,
+            product: 65001,
+            major: 2,
+            minor: 2,
+            compatible: false,
+        });
+        device.writes_confirmed = true;
+        click(&mut device, &ctx, size, "Configuration and advanced timing");
+        click(&mut device, &ctx, size, "Compatible revision matching");
+        assert!(device.settings.electronic_key.unwrap().compatible);
+        assert!(!device.writes_confirmed);
+        device.connect_dialog = true;
+        draw(&mut device, &ctx, size);
+        assert!(
+            draw(&mut device, &ctx, size)
+                .iter()
+                .any(|(text, _)| { text == "Electronic key · 1:12:65001 2.2 (compatible mode)" })
+        );
+        assert!(device.connection.is_none());
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode saved-reads on localhost"]
     fn runs_and_displays_saved_reads_from_explore_headlessly() {
         let ctx = egui::Context::default();

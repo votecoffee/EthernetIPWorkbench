@@ -203,6 +203,36 @@ def check_explore(cli, adapter, root, identity, seconds):
     check_capture(report, seconds)
     print("OpENer discovery, explicit product-name read and keyed Large Forward_Open passed.")
 
+    assert key["minor"] > 1
+    key["minor"] -= 1
+    older_key = PROFILE.read_text(encoding="utf-8") + "\n[electronic_key]\n" + "".join(
+        f"{field} = {value}\n" for field, value in key.items())
+    compatible = root / "compatible-older"
+    compatible.mkdir()
+    profile = compatible / "profile.toml"
+    profile.write_text(older_key + "compatible = true\n", encoding="utf-8")
+    with run_adapter(adapter, compatible):
+        report = call(cli, compatible, "result", "capture", profile, compatible / "capture",
+                      str(seconds), expected, timeout=seconds + 15)
+    assert report["identity"] == identity
+    check_capture(report, seconds)
+
+    exact = root / "exact-older"
+    exact.mkdir()
+    profile = exact / "profile.toml"
+    profile.write_text(older_key, encoding="utf-8")
+    with run_adapter(adapter, exact):
+        rejected = subprocess.run([cli, "capture", profile, exact / "capture", str(seconds), expected],
+                                  capture_output=True, timeout=seconds + 15,
+                                  creationflags=subprocess.CREATE_NO_WINDOW)
+    (exact / "result.toml").write_bytes(rejected.stdout)
+    document = tomllib.loads(rejected.stdout.decode("utf-8"))
+    assert rejected.returncode == 1 and document["identity"] == identity
+    assert document["cip_error"] == "CIP general 0x01, extended [0x0116]"
+    assert document["written"] == document["sent"] == 0 and "cyclic_io" not in document
+    print(f"OpENer {key['major']}.{identity['minor']} accepted compatible {key['major']}.{key['minor']} "
+          "and rejected the same revision in exact mode.")
+
 
 def check_multicast(cli, adapter, root, identity, seconds):
     root.mkdir()

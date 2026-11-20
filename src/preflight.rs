@@ -213,15 +213,7 @@ pub fn inspect(
             config(imported.config_instance),
         );
         let key = |key: Option<crate::model::ElectronicKey>| {
-            key.map_or_else(
-                || "None".into(),
-                |key| {
-                    format!(
-                        "{}:{}:{} {}.{}",
-                        key.vendor, key.device_type, key.product, key.major, key.minor
-                    )
-                },
-            )
+            key.map_or_else(|| "None".into(), |key| key.to_string())
         };
         if settings.electronic_key.is_some() || imported.electronic_key.is_some() {
             compare(

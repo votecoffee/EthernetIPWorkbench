@@ -517,7 +517,7 @@ fn path(cfg: &Settings, route: Option<&Route>) -> Vec<u8> {
         path.extend(key.vendor.to_le_bytes());
         path.extend(key.device_type.to_le_bytes());
         path.extend(key.product.to_le_bytes());
-        path.extend([key.major, key.minor]);
+        path.extend([key.wire_major(), key.minor]);
     }
     path.extend([0x20, 4]);
     if let Some(instance) = cfg.config_instance {

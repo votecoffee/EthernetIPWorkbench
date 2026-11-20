@@ -158,6 +158,31 @@ def main():
     assert eds_profile["fields"]["Large Forward_Open"] == "Required by imported connection size"
     assert "input_layout" not in eds_profile
 
+    compatible_eds = root / "compatible-key.eds"
+    compatible_eds.write_text(eds.read_text(encoding="utf-16").replace(
+        "34 04 01 00 0C 00 01 00 01 00", "34 04 01 00 0C 00 01 00 81 01"), encoding="utf-16")
+    imported = subprocess.run([exe, "eds", compatible_eds], capture_output=True, text=True,
+                              timeout=5, creationflags=NO_WINDOW, check=True)
+    [compatible] = tomllib.loads(imported.stdout)["profiles"]
+    assert compatible["supported"] and compatible["fields"]["Electronic key"] == "1:12:1 1.1 (compatible mode)"
+    compatible_profile = root / "compatible-key.toml"
+    profile_text = PROFILE.read_text(encoding="utf-8") + (
+        '\n[electronic_key]\nvendor = 1\ndevice_type = 12\nproduct = 1\nmajor = 1\nminor = 1\ncompatible = true\n')
+    compatible_profile.write_text(profile_text, encoding="utf-8")
+    result = subprocess.run([exe, "validate", compatible_profile, compatible_eds, "Connection1"],
+                            capture_output=True, text=True, timeout=5, creationflags=NO_WINDOW, check=True)
+    checked = tomllib.loads(result.stdout)
+    assert checked["electronic_key"] == {
+        "vendor": 1, "device_type": 12, "product": 1, "major": 1, "minor": 1, "compatible": True,
+    }
+    assert next(item for item in checked["origins"] if item["field"] == "Electronic key")["state"] == "eds"
+    invalid_key = root / "invalid-compatible-key.toml"
+    invalid_key.write_text(profile_text.replace("minor = 1", "minor = 0"), encoding="utf-8")
+    result = subprocess.run([exe, "validate", invalid_key], capture_output=True, text=True,
+                            timeout=5, creationflags=NO_WINDOW)
+    assert result.returncode == 1
+    assert "nonzero device type, product code and minor revision" in tomllib.loads(result.stdout)["connection_errors"][0]
+
     typed_eds = root / "typed-input.eds"
     typed_eds.write_text(
         PROFILE.with_suffix(".eds").read_text(encoding="utf-8")

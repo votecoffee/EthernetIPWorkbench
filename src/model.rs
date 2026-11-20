@@ -112,7 +112,7 @@ impl ConnectionRole {
     }
 }
 
-/// CIP electronic key format 4, with an exact major and minor revision.
+/// CIP electronic key format 4. The target evaluates revision compatibility.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ElectronicKey {
@@ -121,6 +121,40 @@ pub struct ElectronicKey {
     pub product: u16,
     pub major: u8,
     pub minor: u8,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub compatible: bool,
+}
+
+impl ElectronicKey {
+    pub(crate) fn validate(self) -> Result<(), &'static str> {
+        if self.vendor == 0 || !(1..=127).contains(&self.major) {
+            return Err("Electronic key requires a nonzero vendor and major revision 1–127");
+        }
+        if self.compatible && (self.device_type == 0 || self.product == 0 || self.minor == 0) {
+            return Err(
+                "Compatible electronic key requires a nonzero device type, product code and minor revision",
+            );
+        }
+        Ok(())
+    }
+
+    pub(crate) fn wire_major(self) -> u8 {
+        self.major | (u8::from(self.compatible) << 7)
+    }
+}
+
+impl std::fmt::Display for ElectronicKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}:{}:{} {}.{}",
+            self.vendor, self.device_type, self.product, self.major, self.minor
+        )?;
+        if self.compatible {
+            f.write_str(" (compatible mode)")?;
+        }
+        Ok(())
+    }
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -299,12 +333,8 @@ impl Settings {
                 "{open} supports up to {limit} assembly and Run/Idle bytes per direction and requires a nonempty input assembly"
             ));
         }
-        if let Some(key) = self.electronic_key
-            && (key.vendor == 0 || !(1..=127).contains(&key.major))
-        {
-            return Err(
-                "Exact electronic key requires a nonzero vendor and major revision 1–127".into(),
-            );
+        if let Some(key) = self.electronic_key {
+            key.validate()?;
         }
         if self.input_priority > 3 || self.output_priority > 3 {
             return Err("Connection priorities must be 0–3".into());
