@@ -296,7 +296,7 @@ Use **Device → CIP routing** to set the documented port/link path from the fir
 
 For routed input-only, use zero output and configuration bytes and disable O→T Run/Idle. Select unicast or multicast T→O according to the documented bridge and device profile. The first bridge receives the scanner's unicast heartbeat and sources the inputs on the selected NIC's segment. For multicast, verify the returned group and receive port in the run report. For routed Exclusive Owner, use unicast. Use **Read target identity** in connection review, verify the target serial, then authorize the displayed output and configuration bytes. Forward_Open can apply the configuration and start sending the staged output buffer. Automatic reconnect is available for verified input-only profiles.
 
-The CLI can read the routed target with `eipmaster-cli identity <bridge-ipv4> <local-ipv4> --route 1/3` and capture input-only using that identity. The scanner rereads the target Identity Object before each Forward_Open and checks the reviewed serial on a routed owner connection. Forward_Open and Forward_Close carry the same routed assembly path. Preflight and capture reports show `io_route`. In the completed run report's `cyclic_io`, check that the output destination and first input source identify the scanner-side bridge. The listen-only profile is available for a direct connection.
+The CLI can read the routed target with `eipmaster-cli identity <bridge-ipv4> <local-ipv4> --route 1/3` and capture input-only using that identity. The scanner rereads the target Identity Object before each Forward_Open and checks the reviewed serial on a routed owner connection. Forward_Open and Forward_Close carry the same routed assembly path. Preflight and capture reports show `io_route`. In the completed run report's `cyclic_io`, check that the output destination and first input source identify the scanner-side bridge.
 
 ### Configure variable-size input
 
@@ -328,7 +328,9 @@ Start from the adapter's listen-only EDS profile or select **Connection role →
 
 For TOML set `listen_only = true`, `input_only = true`, and `input_multicast = true`. Use zero output bytes, zero configuration bytes and O→T Run/Idle disabled. Retain the documented configuration assembly instance in the path if the adapter requires one. Apply the RPIs and input layout required by the controlling connection. The listener sends an empty heartbeat and records the adapter's existing multicast stream without requesting output ownership.
 
-Start the controlling multicast connection first. CIP general status `0x01` with extended status `0x0119` means the target found no controlling connection for the input assembly. Use normal GUI logging or CLI `capture`. Listen-only uses manual reconnect. CLI `qualify` changes the requested rates and requires a controlling input-only profile. If the controller or another process owns the local multicast receive address and port, use a separate supported host or NIC for the listener.
+Start the controlling multicast connection first. For a routed listener, enter the first bridge's IPv4 address and the target's documented `io_route`. The first bridge must carry the unicast heartbeat and source the multicast traffic on the scanner's segment. Check that the returned group, port and T→O connection ID are those of the existing producer.
+
+CIP general status `0x01` with extended status `0x0119` means the target found no controlling connection for the input assembly. Use normal GUI logging or CLI `capture`. Listen-only uses manual reconnect. CLI `qualify` changes the requested rates and requires a controlling input-only profile. If the controller or another process owns the local multicast receive address and port, use a separate supported host or NIC for the listener.
 
 ### Configure an electronic key
 

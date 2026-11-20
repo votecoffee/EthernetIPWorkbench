@@ -315,8 +315,10 @@ impl Settings {
         }
         let route = self.parsed_io_route()?;
         if route.is_some() {
-            if self.listen_only || (self.input_multicast && !self.input_only) {
-                return Err("Routed multicast requires a controlling input-only profile".into());
+            if self.input_multicast && !self.input_only {
+                return Err(
+                    "Routed multicast requires an input-only or listen-only profile".into(),
+                );
             }
             if self.input_only && !self.input_only_without_writes() {
                 return Err("Routed input-only requires zero output and configuration bytes and O->T Run/Idle disabled".into());

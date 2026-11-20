@@ -62,7 +62,7 @@ def adapt_shared_io_for_windows_fixture(ports):
     replace_once(connection, old, b"  /* The Windows loopback fixture owns the shared UDP socket. */")
 
 
-def build_adapter(checkout, root, *, shared_io_fixture=False):
+def build_adapter(checkout, root, *, shared_io_fixture=False, tcp_port=44818):
     archive = subprocess.check_output(
         ["git", "-C", checkout, "archive", "--format=zip", UPSTREAM],
         creationflags=subprocess.CREATE_NO_WINDOW,
@@ -79,7 +79,16 @@ def build_adapter(checkout, root, *, shared_io_fixture=False):
     wildcard = b".sin_addr.s_addr = htonl(INADDR_ANY)"
     if data.count(wildcard) != 2:
         raise RuntimeError("Review OpENer socket bindings before running the adapter")
-    handler.write_bytes(data.replace(wildcard, b".sin_addr.s_addr = g_network_status.ip_address"))
+    data = data.replace(wildcard, b".sin_addr.s_addr = g_network_status.ip_address")
+    if tcp_port != 44818:
+        # The routed fixture listens at 44818 and relays to this private TCP port.
+        tcp = b"  /* bind the new socket to port 0xAF12 (CIP) */"
+        udp = b"  if( ( bind( g_network_status.udp_unicast_listener,"
+        assert data.count(tcp) == data.count(udp) == 1
+        newline = b"\r\n" if b"\r\n" in data else b"\n"
+        data = data.replace(tcp, f"  my_address.sin_port = htons({tcp_port});".encode("ascii") + newline + tcp)
+        data = data.replace(udp, b"  my_address.sin_port = htons(kOpenerEthernetPort);" + newline + udp)
+    handler.write_bytes(data)
     if shared_io_fixture:
         adapt_shared_io_for_windows_fixture(ports)
 
@@ -100,8 +109,8 @@ def build_adapter(checkout, root, *, shared_io_fixture=False):
 
 
 @contextmanager
-def run_adapter(exe, root):
-    for kind, port in [(socket.SOCK_STREAM, 44818), (socket.SOCK_DGRAM, 44818), (socket.SOCK_DGRAM, 2222)]:
+def run_adapter(exe, root, *, tcp_port=44818):
+    for kind, port in [(socket.SOCK_STREAM, tcp_port), (socket.SOCK_DGRAM, 44818), (socket.SOCK_DGRAM, 2222)]:
         with socket.socket(socket.AF_INET, kind) as check:
             check.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
             check.bind((ADAPTER, port))
@@ -171,6 +180,7 @@ def check_capture(report, seconds):
           f"{report['buffer_overruns']} overruns")
     print(f"Receive spacing (µs) {receive}")
     print(f"Send spacing (µs) {report['send_spacing']}")
+    return samples
 
 
 def check_explore(cli, adapter, root, identity, seconds):
@@ -365,11 +375,11 @@ def check_connected_reads(cli, adapter, root, identity):
 
 
 @contextmanager
-def controlling_heartbeat():
+def controlling_heartbeat(route=b""):
     """Independent loopback originator. Its input stream is observed by the listener."""
     local, config, out, inp = "127.0.0.1", 151, 152, 100
     serial, vendor, originator = 0x45CE, 0, 0x6D6B7212
-    path = bytes((0x20, 4, 0x24, config, 0x2C, out, 0x2C, inp))
+    path = route + bytes((0x20, 4, 0x24, config, 0x2C, out, 0x2C, inp))
     timeout = b"\x0a\x0a"
     header = struct.Struct("<HHII8sI")
     with socket.socket() as tcp, socket.socket(type=socket.SOCK_DGRAM) as udp:
