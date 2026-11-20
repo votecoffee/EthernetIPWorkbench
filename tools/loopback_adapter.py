@@ -205,6 +205,35 @@ def routed_reply(cip, attrs, report):
     return bytes.fromhex("8E 00 00 00") + attrs[6]
 
 
+def multiple_service_reply(cip, attrs):
+    assert cip[:6] == bytes.fromhex("0A 02 20 02 24 01")
+    data = cip[6:]
+    count, = struct.unpack_from("<H", data)
+    offsets = struct.unpack_from(f"<{count}H", data, 2) + (len(data),)
+    assert offsets[0] == 2 + count * 2
+    replies = []
+    rejected = False
+    for start, end in zip(offsets, offsets[1:]):
+        request = data[start:end]
+        if request == bytes.fromhex("01 02 20 01 24 01"):
+            replies.append(bytes.fromhex("81 00 00 00") + b"".join(attrs))
+        else:
+            assert len(request) == 8 and request[:7] == bytes.fromhex("0E 03 20 01 24 01 30")
+            attribute = request[7]
+            if attribute == 0x7F:
+                replies.append(bytes.fromhex("8E 00 14 01 02 03"))
+                rejected = True
+            else:
+                assert 1 <= attribute <= 7
+                replies.append(bytes.fromhex("8E 00 00 00") + attrs[attribute])
+    offsets = bytearray()
+    offset = 2 + len(replies) * 2
+    for reply in replies:
+        offsets += struct.pack("<H", offset)
+        offset += len(reply)
+    return bytes((0x8A, 0, 0x1E if rejected else 0, 0)) + struct.pack("<H", count) + offsets + b"".join(replies)
+
+
 def routed_identity_reply(cip, attrs, route, mode, report):
     received_route, message = routed_request(cip)
     assert received_route == route
@@ -258,12 +287,12 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
             assert status == options == 0
             if cmd == 0x65:
                 assert handle == 0 and request == b"\x01\x00\x00\x00"
-                if mode == "saved-reads":
+                if mode in ("saved-reads", "multiple-service"):
                     report["registrations"] = report.get("registrations", 0) + 1
                 response = request
             elif cmd == 0x66:
                 assert handle == SESSION
-                if mode == "saved-reads":
+                if mode in ("saved-reads", "multiple-service"):
                     report["unregistered"] = True
                 break
             elif cmd == 0x6F:
@@ -271,8 +300,13 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                 items = rr_items(request)
                 cip = items[0xB2]
                 service, words = cip[:2]
-                if mode == "saved-reads":
+                if mode in ("saved-reads", "multiple-service"):
                     report.setdefault("explicit_requests", []).append(cip.hex())
+                if mode == "multiple-service":
+                    assert set(items) == {0, 0xB2} and not items[0]
+                    response = rr_reply(multiple_service_reply(cip, attrs))
+                    tcp.sendall(struct.pack("<HHII8sI", cmd, len(response), SESSION, 0, ctx, 0) + response)
+                    continue
                 if route and service == 0x52:
                     assert set(items) == {0, 0xB2} and not items[0]
                     result = routed_identity_reply(cip, attrs, route, mode, report)
@@ -431,7 +465,7 @@ def main():
         "stall-close-reject", "qualify-close-reject",
         "slow-input", "pause-different-api",
         "identity-then-owner",
-        "explicit", "saved-reads", "large-keyed", "routed", "variable-input", "large-variable-input",
+        "explicit", "saved-reads", "multiple-service", "large-keyed", "routed", "variable-input", "large-variable-input",
         "routed-io", "routed-io-large", "routed-io-rejected-route", "routed-io-unexpected-peer",
         "variable-output", "large-variable-output",
         "multicast", "multicast-missing", "multicast-unicast",

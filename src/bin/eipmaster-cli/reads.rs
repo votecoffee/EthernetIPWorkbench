@@ -1,6 +1,7 @@
 use assembly_scanner::{
     explicit::{
         ReadPath, Reader, Route, SavedRead, SavedReadOutcome, read_reply_document, run_saved_reads,
+        run_saved_reads_packet,
     },
     model::Selection,
 };
@@ -29,8 +30,13 @@ pub(super) fn all(
     adapter: Ipv4Addr,
     local: Ipv4Addr,
     reads: Vec<SavedRead>,
+    packet: bool,
 ) -> Result<bool, String> {
-    let batch = run_saved_reads(adapter, local, reads)?;
+    let batch = if packet {
+        run_saved_reads_packet(adapter, local, reads)?
+    } else {
+        run_saved_reads(adapter, local, reads)?
+    };
     println!("{}", batch.report_json()?);
     Ok(batch
         .results

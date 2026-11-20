@@ -69,6 +69,14 @@ The GUI and CLI run the profile's saved requests in order on one registered expl
 
 Exit code 0 means every CIP read returned a successful reply. A CIP rejection or lost exchange produces exit code 1 with the per-request report. If the profile contains no requests or the session fails to register, the CLI reports the setup error on stderr.
 
+#### Combine direct reads in one packet
+
+~~~powershell
+.\target\release\eipmaster-cli.exe read-saved-all .local\device.toml --multiple-service-packet
+~~~
+
+Use this option with a target that supports unconnected CIP Multiple Service Packet. Every entry must be a direct saved read. The scanner sends one request to the Message Router and decodes each embedded reply in profile order. Each embedded CIP rejection keeps its status words in the usual JSON report and produces exit code 1. A rejection of the whole packet or an invalid reply table produces a diagnostic on stderr and exit code 1. The default sequential mode remains available for routed reads and other targets. [Rockwell CIP Multiple Service Packet format](https://literature.rockwellautomation.com/idc/groups/literature/documents/pm/1756-pm020_-en-p.pdf)
+
 ## Start offline
 
 ~~~powershell

@@ -17,6 +17,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/explicit.rs and src/discovery.rs | Registered TCP exchange, identity, CIP reads, typed reply interpretation and UDP ListIdentity |
 | src/explicit/batch.rs and src/gui/explore/batch.rs | Shared saved-read execution and the Explore batch results |
 | src/explicit/report.rs | Shared JSON reporting for explicit reads and saved batch exports |
+| src/explicit/multiple.rs | Unconnected Multiple Service Packet for direct saved reads |
 | src/scanner.rs and src/scanner/ | Session lifecycle, Forward_Open/Close, cyclic workers and diagnostics |
 | src/scanner/supervision.rs | Blocking read-only runner with identity-pinned reconnects |
 | src/deadline_wait.rs | Windows deadline wait resource |
@@ -75,6 +76,7 @@ Depend on the `assembly-scanner` library with `default-features = false` to omit
 - Start a readback with `Connection::start_input(settings, ExpectedIdentity::Device(pin))`. It creates a session without a recorder or exporter. Use `Connection::diagnostics()` for current status and raw input, requested and negotiated intervals, and send/receive measurements. `shutdown()` requests stop and returns the final diagnostics after Forward_Close. Dropping a handle requests stop. Use `shutdown()` when teardown must finish before continuing.
 - Use `discovery::discover(local, destination)` for ListIdentity. Use `explicit::Reader::connect(adapter, local)` and `reader.read(ReadPath { class, instance, attribute })` for direct explicit reads. Connect to the first bridge and use `reader.read_routed(path, &route)` for a routed read. Parse `Route` from the same port/link string accepted by Explore and CLI. Router and target rejections retain numeric status and extended words in separate error variants. The target reply retains its service code, which the reader checks before decoding. [ODVA CIP routing overview](https://www.odva.org/wp-content/uploads/2020/06/PUB00123R1_Common-Industrial_Protocol_and_Family_of_CIP_Networks.pdf#page=28)
 - Use `explicit::run_saved_reads` for the same ordered batch used by Explore and the CLI. Match the typed result for each saved request. A router or target rejection leaves later requests eligible to run. An exchange failure marks the remaining requests unattempted.
+- Use `explicit::run_saved_reads_packet` to pack direct saved reads into one unconnected Message Router request. Each valid embedded reply uses the same typed outcome as the sequential runner.
 
 ## Build and choose checks
 

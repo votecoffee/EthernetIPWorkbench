@@ -427,6 +427,36 @@ def main():
     assert results[3]["decoded"] == "Loopback Adapter" and results[4]["error"]
     assert peer["registrations"] == 1 and len(peer["explicit_requests"]) == 5
 
+    serial = saved_request("Serial with selection", 6, selection + "\n")
+    all_attributes = ('\n[[app.cip_reads]]\nname = "Identity object"\n'
+                      'path = { class = 1, instance = 1 }\n')
+    for mode, additional, wanted in (
+        ("success", "", ["success"] * 3),
+        ("partial", saved_request("Unsupported attribute", 127),
+         ["success", "cip_rejected", "success", "success"]),
+    ):
+        packet = root / f"multiple-service-{mode}.toml"
+        packet.write_text(source + product_name + additional + serial + all_attributes, encoding="utf-8")
+        result, peer = with_adapter(
+            root, f"multiple-service-{mode}",
+            [exe, "read-saved-all", packet, "--multiple-service-packet"], "multiple-service",
+        )
+        assert result.returncode == (1 if additional else 0), (result.stdout, result.stderr)
+        replies = json.loads(result.stdout)["results"]
+        assert [item["status"] for item in replies] == wanted
+        assert replies[0]["decoded"] == "Loopback Adapter"
+        assert replies[-2]["decoded"] == str(0x3456) and replies[-2]["data_hex"] == "78 56 34 12"
+        assert bytes.fromhex(replies[-1]["data_hex"])[15:] == b"Loopback Adapter"
+        if additional:
+            assert replies[1]["general_status"] == 0x14 and replies[1]["extended_status"] == [0x0302]
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        [request] = peer["explicit_requests"]
+        assert bytes.fromhex(request)[:6] == bytes.fromhex("0A 02 20 02 24 01")
+
+    routed_packet = subprocess.run([exe, "read-saved-all", routed_profile, "--multiple-service-packet"],
+                                   capture_output=True, text=True, timeout=4, creationflags=NO_WINDOW)
+    assert routed_packet.returncode == 1 and "requires direct saved reads" in routed_packet.stderr
+
     empty = subprocess.run([exe, "read-saved-all", PROFILE], capture_output=True, text=True,
                            timeout=4, creationflags=NO_WINDOW)
     assert empty.returncode == 1 and "no saved CIP reads" in empty.stderr
