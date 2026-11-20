@@ -93,6 +93,8 @@ Open a saved GUI or CLI receipt in **Explore → Saved write receipts** to revie
 
 Save a completed follow-up as timestamped JSON from either write result view. The export includes the historical write outcome and the later comparison. [Save a current-value check](docs/OPERATIONS.md#save-a-current-value-check)
 
+Reopen a saved current-value check in Explore or with `write-receipt <file.json>` to review the recorded comparison offline. [Review a saved check](docs/OPERATIONS.md#review-a-saved-current-value-check)
+
 ~~~powershell
 .\target\release\eipmaster-cli.exe discover 127.0.0.1 127.0.0.1
 .\target\release\eipmaster-cli.exe read 127.0.0.1 127.0.0.1 0x01 1 6

@@ -126,7 +126,7 @@ pub struct ReceiveTimeout {
     pub longest_check_gap_us: u64,
 }
 
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum CloseOutcome {
     Confirmed,

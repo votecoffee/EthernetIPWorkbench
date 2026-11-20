@@ -710,3 +710,9 @@ A headless Explore session opened a saved unconfirmed receipt while the active p
 The headless Explore tests saved a read-only follow-up from both a reopened receipt and the latest write result. Each file recorded the original unconfirmed outcome and completion time, along with the matched bytes, observed identity and confirmed close. The exported UTC timestamp matched the time already displayed in Explore. The fixture saw no additional session during either save, and the original receipts stayed byte-for-byte intact.
 
 The CLI suite validated the UTC field for matched, mismatched, skipped and rejected comparisons, including a rejected Class 3 close. All 53 reports matched the preceding build after excluding the six newly added check timestamps.
+
+## Reviewing exported current-value checks
+
+A fresh headless Explore session reopened a GUI-exported check and displayed its recorded timestamp, matching bytes and confirmed close alongside the original unconfirmed write. The fixture recorded just the preceding explicit follow-up session. The reopened check file stayed byte-for-byte intact.
+
+The CLI reopened all six saved check outcomes offline, including a skipped comparison and a rejected close. It rejected records with inconsistent identity, bytes, timestamp or close fields. The offline tests monitored the loopback listener and observed no incoming sessions. All 53 prior CLI reports passed comparison with the preceding build after accounting for timestamps.

@@ -142,7 +142,7 @@ A later match describes the bytes at the time of that check. An original unconfi
 
 #### Reopen a write receipt
 
-In **Explore → Saved write receipts**, enter a path to a completed GUI or CLI write receipt and select **Open write receipt**. The panel shows the file path, recorded outcome, completion time when present, endpoint, reviewed identity, and staged bytes. Opening a file is offline.
+In **Explore → Saved write receipts**, enter a path to a completed GUI or CLI write receipt and select **Open receipt or check**. The panel shows the file path, recorded outcome, completion time when present, endpoint, reviewed identity, and staged bytes. Opening a file is offline.
 
 Select **Check receipt current value** to run the read-only follow-up against the saved endpoint. The check uses the recorded NIC, route, attribute, transport and identity. The panel displays the later comparison alongside the historical outcome.
 
@@ -151,6 +151,12 @@ Select **Check receipt current value** to run the read-only follow-up against th
 Set the output directory in **Logging**. After a check returns, select **Save current check JSON** under **Attribute write result** or **Save receipt check JSON** under **Saved write receipts**. Each export creates a new `write-current-check-*.json` file from the displayed result.
 
 The GUI export and `write-receipt --check-current` stdout use the same JSON fields. `original_write` gives the recorded outcome and reviewed identity. `completed_utc` records the original write completion when available. `result.checked_utc` records when the follow-up finished, including any Class 3 close. The observed identity, byte comparison and any close outcome remain under `result`. An unconfirmed original write retains that status even if the later bytes match.
+
+#### Review a saved current-value check
+
+Open a `write-current-check-*.json` file or a saved copy of CLI follow-up stdout using **Explore → Saved write receipts → Open receipt or check**. The panel shows the historical write outcome and the saved check's time, identity, observed bytes, comparison and close outcome. Use the original write receipt to run a new follow-up.
+
+Use `write-receipt <check.json>` for offline CLI review. Exit code 0 means the file passed validation. Read `result.comparison` for the recorded match, mismatch or error.
 
 ### Run all saved reads
 

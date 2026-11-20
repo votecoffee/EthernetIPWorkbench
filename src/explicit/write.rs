@@ -4,7 +4,7 @@ use super::{
     reply_body,
 };
 use crate::{model::hex, scanner::CloseOutcome};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{fmt, net::Ipv4Addr};
 
 const SET_ATTRIBUTE_SINGLE: u8 = 0x10;
@@ -28,7 +28,7 @@ pub struct WriteInspection {
     pub forward_close: Option<CloseOutcome>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct WriteCurrentCheck {
     pub checked_utc: String,
     pub expected_identity: IdentityPin,
@@ -113,7 +113,7 @@ impl fmt::Display for WriteOutcome {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum ReadbackOutcome {
     Skipped,

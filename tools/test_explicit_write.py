@@ -107,6 +107,7 @@ def check_writes(exe, root):
     check_connected_writes(command, root)
     check_write_drafts(command, root)
     check_write_receipts(exe, root)
+    check_saved_current_checks(exe, root)
 
 
 def check_write_receipts(exe, root):
@@ -182,6 +183,50 @@ def check_write_receipts(exe, root):
             assert "forward_close" not in result
             assert result["comparison"]["extended_status"] == [0x0302]
         (root / f"{case}.json").write_text(received.stdout, encoding="utf-8")
+
+
+def check_saved_current_checks(exe, root):
+    command = [exe, "write-receipt"]
+    receipts = sorted(path for path in root.glob("receipt-*.json")
+                      if path.stem != "receipt-preview" and not path.stem.endswith("-adapter"))
+    assert len(receipts) == 6
+    reference = root / "receipt-matches.json"
+    invalid = root / "invalid-receipt" / "check.json"
+    with socket.socket() as listener:
+        listener.bind((LOCAL, 44818))
+        listener.listen(1)
+        for path in receipts:
+            original = path.read_bytes()
+            preview = subprocess.run([*command, path], capture_output=True, text=True, timeout=6,
+                                     creationflags=NO_WINDOW)
+            assert preview.returncode == 0 and not preview.stderr, (preview.stdout, preview.stderr)
+            assert json.loads(preview.stdout) == json.loads(original) and path.read_bytes() == original
+
+        rejected = subprocess.run([*command, reference, "--check-current"], capture_output=True,
+                                  text=True, timeout=6, creationflags=NO_WINDOW)
+        assert rejected.returncode == 1 and "original write receipt" in rejected.stderr
+        for field, value, error in (
+            ("expected_identity", {"key": [0, 12, 1], "serial": 12}, "identity and check outcome disagree"),
+            ("identity_matches", False, "identity and check outcome disagree"),
+            ("comparison", {"outcome": "skipped"}, "comparison disagrees with the identity"),
+            ("comparison", {"outcome": "matched", "data_hex": "FF"}, "comparison disagrees with the checked bytes"),
+            ("checked_utc", "2026-11-20T10:00:00-05:00", "Check time must use UTC"),
+            ("forward_close", None, "close outcome disagrees with the transport"),
+        ):
+            document = json.loads(reference.read_bytes())
+            document["result"][field] = value
+            invalid.write_text(json.dumps(document), encoding="utf-8")
+            preview = subprocess.run([*command, invalid], capture_output=True, text=True, timeout=6,
+                                     creationflags=NO_WINDOW)
+            assert preview.returncode == 1 and not preview.stdout and error in preview.stderr, preview.stderr
+        listener.settimeout(0.1)
+        try:
+            unexpected, _ = listener.accept()
+        except TimeoutError:
+            pass
+        else:
+            unexpected.close()
+            raise AssertionError("Reviewing a saved current check opened a network session")
 
 
 def check_write_drafts(command, root):

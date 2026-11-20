@@ -1,5 +1,5 @@
 use super::{write, *};
-use assembly_scanner::explicit::{SavedWriteOutcome, SavedWriteReceipt};
+use assembly_scanner::explicit::{SavedWriteOutcome, SavedWriteReceipt, SavedWriteRecord};
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -10,7 +10,7 @@ pub(super) struct Panel {
 
 pub(super) struct Opened {
     path: PathBuf,
-    receipt: Arc<SavedWriteReceipt>,
+    record: Arc<SavedWriteRecord>,
 }
 
 pub(super) enum Source {
@@ -82,25 +82,27 @@ impl Explorer {
                 panel.opened = None;
                 panel.check = None;
                 self.start(move || {
-                    let receipt = Arc::new(SavedWriteReceipt::load(&path)?);
-                    Ok(Response::OpenedReceiptFile(Opened { path, receipt }))
+                    let record = Arc::new(SavedWriteRecord::load(&path)?);
+                    Ok(Response::OpenedReceiptFile(Opened { path, record }))
                 });
             }
             Some(Action::Check) => {
                 if let Some(opened) = &panel.opened {
-                    let receipt = Arc::clone(&opened.receipt);
+                    let record = Arc::clone(&opened.record);
                     panel.check = None;
                     self.start(move || {
-                        let check = receipt.check_current()?;
+                        let check = record.receipt().check_current()?;
                         Ok(Response::CheckedReceiptFile(Arc::new(check)))
                     });
                 }
             }
             Some(Action::SaveCheck(check)) => {
                 if let Some(opened) = &panel.opened {
-                    let receipt = Arc::clone(&opened.receipt);
+                    let record = Arc::clone(&opened.record);
                     let directory = PathBuf::from(directory);
-                    self.start(move || save_check(&directory, &receipt, &check, Source::Reopened));
+                    self.start(move || {
+                        save_check(&directory, record.receipt(), &check, Source::Reopened)
+                    });
                 }
             }
             None => {}
@@ -115,8 +117,8 @@ impl Panel {
                 write::file_control(
                     ui,
                     &mut self.path,
-                    "Path to a write receipt JSON",
-                    "Open write receipt",
+                    "Path to a receipt or check JSON",
+                    "Open receipt or check",
                 )
             })
             .inner
@@ -124,7 +126,7 @@ impl Panel {
             return Some(Action::Open);
         }
         let opened = self.opened.as_ref()?;
-        let receipt = &opened.receipt;
+        let receipt = opened.record.receipt();
         ui.small(format!("Opened {}", opened.path.display()));
         let outcome = receipt.outcome();
         let label = format!("Recorded write outcome · {outcome}");
@@ -146,6 +148,11 @@ impl Panel {
         write::show_reviewed_identity(ui, receipt.expected_identity());
         ui.label(format!("{} staged bytes", request.value.len()));
         show_reply_payload(ui, &request.value, &Ok(None));
+        if let Some(check) = opened.record.recorded_check() {
+            ui.strong("Saved current-value check");
+            write::show_current_check(ui, check);
+            return None;
+        }
         let check = ui
             .add_enabled(ready, egui::Button::new("Check receipt current value"))
             .on_hover_text(

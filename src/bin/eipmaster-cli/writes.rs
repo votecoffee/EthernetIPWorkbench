@@ -1,7 +1,7 @@
 use super::{USAGE, explicit_endpoint, parse_expected_identity};
 use assembly_scanner::{
     explicit::{
-        AttributeWrite, Class3Size, IdentityPin, ReadPath, Route, SavedWriteReceipt, WriteDraft,
+        AttributeWrite, Class3Size, IdentityPin, ReadPath, Route, SavedWriteRecord, WriteDraft,
     },
     model::{ByteSwap, Kind, Selection, parse_hex},
 };
@@ -47,14 +47,16 @@ pub(super) fn receipt(path: &Path, options: &[OsString]) -> Result<bool, String>
         [flag] if flag == "--check-current" => true,
         _ => return Err(USAGE.into()),
     };
-    let receipt = SavedWriteReceipt::load(path)?;
+    let record = SavedWriteRecord::load(path)?;
     let (success, report) = if check {
+        if record.recorded_check().is_some() {
+            return Err("Open the original write receipt to run a new check".into());
+        }
+        let receipt = record.receipt();
         let current = receipt.check_current()?;
         (current.is_success(), receipt.follow_up_document(&current))
     } else {
-        let mut report = receipt.report_document();
-        report["result"] = json!({"outcome": "preview"});
-        (true, report)
+        (true, record.report_document())
     };
     println!(
         "{}",

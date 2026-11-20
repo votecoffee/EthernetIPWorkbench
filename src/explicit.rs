@@ -43,7 +43,7 @@ pub use write::{
     WriteOptions, WriteOutcome, WriteReport,
 };
 pub use write_draft::WriteDraft;
-pub use write_receipt::{SavedWriteOutcome, SavedWriteReceipt};
+pub use write_receipt::{SavedWriteOutcome, SavedWriteReceipt, SavedWriteRecord};
 pub(crate) const TO_SOCKET: u16 = 0x8001;
 pub(crate) const PORT: u16 = 44818;
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -238,7 +238,7 @@ fn logical_segment(path: &mut Vec<u8>, code: u8, value: u32) {
     }
 }
 
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Identity {
     pub vendor: u16,
     pub device_type: u16,

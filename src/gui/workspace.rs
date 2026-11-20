@@ -506,16 +506,7 @@ mod tests {
         let receipt = serde_json::to_vec(&document).unwrap();
         let text = std::str::from_utf8(&receipt).unwrap();
         settings_file::write_new(&path, text).unwrap();
-        click(&mut device, &ctx, size, "Saved write receipts");
-        click(&mut device, &ctx, size, "Path to a write receipt JSON");
-        let input = egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
-            events: vec![egui::Event::Text(path.to_str().unwrap().into())],
-            ..Default::default()
-        };
-        let _ = ctx.run(input, |ctx| device.show(ctx, &[]));
-        click(&mut device, &ctx, size, "Open write receipt");
-        wait_for_explore(&mut device);
+        open_write_record(&mut device, &ctx, size, &path);
         let labels = draw(&mut device, &ctx, size);
         for expected in [
             "Recorded write outcome · Unconfirmed",
@@ -556,9 +547,50 @@ mod tests {
         assert_eq!(device.snapshot(), profile);
         assert_eq!(fs::read(&path).unwrap(), receipt);
         assert!(device.connection.is_none());
+        let exported_bytes = fs::read(&exported).unwrap();
+        let check: serde_json::Value = serde_json::from_slice(&exported_bytes).unwrap();
+        let checked_utc = check["result"]["checked_utc"].as_str().unwrap();
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let mut offline = explore_device(&[]);
+        open_write_record(&mut offline, &ctx, size, &exported);
+        let labels = draw(&mut offline, &ctx, size);
+        for expected in [
+            "Saved current-value check",
+            "Recorded write outcome · Unconfirmed",
+            "Completed 2026-11-20T12:34:56Z",
+            "Current value matches the staged bytes",
+            "Current check Forward_Close · confirmed",
+            &format!("Checked {checked_utc}"),
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        assert!(
+            !labels
+                .iter()
+                .any(|(text, _)| text == "Check receipt current value")
+        );
+        assert!(!offline.explorer.busy() && offline.connection.is_none());
+        assert_eq!(fs::read(&exported).unwrap(), exported_bytes);
         fs::remove_file(path).unwrap();
         fs::remove_file(exported).unwrap();
         fs::remove_dir(directory).unwrap();
+    }
+
+    fn open_write_record(device: &mut Device, ctx: &egui::Context, size: egui::Vec2, path: &Path) {
+        click(device, ctx, size, "Saved write receipts");
+        click(device, ctx, size, "Path to a receipt or check JSON");
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+            events: vec![egui::Event::Text(path.to_str().unwrap().into())],
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| device.show(ctx, &[]));
+        click(device, ctx, size, "Open receipt or check");
+        wait_for_explore(device);
     }
 
     #[test]
