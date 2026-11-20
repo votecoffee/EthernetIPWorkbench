@@ -3,7 +3,7 @@ use assembly_scanner::{
     discovery, eds,
     explicit::{self, ReadPath, Reader, Route, RoutedReadError},
     integration::{self, Integration},
-    model::{ConnectionTimeout, Settings, parse_hex},
+    model::{ConnectionTimeout, Selection, Settings, parse_hex},
     preflight,
     scanner::{
         CloseOutcome, CyclicIo, Diagnostics, ExpectedIdentity as ScannerIdentity, Identity,
@@ -130,7 +130,7 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                     Some(explicit::parse_id(&attribute.to_string_lossy())?)
                 },
             };
-            print_read(adapter, local, path, route.as_ref())
+            print_read(adapter, local, path, route.as_ref(), None)
         }
         [command, profile, name] if command == "read-saved" => {
             let (settings, app) = settings_file::load_profile(Path::new(profile))?;
@@ -144,6 +144,7 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                 settings.local_ip,
                 read.path,
                 read.route.as_ref(),
+                read.selection,
             )
         }
         [command, path] if command == "eds" => {
@@ -301,6 +302,7 @@ fn print_read(
     local: std::net::Ipv4Addr,
     path: ReadPath,
     route: Option<&Route>,
+    selection: Option<Selection>,
 ) -> Result<bool, String> {
     path.validate()?;
     let mut reader = Reader::connect(adapter, local).map_err(|error| error.to_string())?;
@@ -313,7 +315,20 @@ fn print_read(
     };
     let mut report = match &result {
         Ok(bytes) => {
-            serde_json::json!({"path": path, "data_hex": assembly_scanner::model::hex(bytes), "bytes": bytes.len(), "decoded": path.describe(bytes)})
+            let decoded = path.decode_reply(bytes, selection);
+            let mut report = serde_json::json!({
+                "path": path,
+                "data_hex": assembly_scanner::model::hex(bytes),
+                "bytes": bytes.len(),
+                "decoded": decoded.as_ref().ok().and_then(|value| value.as_ref()),
+            });
+            if let Some(selection) = selection {
+                report["selection"] = serde_json::json!(selection);
+            }
+            if let Err(error) = decoded {
+                report["decode_error"] = serde_json::json!(error);
+            }
+            report
         }
         Err(
             RoutedReadError::Router(explicit::EipError::Cip { status, ext })

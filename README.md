@@ -73,6 +73,8 @@ Set the local NIC IPv4 address in **Device**, then open **Explore**. **Discover*
 
 For an explicit read, choose a common attribute or enter a class, instance and attribute as decimal or `0x` hex. Use instance zero for class attributes and enter `all` for Get_Attributes_All where the adapter implements it. For a routed read, set the first bridge's IP in **Device** and enter the port/link pairs in **Explore**, such as `1/3` for backplane slot 3. The result shows raw bytes and decodes supported standard attributes. Saved reads travel with the device's autosaved settings and exported TOML. Loading one fills the request form, including its route.
 
+For a documented field within a reply, enable **Decode reply field** and enter its offset, type, and byte order. Save the request to reuse that selection in Explore or with `read-saved`. The result retains the complete raw reply.
+
 ~~~powershell
 .\target\release\eipmaster-cli.exe discover 127.0.0.1 127.0.0.1
 .\target\release\eipmaster-cli.exe read 127.0.0.1 127.0.0.1 0x01 1 6

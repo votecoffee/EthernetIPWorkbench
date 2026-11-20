@@ -1,6 +1,6 @@
 use super::*;
 
-fn edit_selection(ui: &mut Ui, selection: &mut Selection) {
+pub(super) fn edit_selection(ui: &mut Ui, selection: &mut Selection) {
     ui.horizontal_wrapped(|ui| {
         ui.label("Byte offset");
         ui.add(egui::DragValue::new(&mut selection.offset));

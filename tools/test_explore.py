@@ -341,6 +341,34 @@ def main():
     routed, _ = run("routed-saved", "read-saved", routed_profile, "Serial number", mode="routed")
     assert json.loads(routed)["route"] == "1/3" and json.loads(routed)["decoded"] == "0x12345678"
 
+    typed = root / "typed-read.toml"
+    selection = 'selection = { offset = 1, kind = "U16", big_endian = true, swap = "bytes_in_words" }'
+    typed_source = routed_profile.read_text(encoding="utf-8").replace(
+        "[app.cip_reads.path]", f"{selection}\n[app.cip_reads.path]")
+    typed.write_text(typed_source, encoding="utf-8")
+    read, peer = run("routed-typed", "read-saved", typed, "Serial number", mode="routed")
+    reply = json.loads(read)
+    assert reply["data_hex"] == "78 56 34 12" and reply["reply_from"] == "target"
+    assert reply["decoded"] == str(0x3456) and "decode_error" not in reply
+    assert reply["selection"] == {"offset": 1, "kind": "U16", "big_endian": True, "bit": None,
+                                  "swap": "bytes_in_words", "string_length": None}
+    assert not peer["forward_close"]
+
+    short = root / "short-typed-reply.toml"
+    short.write_text(typed_source.replace(selection, 'selection = { offset = 3, kind = "U16" }')
+                     .replace('route = "1/3"\n', ""), encoding="utf-8")
+    read, _ = run("short-typed", "read-saved", short, "Serial number")
+    reply = json.loads(read)
+    assert reply["data_hex"] == "78 56 34 12" and reply["decoded"] is None
+    assert reply["decode_error"] == "Selection at byte 3 needs 2 bytes. Reply has 4 bytes."
+
+    invalid = root / "invalid-typed-read.toml"
+    invalid.write_text(typed_source.replace(selection, 'selection = { offset = 0, kind = "Bool", bit = 8 }'),
+                       encoding="utf-8")
+    checked = subprocess.run([exe, "read-saved", invalid, "Serial number"], capture_output=True,
+                             text=True, timeout=4, creationflags=NO_WINDOW)
+    assert checked.returncode == 1 and "Bit index must be" in checked.stderr
+
     profile = root / "keyed-large.toml"
     profile.write_text(
         ("large_forward_open = true\n" + source).replace("input_size = 4", "input_size = 600")

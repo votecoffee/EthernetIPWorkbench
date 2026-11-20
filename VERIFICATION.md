@@ -580,3 +580,7 @@ Synthetic cases verified that a repeated capture, a different serial, a negotiat
 ## Offline EDS RPI bounds
 
 The CLI imported OpENer Connection2 with a 30 ms default, a 20 ms minimum, and an unspecified maximum in both directions from Param4. Offline preflight reported both 30 ms defaults within bounds and both 1 ms overrides below the minimum. The override remained eligible for connection under the scanner's own validation. The CLI regression also exercised an upper-bound warning, and the headless GUI review checked that a warning identifies the affected direction. [Upstream OpENer sample EDS](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/data/opener_sample_app.eds)
+
+## Typed explicit reply fields
+
+The Windows localhost fixture returned `78 56 34 12` for both direct and routed saved reads. A routed U16 selection at offset 1 with big endian and byte swapping decoded as 13398 and retained the full reply. A two-byte selection at offset 3 returned the same raw bytes with a separate decode error. The CLI rejected a saved bit index of 8 when loading the profile. An older saved read still decoded the standard serial number as `0x12345678`. Headless GUI checks verified named-profile persistence and that loading a saved request restores the reply editor.

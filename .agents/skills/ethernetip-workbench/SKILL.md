@@ -36,6 +36,7 @@ For a supported target configuration layout, review the CLI `eds` report's `conf
 
 - Run CLI eds, validate or decode-input for offline work. validate returns connection validity and capture validity separately. Inspect both.
 - Use Explore or CLI discover, read and read-saved for approved discovery and read-only CIP inspection. For routed explicit reads, use the first bridge address and a documented port/link path. Use named TOML profiles to preserve saved requests. Use the development guide to reuse the Rust library without the GUI.
+- In Explore, enable **Decode reply field** to save a documented byte offset, type and byte order with a request. Inspect the raw bytes and any separate `decode_error` in the CLI `read-saved` result.
 - Use CLI identity for an authorized bounded hardware identity read. capture requires an input-only or listen-only heartbeat profile and an expected decimal identity. Include serial to pin a unit. qualify automates the baseline and three target runs for controlling input-only profiles.
 - Compare device metadata in **Device identity** after **Read identity**, or add `--eds <file>` to CLI identity. Review differences in the declared product codes and revisions before accepting a live device.
 - Use GUI profiles for manual operation and authorized output staging. Start a headless fixture for testing rather than opening the desktop application during unattended work.

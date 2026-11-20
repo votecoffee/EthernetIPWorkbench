@@ -18,7 +18,13 @@ const PRESETS: [(&str, u32, u32); 9] = [
 
 enum Response {
     Discovery(Ipv4Addr, discovery::Report),
-    Read(String, Option<String>, Vec<u8>),
+    Read(ReadReply),
+}
+
+struct ReadReply {
+    address: String,
+    interpretation: Result<Option<String>, String>,
+    bytes: Vec<u8>,
 }
 
 pub(super) struct Explorer {
@@ -28,7 +34,8 @@ pub(super) struct Explorer {
     attribute: String,
     route: String,
     name: String,
-    read_result: Option<(String, Option<String>, Vec<u8>)>,
+    selection: Option<Selection>,
+    read_result: Option<ReadReply>,
     discovered: Option<(Ipv4Addr, discovery::Report)>,
     work: Option<mpsc::Receiver<Result<Response, String>>>,
     notice: Option<String>,
@@ -43,6 +50,7 @@ impl Default for Explorer {
             attribute: "7".into(),
             route: String::new(),
             name: String::new(),
+            selection: None,
             read_result: None,
             discovered: None,
             work: None,
@@ -73,9 +81,7 @@ impl Explorer {
         let Some(work) = &self.work else { return };
         match work.try_recv() {
             Ok(Ok(Response::Discovery(nic, report))) => self.discovered = Some((nic, report)),
-            Ok(Ok(Response::Read(request, decoded, data))) => {
-                self.read_result = Some((request, decoded, data))
-            }
+            Ok(Ok(Response::Read(reply))) => self.read_result = Some(reply),
             Ok(Err(error)) => self.notice = Some(error),
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.notice = Some("Explore request ended without a response".into())
@@ -203,6 +209,7 @@ impl Device {
                             attribute: Some(attribute),
                         });
                         explorer.name = label.into();
+                        explorer.selection = None;
                     }
                 }
                 if ui.selectable_label(false, "Assembly · Data").clicked() {
@@ -212,6 +219,7 @@ impl Device {
                         attribute: Some(3),
                     });
                     explorer.name = "Input assembly data".into();
+                    explorer.selection = None;
                 }
             });
         ui.horizontal_wrapped(|ui| {
@@ -232,6 +240,13 @@ impl Device {
                 ui.add(egui::TextEdit::singleline(field).desired_width(80.0));
             }
         });
+        let mut typed = explorer.selection.is_some();
+        if ui.checkbox(&mut typed, "Decode reply field").changed() {
+            explorer.selection = typed.then_some(Selection::default());
+        }
+        if let Some(selection) = &mut explorer.selection {
+            super::mapping::edit_selection(ui, selection);
+        }
         ui.horizontal_wrapped(|ui| {
             if ui
                 .add_enabled(!explorer.busy(), egui::Button::new("Read"))
@@ -241,6 +256,7 @@ impl Device {
                 match (self.device.parse::<Ipv4Addr>(), &local, explorer.request()) {
                     (Ok(adapter), Ok(nic), Ok((path, route))) => {
                         let nic = *nic;
+                        let selection = explorer.selection;
                         explorer.start(move || {
                             let target = route.as_ref().map_or_else(
                                 || adapter.to_string(),
@@ -262,7 +278,11 @@ impl Device {
                                 None => reader.read(path).map_err(|error| error.to_string()),
                             }
                             .map_err(|error| format!("{address} · {error}"))?;
-                            Ok(Response::Read(address, path.describe(&bytes), bytes))
+                            Ok(Response::Read(ReadReply {
+                                address,
+                                interpretation: path.decode_reply(&bytes, selection),
+                                bytes,
+                            }))
                         });
                     }
                     (_, _, Err(error)) => explorer.notice = Some(error),
@@ -279,7 +299,12 @@ impl Device {
                     Ok((path, route)) => {
                         let name = explorer.name.trim().to_owned();
                         let mut reads = self.preferences.cip_reads.clone();
-                        let read = SavedRead { name, path, route };
+                        let read = SavedRead {
+                            name,
+                            path,
+                            route,
+                            selection: explorer.selection,
+                        };
                         if let Some(prior) = reads.iter_mut().find(|prior| prior.name == read.name)
                         {
                             *prior = read;
@@ -306,6 +331,7 @@ impl Device {
                         if ui.button(&read.name).clicked() {
                             explorer.name.clone_from(&read.name);
                             explorer.load(read.path);
+                            explorer.selection = read.selection;
                             explorer.route = read
                                 .route
                                 .as_ref()
@@ -327,16 +353,22 @@ impl Device {
         if let Some(notice) = &explorer.notice {
             ui.colored_label(AMBER, notice);
         }
-        if let Some((address, decoded, bytes)) = &explorer.read_result {
-            ui.label(format!("{address} · {} bytes", bytes.len()));
-            if let Some(value) = decoded {
-                ui.monospace(value);
+        if let Some(reply) = &explorer.read_result {
+            ui.label(format!("{} · {} bytes", reply.address, reply.bytes.len()));
+            match &reply.interpretation {
+                Ok(Some(value)) => {
+                    ui.monospace(value);
+                }
+                Err(error) => {
+                    ui.colored_label(AMBER, error);
+                }
+                Ok(None) => {}
             }
             egui::ScrollArea::vertical()
                 .id_salt("cip-result")
                 .max_height(240.0)
                 .show(ui, |ui| {
-                    for (row, bytes) in bytes.chunks(16).enumerate() {
+                    for (row, bytes) in reply.bytes.chunks(16).enumerate() {
                         ui.monospace(format!("{:04X}  {}", row * 16, model::hex(bytes)));
                     }
                 });

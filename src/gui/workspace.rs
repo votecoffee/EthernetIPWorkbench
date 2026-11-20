@@ -141,6 +141,41 @@ mod tests {
     }
 
     #[test]
+    fn loading_a_saved_read_restores_its_reply_editor() {
+        let ctx = egui::Context::default();
+        let size = egui::vec2(1240.0, 860.0);
+        let mut device = Device::new(1, None);
+        device.tab = Tab::Explore;
+        let saved = toml::from_str(
+            r#"
+name = "Test reply"
+selection = { offset = 2, kind = "U16", big_endian = true, swap = "bytes_in_words" }
+path = { class = 4, instance = 101, attribute = 3 }
+"#,
+        )
+        .unwrap();
+        device.preferences.cip_reads.push(saved);
+        let labels = draw(&mut device, &ctx, size);
+        assert!(!labels.iter().any(|(text, _)| text == "Byte offset"));
+
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Test reply");
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Byte offset",
+            "U16",
+            "Big endian",
+            "Swap bytes within words",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        assert!(!device.explorer.busy() && device.connection.is_none());
+    }
+
+    #[test]
     fn persistent_actions_navigate_and_stop_capture_from_another_tab() {
         let ctx = egui::Context::default();
         let mut device = Device::new(1, None);

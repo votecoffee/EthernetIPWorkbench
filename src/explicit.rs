@@ -1,6 +1,6 @@
 //! EtherNet/IP explicit messaging and read-only CIP requests.
 use crate::{
-    model::Settings,
+    model::{Selection, Settings},
     scanner::{le16, le32, protocol},
 };
 pub use ethernetip_core::error::EipError;
@@ -63,6 +63,29 @@ impl ReadPath {
             _ => None,
         }
     }
+
+    /// Interpret a documented reply field or use the standard attribute description.
+    /// A selection error leaves the successfully received bytes available to the caller.
+    pub fn decode_reply(
+        self,
+        bytes: &[u8],
+        selection: Option<Selection>,
+    ) -> std::result::Result<Option<String>, String> {
+        let Some(selection) = selection else {
+            return Ok(self.describe(bytes));
+        };
+        let width = selection.validated_width()?;
+        selection
+            .decode(bytes)
+            .map(|value| Some(value.to_string()))
+            .ok_or_else(|| {
+                format!(
+                    "Selection at byte {} needs {width} bytes. Reply has {} bytes.",
+                    selection.offset,
+                    bytes.len()
+                )
+            })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,6 +95,8 @@ pub struct SavedRead {
     pub path: ReadPath,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub route: Option<Route>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<Selection>,
 }
 
 pub fn validate_saved_reads(reads: &[SavedRead]) -> std::result::Result<(), String> {
@@ -88,6 +113,11 @@ pub fn validate_saved_reads(reads: &[SavedRead]) -> std::result::Result<(), Stri
         }
         if !names.insert(read.name.as_str()) {
             return Err(format!("Duplicate saved read name {:?}", read.name));
+        }
+        if let Some(selection) = read.selection {
+            selection
+                .validated_width()
+                .map_err(|error| format!("Saved read {:?}: {error}", read.name))?;
         }
     }
     Ok(())

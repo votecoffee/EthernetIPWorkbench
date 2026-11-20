@@ -38,6 +38,14 @@ attribute = 6
 
 The saved read uses the device or bridge address and NIC of the enclosing profile. Omit `route` for a direct read and `attribute` for Get_Attributes_All. Add this table to a named profile, or use Save / update read in Explore and then save the profile. Run `eipmaster-cli read-saved <settings.toml> "Serial number"` against that profile. This route belongs to the saved explicit read. Identity and the cyclic connection use the separate `io_route` setting.
 
+Enable **Decode reply field** before selecting **Read** to interpret one documented field. The offset starts at zero in the CIP reply data. The editor supports the same types, bit indexes, fixed text lengths, endian and swap settings as assembly mappings. **Save / update read** retains the selection. In TOML, place the optional `selection` key within `[[app.cip_reads]]` before `[app.cip_reads.path]`.
+
+~~~toml
+selection = { offset = 2, kind = "I32", big_endian = true, swap = "word_order" }
+~~~
+
+`read-saved` returns the selection, the decoded value as text, and the raw `data_hex`. A successful CIP read with a short reply still returns its bytes and a successful exit code. The JSON includes `decoded: null` and a separate `decode_error`. With no selection the existing standard attribute descriptions still apply.
+
 ## Start offline
 
 ~~~powershell

@@ -715,6 +715,12 @@ fn named_profile_loads_preferences_and_requires_confirmation_to_replace() {
         .push(assembly_scanner::explicit::SavedRead {
             name: "Serial".into(),
             route: Some("1/3".parse().unwrap()),
+            selection: Some(Selection {
+                offset: 1,
+                kind: Kind::U16,
+                big_endian: true,
+                ..Selection::default()
+            }),
             path: assembly_scanner::explicit::ReadPath {
                 class: 1,
                 instance: 1,
@@ -743,6 +749,10 @@ fn named_profile_loads_preferences_and_requires_confirmation_to_replace() {
     assert_eq!(app.preferences.cip_reads.len(), 1);
     assert_eq!(app.preferences.cip_reads[0].name, "Serial");
     assert_eq!(app.preferences.cip_reads[0].path.attribute, Some(6));
+    let selection = app.preferences.cip_reads[0].selection.unwrap();
+    assert_eq!(selection.offset, 1);
+    assert_eq!(selection.kind, Kind::U16);
+    assert!(selection.big_endian);
     assert_eq!(
         app.preferences.cip_reads[0]
             .route

@@ -165,6 +165,17 @@ impl Value<&[u8]> {
 }
 impl Selection {
     pub fn validate(self, size: usize) -> Result<(), String> {
+        let width = self.validated_width()?;
+        if size
+            .checked_sub(self.offset)
+            .is_none_or(|left| left < width)
+        {
+            return Err("Selected value extends past the assembly".into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validated_width(self) -> Result<usize, String> {
         if self.kind == Kind::Utf8 && self.bit.is_some() {
             return Err("UTF-8 fields cannot select a single bit".into());
         }
@@ -176,13 +187,7 @@ impl Selection {
         {
             return Err("This swap needs a numeric field with at least two bytes per word".into());
         }
-        if size
-            .checked_sub(self.offset)
-            .is_none_or(|left| left < width)
-        {
-            return Err("Selected value extends past the assembly".into());
-        }
-        Ok(())
+        Ok(width)
     }
 
     pub fn width(self) -> Result<usize, String> {

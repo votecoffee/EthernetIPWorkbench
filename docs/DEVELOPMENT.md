@@ -13,7 +13,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/eds/identity.rs | Declared EDS identity fields and comparison with a CIP Identity Object readback |
 | src/preflight.rs | Effective configuration, EDS comparisons and offline validation |
 | src/settings_file.rs | Named profiles, workspace migration, preferences and file replacement |
-| src/explicit.rs and src/discovery.rs | Registered TCP exchange, identity, CIP reads and UDP ListIdentity |
+| src/explicit.rs and src/discovery.rs | Registered TCP exchange, identity, CIP reads, typed reply interpretation and UDP ListIdentity |
 | src/scanner.rs and src/scanner/ | Session lifecycle, Forward_Open/Close, cyclic workers and diagnostics |
 | src/scanner/supervision.rs | Blocking read-only runner with identity-pinned reconnects |
 | src/deadline_wait.rs | Windows deadline wait resource |
