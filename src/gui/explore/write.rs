@@ -8,6 +8,8 @@ pub(super) struct Draft {
     typed_value: String,
     format: Selection,
     pub(super) identity: Option<Identity>,
+    connected: bool,
+    class3_size: Class3Size,
     readback: bool,
     current_input: Option<String>,
     expected_current: Option<Vec<u8>>,
@@ -30,7 +32,12 @@ impl Draft {
 }
 
 impl Explorer {
-    pub(super) fn stage_attribute_write(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
+    pub(super) fn stage_attribute_write(
+        &mut self,
+        adapter: &str,
+        local: Option<Ipv4Addr>,
+        class3_size: Class3Size,
+    ) {
         let prepare = || {
             let (path, route) = self.request()?;
             let request = AttributeWrite {
@@ -50,6 +57,8 @@ impl Explorer {
                 typed_value: String::new(),
                 format: Selection::default(),
                 identity: None,
+                connected: false,
+                class3_size,
                 readback: false,
                 current_input: None,
                 expected_current: None,
@@ -77,6 +86,7 @@ impl Explorer {
                 ui.heading("Review attribute write");
                 show_address(ui, &draft.request);
                 ui.add_enabled_ui(ready, |ui| {
+                    edit_transport(ui, draft);
                     edit_value(ui, draft);
                     edit_current_value(ui, draft);
                 });
@@ -141,8 +151,13 @@ impl Explorer {
                         draft.request.value = value;
                         draft.expected_current = expected;
                         let request = draft.request.clone();
+                        let class3 = draft.connected.then_some(draft.class3_size);
                         self.start(move || {
-                            request.read_target_identity().map(Response::WriteIdentity)
+                            match class3 {
+                                Some(size) => request.read_target_identity_connected(size),
+                                None => request.read_target_identity(),
+                            }
+                            .map(Response::WriteIdentity)
                         });
                     }
                     Err(error) => self.notice = Some(error),
@@ -152,21 +167,47 @@ impl Explorer {
                 let request = draft.request.clone();
                 let readback = draft.readback;
                 let expected_current = draft.expected_current.clone();
+                let class3 = draft.connected.then_some(draft.class3_size);
                 self.write_draft = None;
                 self.write_result = None;
                 self.start(move || {
-                    let report = request.apply_with_options(
-                        pin,
-                        WriteOptions {
-                            expected_current: expected_current.as_deref(),
-                            readback,
-                        },
-                    )?;
+                    let options = WriteOptions {
+                        expected_current: expected_current.as_deref(),
+                        readback,
+                    };
+                    let report = match class3 {
+                        Some(size) => request.apply_connected(pin, options, size),
+                        None => request.apply_with_options(pin, options),
+                    }?;
                     Ok(Response::WriteResult(Box::new((request, report))))
                 });
             }
             _ => {}
         }
+    }
+}
+
+fn edit_transport(ui: &mut Ui, draft: &mut Draft) {
+    if ui.checkbox(&mut draft.connected, "Use Class 3").changed() {
+        draft.identity = None;
+    }
+    if draft.connected {
+        ui.horizontal(|ui| {
+            ui.label("Connection size");
+            let mut bytes = draft.class3_size.bytes();
+            if ui
+                .add(
+                    egui::DragValue::new(&mut bytes)
+                        .range(Class3Size::RANGE)
+                        .suffix(" bytes"),
+                )
+                .changed()
+                && let Ok(size) = Class3Size::try_from(bytes)
+            {
+                draft.class3_size = size;
+                draft.identity = None;
+            }
+        });
     }
 }
 
@@ -277,6 +318,14 @@ fn show_result(ui: &mut Ui, request: &AttributeWrite, report: &WriteReport) {
             ui.label(readback.to_string());
         } else {
             ui.colored_label(AMBER, readback.to_string());
+        }
+    }
+    if let Some(close) = &report.forward_close {
+        let detail = format!("Forward_Close · {close}");
+        if close.is_confirmed() {
+            ui.label(detail);
+        } else {
+            ui.colored_label(AMBER, detail);
         }
     }
     ui.collapsing("Attribute write result", |ui| {

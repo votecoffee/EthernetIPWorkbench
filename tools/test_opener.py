@@ -270,7 +270,7 @@ def check_class_info(cli, adapter, root):
     print("OpENer reported Assembly class metadata and separate optional attribute outcomes.")
 
 
-def check_explicit_write(cli, adapter, root, identity):
+def check_explicit_write(cli, adapter, root, identity, *, connected=False):
     root.mkdir()
     pin = ":".join(str(identity[field]) for field in ("vendor", "device_type", "code", "serial"))
     address = [ADAPTER, "127.0.0.1", "4", "154", "3"]
@@ -287,6 +287,8 @@ def check_explicit_write(cli, adapter, root, identity):
             if name == "write":
                 before = json.loads((root / "before.json").read_text(encoding="utf-8"))
                 args.extend(("--expect-current", before["data_hex"]))
+                if connected:
+                    args.append("--connected")
             result = subprocess.run([cli, *args], capture_output=True, timeout=10,
                                     creationflags=subprocess.CREATE_NO_WINDOW)
             (root / f"{name}.json").write_bytes(result.stdout)
@@ -302,7 +304,10 @@ def check_explicit_write(cli, adapter, root, identity):
     assert write["result"]["readback"] == {"outcome": "matched", "data_hex": value}
     assert write["result"]["observed_identity"]["serial"] == identity["serial"]
     assert after["data_hex"] == write["value_hex"] == value and before["data_hex"] != value
-    print("OpENer matched the current bytes, acknowledged the guarded UTF-8 write and matched all 32 bytes on readback.")
+    if connected:
+        assert write["class3_size"] == 504 and write["result"]["forward_close"] == {"outcome": "confirmed"}
+    mode = "Class 3" if connected else "unconnected CIP"
+    print(f"OpENer acknowledged the guarded UTF-8 write over {mode} and matched all 32 bytes on readback.")
 
 
 def check_connected_reads(cli, adapter, root, identity):
@@ -533,6 +538,7 @@ def main():
         check_explore(cli, adapter, root / "extended", identity, args.seconds)
         check_class_info(cli, adapter, root / "class-info")
         check_explicit_write(cli, adapter, root / "explicit-write", identity)
+        check_explicit_write(cli, adapter, root / "class3-write", identity, connected=True)
         check_connected_reads(cli, adapter, root / "connected-reads", identity)
     if args.multicast:
         check_multicast(cli, adapter, root / "multicast", identity, args.seconds)

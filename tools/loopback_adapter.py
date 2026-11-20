@@ -343,6 +343,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     connected = mode.startswith("class3-")
     connected_packet = connected and "packet" in mode
     connected_large = connected and "large" in mode
+    connected_write = connected and "write" in mode
     connected_size = 4002 if connected_large else 511 if mode == "class3-sized" else 504
     explicit_write = mode.startswith("explicit-write")
     report_explicit = connected or explicit_write or mode in ("saved-reads", "multiple-service") or mode.startswith("class-info")
@@ -364,7 +365,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     if mode.startswith("routed-io"):
         route = b"\x01\x02\x12\x09127.0.0.3\x00\x01\x00" if keyed else b"\x01\x03"
     if mode.startswith("class3-routed"):
-        route = b"\x01\x02\x12\x0B192.0.2.100\x00\x01\x00" if connected_packet else b"\x01\x03"
+        route = (b"\x01\x02\x12\x0B192.0.2.100\x00\x01\x00"
+                 if connected_packet or connected_write else b"\x01\x03")
     path = route + path
     name = b"Loopback Routed Target" if route else b"Loopback Adapter"
     attrs = [b"", struct.pack("<H", 1 if keyed else 0),
@@ -399,7 +401,14 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                 sequence, message = items[0xB1][:2], items[0xB1][2:]
                 assert sequence == struct.pack("<H", len(requests) + 1)
                 requests.append(message.hex())
-                cip = multiple_service_reply(message, attrs) if connected_packet else identity_attribute_reply(message, attrs)
+                if connected_write:
+                    cip = explicit_write_reply(message, "explicit-write-current", attrs, report)
+                    if message[0] == 0x10 and mode.endswith("-bad-sequence"):
+                        sequence = struct.pack("<H", len(requests) + 1)
+                elif connected_packet:
+                    cip = multiple_service_reply(message, attrs)
+                else:
+                    cip = identity_attribute_reply(message, attrs)
                 if mode == "class3-routed-packet-unsupported":
                     cip = bytes.fromhex("8A 00 08 00")
                 report.setdefault("connected_reply_sizes", []).append(len(cip) + 2)
@@ -461,6 +470,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                     continue
                 _, _, cls, object_class, inst, instance = cip[:6]
                 assert (words, cls, inst, instance) == (2, 0x20, 0x24, 1)
+                if connected:
+                    assert object_class == 6 and service in (0x54, 0x5B, 0x4E)
                 body = cip[6:]
                 if service == 1 and object_class == 1:
                     assert not route, "Read the routed target identity before opening I/O"
@@ -481,7 +492,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                     report.update(open_path_hex=body[path_offset:].hex(), open_service=service,
                                   class3_size=connected_size)
                     reply = struct.pack("<IIHHIIIBB", OT_ID, to, serial, vendor, origin, ot, to_rpi, 0, 0)
-                    if mode == "class3-routed-open-reject":
+                    if mode in ("class3-routed-open-reject", "class3-write-open-reject"):
                         response = rr_reply(bytes.fromhex("D4 00 01 01 11 03"))
                     elif mode == "class3-large-open-reject":
                         response = rr_reply(bytes.fromhex("DB 00 01 02 26 01 F8 01"))
@@ -581,7 +592,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                     stop.set()
                     if mode == "close-eof":
                         break
-                    if mode in ("close-reject", "stall-close-reject", "class3-packet-close-reject"):
+                    if mode in ("close-reject", "stall-close-reject",
+                                "class3-packet-close-reject", "class3-write-close-reject"):
                         response = rr_reply(bytes.fromhex("CE 00 01 01 07 01") + body[2:10] + b"\0\0")
                     elif mode == "close-mismatch":
                         wrong_ids = struct.pack("<H", serial ^ 1) + body[4:10]
@@ -622,6 +634,8 @@ def main():
         "class3-packet", "class3-packet-close-reject",
         "class3-routed", "class3-routed-open-reject", "class3-routed-packet", "class3-routed-packet-unsupported",
         "class3-sized", "class3-large-packet", "class3-routed-large-packet", "class3-large-open-reject",
+        "class3-write", "class3-routed-large-write", "class3-write-open-reject",
+        "class3-write-close-reject", "class3-write-bad-sequence", "class3-write-gui",
         "routed-io", "routed-io-large", "routed-io-rejected-route", "routed-io-unexpected-peer",
         "variable-output", "large-variable-output",
         "multicast", "multicast-missing", "multicast-unicast",
@@ -645,6 +659,7 @@ def main():
         sequences = {
             "explicit-write-gui": ("explicit-write-review", "explicit-write-review", "explicit-write-readback"),
             "explicit-write-gui-current": ("explicit-write-review", "explicit-write-review", "explicit-write-current"),
+            "class3-write-gui": ("explicit-write-review", "class3-write", "class3-write"),
             "reconnect": ("normal", "normal"),
             "recover": ("stall", "normal"),
             "recover-slower-api": ("stall", "slower-api"),

@@ -475,21 +475,24 @@ pub fn read_identity(cfg: &Settings) -> std::result::Result<Identity, String> {
     identity(&mut session, route.as_ref()).map_err(|e| e.to_string())
 }
 pub(crate) fn identity(session: &mut Session, route: Option<&Route>) -> Result<Identity> {
+    identity_from(|address| match route {
+        None => session.read(address),
+        Some(route) => session
+            .read_routed(address, route)
+            .map_err(|error| match error {
+                RoutedReadError::Target(error) => error,
+                error => protocol(error.to_string()),
+            }),
+    })
+}
+
+fn identity_from(mut request: impl FnMut(ReadPath) -> Result<Vec<u8>>) -> Result<Identity> {
     let mut read = |attribute| {
-        let address = ReadPath {
+        request(ReadPath {
             class: 1,
             instance: 1,
             attribute,
-        };
-        match route {
-            None => session.read(address),
-            Some(route) => session
-                .read_routed(address, route)
-                .map_err(|error| match error {
-                    RoutedReadError::Target(error) => error,
-                    error => protocol(error.to_string()),
-                }),
-        }
+        })
     };
     match read(None) {
         Ok(body) => decode_identity(&body),

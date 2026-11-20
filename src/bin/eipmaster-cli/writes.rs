@@ -1,6 +1,6 @@
 use super::{USAGE, explicit_endpoint, parse_expected_identity};
 use assembly_scanner::{
-    explicit::{AttributeWrite, IdentityPin, ReadPath, Route, WriteOptions},
+    explicit::{AttributeWrite, Class3Size, IdentityPin, ReadPath, Route, WriteOptions},
     model::{ByteSwap, Kind, Selection, hex, parse_hex},
 };
 use serde_json::json;
@@ -17,6 +17,8 @@ pub(super) fn attribute(
     let mut route: Option<Route> = None;
     let mut apply = None;
     let mut readback = false;
+    let mut connected = false;
+    let mut connection_size = None;
     let mut expected_current = None;
     let mut kind = None;
     let mut endian = None;
@@ -40,6 +42,15 @@ pub(super) fn attribute(
                 });
             }
             Some("--readback") if !readback => readback = true,
+            Some("--connected") if !connected => connected = true,
+            Some("--connection-size") if connection_size.is_none() => {
+                let bytes = options
+                    .next()
+                    .and_then(|value| value.to_str())
+                    .and_then(|value| value.parse::<u16>().ok())
+                    .ok_or("Class 3 connection size must be an integer")?;
+                connection_size = Some(Class3Size::try_from(bytes)?);
+            }
             Some("--expect-current") if expected_current.is_none() => {
                 let value = options.next().ok_or(USAGE)?.to_string_lossy();
                 expected_current = Some(
@@ -87,6 +98,9 @@ pub(super) fn attribute(
     if kind.is_none() && (endian.is_some() || swap.is_some() || text_bytes.is_some()) {
         return Err("Byte order, swap, and text length options require --type".into());
     }
+    if !connected && connection_size.is_some() {
+        return Err("--connection-size requires --connected".into());
+    }
     let format = kind.map(|kind| Selection {
         kind,
         big_endian: endian.unwrap_or(false),
@@ -125,19 +139,28 @@ pub(super) fn attribute(
     if let Some(bytes) = &expected_current {
         report["expected_current_hex"] = json!(hex(bytes));
     }
+    let class3 = connected.then(|| connection_size.unwrap_or_default());
+    if let Some(size) = class3 {
+        report["class3_size"] = json!(size);
+        report["large_forward_open"] = json!(size.uses_large_forward_open());
+    }
     let success = if let Some(pin) = apply {
-        let result = request.apply_with_options(
-            pin,
-            WriteOptions {
-                expected_current: expected_current.as_deref(),
-                readback,
-            },
-        )?;
+        let options = WriteOptions {
+            expected_current: expected_current.as_deref(),
+            readback,
+        };
+        let result = match class3 {
+            Some(size) => request.apply_connected(pin, options, size),
+            None => request.apply_with_options(pin, options),
+        }?;
         let success = result.is_success();
         report["result"] = json!(result);
         success
     } else {
-        request.validate()?;
+        match class3 {
+            Some(size) => request.validate_connected(size)?,
+            None => request.validate()?,
+        }
         report["result"] = json!({"outcome": "preview"});
         true
     };

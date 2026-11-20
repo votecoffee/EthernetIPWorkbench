@@ -5,7 +5,7 @@ Read the repository skill at [.agents/skills/ethernetip-workbench/SKILL.md](.age
 ## Scope and names
 
 - The repository is EthernetIPWorkbench. The Rust package and GUI executable are still named assembly-scanner, the CLI is eipmaster-cli, and the saved GUI workspace lives in the EIPMaster application-data directory. Follow those existing names in commands and compatibility work.
-- This code operates as a Class 1 EtherNet/IP scanner/originator. It supports explicit reads over unconnected CIP or Class 3 and identity-checked unconnected Set_Attribute_Single writes. HTTP, MQTT and shared memory export its cyclic inputs. A C-compatible FFI and an EtherNet/IP adapter stack are separate future work.
+- This code operates as a Class 1 EtherNet/IP scanner/originator. It supports explicit reads and identity-checked Set_Attribute_Single writes over unconnected CIP or Class 3. HTTP, MQTT and shared memory export its cyclic inputs. A C-compatible FFI and an EtherNet/IP adapter stack are separate future work.
 - Verify checkout state, applicable instructions and remote before editing. Keep unrelated changes intact. Use the verified origin when publishing authorized work.
 
 ## Operational boundaries
@@ -24,6 +24,7 @@ Read the repository skill at [.agents/skills/ethernetip-workbench/SKILL.md](.age
 - Keep explicit write staging separate from sending. Verify the reviewed target on the write session and preserve unconfirmed outcomes without retrying.
 - Evaluate a requested current-value check after identity verification and before any write. Send only when the comparison matches.
 - Keep the write acknowledgment and optional readback separate. Perform the readback on the same session after acknowledgment.
+- For a Class 3 write, keep Forward_Close separate from the write acknowledgment and any readback.
 - Update the relevant operator documentation, skill routing and verification notes when changing a public command, profile key, export schema or lifecycle.
 
 ## Delivery

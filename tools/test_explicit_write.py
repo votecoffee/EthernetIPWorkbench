@@ -33,6 +33,7 @@ def check_writes(exe, root):
         invalid_current = subprocess.run([*command, "--expect-current", "ZZ", "--apply", PIN],
                                          capture_output=True, text=True, timeout=6, creationflags=NO_WINDOW)
         check_typed_previews(command[:-1], root)
+        check_connected_preflight(command, root)
         listener.setblocking(False)
         try:
             unexpected, _ = listener.accept()
@@ -101,6 +102,74 @@ def check_writes(exe, root):
     check_readbacks(command, root)
     check_typed_apply(command[:-1], root)
     check_current_value(command, root)
+    check_connected_writes(command, root)
+
+
+def check_connected_preflight(command, root):
+    result = subprocess.run([*command, "--connected", "--connection-size", "4002"],
+                            capture_output=True, text=True, timeout=6, creationflags=NO_WINDOW)
+    assert result.returncode == 0 and not result.stderr
+    preview = json.loads(result.stdout)
+    assert preview["class3_size"] == 4002 and preview["large_forward_open"]
+    assert preview["result"] == {"outcome": "preview"}
+    (root / "class3-preview.json").write_text(result.stdout, encoding="utf-8")
+    for flags, error in (
+        (["--connection-size", "504"], "requires --connected"),
+        (["--connected", "--connection-size", "13"], "needs 12 CIP bytes"),
+        (["--connected", "--connection-size", "4003"], "Class 3 connection size must be"),
+    ):
+        result = subprocess.run([*command, "--apply", PIN, *flags], capture_output=True,
+                                text=True, timeout=6, creationflags=NO_WINDOW)
+        assert result.returncode == 1 and error in result.stderr and not result.stdout
+
+
+def check_connected_writes(command, root):
+    identity = "010220012401"
+    read = "0e032004249a3003"
+    write = "10032004249a3003a5162c93"
+    full_sequence = [identity, read, write, read]
+    for case, mode, requests, outcome, close in (
+        ("direct", "class3-write", full_sequence, "acknowledged", "confirmed"),
+        ("routed-large", "class3-routed-large-write", full_sequence, "acknowledged", "confirmed"),
+        ("close-rejected", "class3-write-close-reject", full_sequence, "acknowledged", "rejected"),
+        ("wrong-sequence", "class3-write-bad-sequence", full_sequence[:-1], "unconfirmed", "confirmed"),
+        ("wrong-identity", "class3-write", [identity], "not_sent", "confirmed"),
+        ("wrong-current", "class3-write", [identity, read], "not_sent", "confirmed"),
+        ("open-rejected", "class3-write-open-reject", [], "not_sent", None),
+    ):
+        label = f"class3-{case}"
+        pin = "0:12:1:305419897" if case == "wrong-identity" else PIN
+        expected = "10 20 30 41" if case == "wrong-current" else CURRENT
+        args = [*command, "--connected", "--apply", pin, "--expect-current", expected, "--readback"]
+        routed = case == "routed-large"
+        if routed:
+            args.extend(("--route", "1/2/2/192.0.2.100/1/0", "--connection-size", "4002"))
+        result, peer = with_adapter(root, label, args, mode)
+        assert result.returncode == int(outcome != "acknowledged" or close != "confirmed")
+        assert not result.stderr
+        report = json.loads(result.stdout)
+        (root / f"{label}.json").write_text(result.stdout, encoding="utf-8")
+        assert report["class3_size"] == (4002 if routed else 504) and report["large_forward_open"] == routed
+        actual = report["result"]
+        assert actual["outcome"] == outcome
+        if close:
+            assert actual["forward_close"]["outcome"] == close
+        else:
+            assert "forward_close" not in actual and "Class 3 Forward_Open" in actual["error"]
+        if outcome == "unconfirmed":
+            assert "data or sequence" in actual["error"]
+        if close == "rejected":
+            assert actual["forward_close"]["extended_status"] == [0x0107]
+        assert actual["current_value"]["outcome"] == (
+            "mismatch" if case == "wrong-current" else "matched" if read in requests else "skipped"
+        )
+        assert actual["readback"] == ({"outcome": "matched", "data_hex": VALUE}
+                                     if outcome == "acknowledged" else {"outcome": "skipped"})
+        assert peer["registrations"] == 1 and peer["unregistered"]
+        assert peer.get("connected_requests", []) == requests
+        assert peer["forward_close"] == bool(close)
+        if routed:
+            assert peer["open_path_hex"] == peer["close_path_hex"] == "0102120b3139322e302e322e31303000010020022401"
 
 
 def check_current_value(command, root):
@@ -231,4 +300,4 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
     check_writes(args.exe.resolve(strict=True), args.output.resolve())
-    print("Explicit write preview, typed encoding, identity pin, current-value checks, and readback outcomes passed.")
+    print("Unconnected and Class 3 write previews, identity, current-value, readback, and close checks passed.")

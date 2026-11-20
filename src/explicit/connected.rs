@@ -8,7 +8,7 @@ use crate::scanner::{CloseOutcome, encode_large_open, forward_close};
 use ethernetip_connections::forward_open::{
     ForwardCloseRequest, ForwardOpenRequest, ForwardOpenResponse, NetworkConnectionParameters,
 };
-use std::{net::Ipv4Addr, ops::RangeInclusive};
+use std::{fmt, net::Ipv4Addr, ops::RangeInclusive};
 
 const MESSAGE_ROUTER: [u8; 4] = [0x20, 2, 0x24, 1];
 const RPI_US: u32 = 2_000_000;
@@ -33,7 +33,7 @@ impl Class3Size {
         *self == Self::default()
     }
 
-    fn check_request(self, bytes: usize, kind: &str) -> std::result::Result<(), String> {
+    pub(super) fn check_request(self, bytes: usize, kind: &str) -> std::result::Result<(), String> {
         let limit = usize::from(self.0) - 2;
         if bytes > limit {
             return Err(format!(
@@ -105,20 +105,16 @@ pub(super) fn run_connected_sized(
         size.check_request(read_message(request.path).len(), "read")?;
     }
     let (results, forward_close) =
-        with_connection(adapter, local, route.as_ref(), size, |session, reply| {
-            let mut sequence = 0u16;
+        with_connection(adapter, local, route.as_ref(), size, |connection| {
             run_ordered(reads, |request| {
-                sequence = sequence.wrapping_add(1);
                 let cip = read_message(request.path);
-                connected_exchange(session, reply, sequence, &cip, size, |data| {
-                    Ok(reply_body(data, cip[0])?.to_vec())
-                })
-                .map_err(|error| match error {
+                connection.request(&cip).map_err(|error| match error {
                     error @ EipError::Cip { .. } => RoutedReadError::Target(error),
                     error => RoutedReadError::Exchange(error),
                 })
             })
-        })?;
+        })
+        .map_err(|error| error.to_string())?;
     Ok(ConnectedReadBatch {
         batch: SavedReadBatch {
             adapter_or_bridge: adapter,
@@ -152,11 +148,10 @@ pub(super) fn run_connected_packet_sized(
     let packet = request_packet(&requests);
     size.check_request(packet.len(), "packet")?;
     let (reply, forward_close) =
-        with_connection(adapter, local, route.as_ref(), size, |session, open| {
-            connected_exchange(session, open, 1, &packet, size, |data| {
-                decode_packet(data, &requests)
-            })
-        })?;
+        with_connection(adapter, local, route.as_ref(), size, |connection| {
+            connection.exchange(&packet, |data| decode_packet(data, &requests))
+        })
+        .map_err(|error| error.to_string())?;
     let (results, packet_error) = match reply {
         Ok(outcomes) => (
             reads
@@ -191,15 +186,41 @@ fn connection_route(reads: &[SavedRead]) -> std::result::Result<Option<Route>, S
     Ok(SavedReadMode::Connected.batch_route(reads)?.cloned())
 }
 
-fn with_connection<T>(
+pub(super) struct Class3OpenError {
+    pub(super) message: String,
+    pub(super) forward_close: Option<CloseOutcome>,
+}
+
+impl From<String> for Class3OpenError {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            forward_close: None,
+        }
+    }
+}
+
+impl fmt::Display for Class3OpenError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)?;
+        if let Some(close) = &self.forward_close {
+            write!(f, ". Forward_Close {close}")?;
+        }
+        Ok(())
+    }
+}
+
+pub(super) fn with_connection<T>(
     adapter: Ipv4Addr,
     local: Ipv4Addr,
     route: Option<&Route>,
     size: Class3Size,
-    run: impl FnOnce(&mut Session, &ForwardOpenResponse) -> T,
-) -> std::result::Result<(T, CloseOutcome), String> {
+    run: impl FnOnce(&mut Class3<'_>) -> T,
+) -> std::result::Result<(T, CloseOutcome), Class3OpenError> {
     if !is_unicast(adapter) || !is_unicast(local) {
-        return Err("Enter unicast adapter and local NIC IPv4 addresses".into());
+        return Err("Enter unicast adapter and local NIC IPv4 addresses"
+            .to_owned()
+            .into());
     }
 
     let mut session = Session::open(adapter, local).map_err(|error| error.to_string())?;
@@ -228,10 +249,18 @@ fn with_connection<T>(
         Ok(reply) => reply,
         Err(error) => {
             let outcome = CloseOutcome::from_result(forward_close(&mut session, &close));
-            return Err(format!("{}: {error}. Forward_Close {outcome}", operation(),));
+            return Err(Class3OpenError {
+                message: format!("{}: {error}", operation()),
+                forward_close: Some(outcome),
+            });
         }
     };
-    let result = run(&mut session, &reply);
+    let result = run(&mut Class3 {
+        session: &mut session,
+        open: reply,
+        size,
+        sequence: 0,
+    });
     let forward_close = CloseOutcome::from_result(forward_close(&mut session, &close));
     Ok((result, forward_close))
 }
@@ -279,29 +308,37 @@ fn decode_open(body: &[u8], open: &ForwardOpenRequest) -> Result<ForwardOpenResp
     Ok(reply)
 }
 
-fn connected_exchange<T>(
-    session: &mut Session,
-    open: &ForwardOpenResponse,
-    sequence: u16,
-    cip: &[u8],
+pub(super) struct Class3<'a> {
+    session: &'a mut Session,
+    open: ForwardOpenResponse,
     size: Class3Size,
-    decode: impl FnOnce(&[u8]) -> Result<T>,
-) -> Result<T> {
-    let mut payload = sequence.to_le_bytes().to_vec();
-    payload.extend_from_slice(cip);
-    let items = [
-        Item::connected_address(open.o_to_t_connection_id),
-        Item::new(item_type::CONNECTED_DATA, payload),
-    ];
-    let (_, response) =
-        session.exchange(Command::SendUnitData, &cpf::encode_envelope(0, 0, &items))?;
-    let envelope = Envelope::parse(&response)?;
-    decode(connected_payload(
-        &envelope,
-        open.t_to_o_connection_id,
-        sequence,
-        size,
-    )?)
+    sequence: u16,
+}
+
+impl Class3<'_> {
+    pub(super) fn request(&mut self, cip: &[u8]) -> Result<Vec<u8>> {
+        self.exchange(cip, |data| Ok(reply_body(data, cip[0])?.to_vec()))
+    }
+
+    fn exchange<T>(&mut self, cip: &[u8], decode: impl FnOnce(&[u8]) -> Result<T>) -> Result<T> {
+        self.sequence = self.sequence.wrapping_add(1);
+        let mut payload = self.sequence.to_le_bytes().to_vec();
+        payload.extend_from_slice(cip);
+        let items = [
+            Item::connected_address(self.open.o_to_t_connection_id),
+            Item::new(item_type::CONNECTED_DATA, payload),
+        ];
+        let (_, response) = self
+            .session
+            .exchange(Command::SendUnitData, &cpf::encode_envelope(0, 0, &items))?;
+        let envelope = Envelope::parse(&response)?;
+        decode(connected_payload(
+            &envelope,
+            self.open.t_to_o_connection_id,
+            self.sequence,
+            self.size,
+        )?)
+    }
 }
 
 fn connected_payload(

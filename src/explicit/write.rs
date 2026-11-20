@@ -1,8 +1,9 @@
 use super::{
-    EipError, Identity, IdentityPin, ReadPath, Route, RoutedReadError, Session, cip_data, identity,
-    is_unicast, read_message, reply_body,
+    Class3Size, EipError, Identity, IdentityPin, ReadPath, Route, RoutedReadError, Session,
+    cip_data, connected::with_connection, identity, identity_from, is_unicast, read_message,
+    reply_body,
 };
-use crate::model::hex;
+use crate::{model::hex, scanner::CloseOutcome};
 use serde::Serialize;
 use std::{fmt, net::Ipv4Addr};
 
@@ -196,13 +197,35 @@ pub struct WriteReport {
     pub current_value: Option<CurrentValueCheck>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub readback: Option<ReadbackOutcome>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub forward_close: Option<CloseOutcome>,
 }
 
 impl WriteReport {
-    /// True when the target acknowledged the write and any requested readback matched.
+    fn pending(expected_identity: IdentityPin, options: WriteOptions<'_>) -> Self {
+        Self {
+            expected_identity,
+            observed_identity: None,
+            outcome: WriteOutcome::NotSent {
+                error: "Write review did not complete".into(),
+            },
+            current_value: options.expected_current.map(|bytes| CurrentValueCheck {
+                expected_hex: hex(bytes),
+                outcome: ReadbackOutcome::Skipped,
+            }),
+            readback: options.readback.then_some(ReadbackOutcome::Skipped),
+            forward_close: None,
+        }
+    }
+
+    /// True when the write, requested readback, and any Forward_Close all succeeded.
     pub fn is_success(&self) -> bool {
         matches!(self.outcome, WriteOutcome::Acknowledged { .. })
             && self.readback.as_ref().is_none_or(ReadbackOutcome::is_match)
+            && self
+                .forward_close
+                .as_ref()
+                .is_none_or(CloseOutcome::is_confirmed)
     }
 }
 
@@ -236,7 +259,36 @@ impl AttributeWrite {
     /// Read the proposed target's identity without sending the staged value.
     pub fn read_target_identity(&self) -> Result<Identity, String> {
         self.validate()?;
-        self.open_target().map(|(_, identity)| identity)
+        let mut session = self.open_session()?;
+        identity(&mut session, self.route.as_ref())
+            .map_err(|error| format!("Read target identity · {error}"))
+    }
+
+    pub fn validate_connected(&self, size: Class3Size) -> Result<(), String> {
+        self.connected_message(size).map(|_| ())
+    }
+
+    fn connected_message(&self, size: Class3Size) -> Result<Vec<u8>, String> {
+        let request = self.message()?;
+        size.check_request(request.len(), "write")?;
+        Ok(request)
+    }
+
+    /// Read the target's identity over Class 3 for review, then close the connection.
+    pub fn read_target_identity_connected(&self, size: Class3Size) -> Result<Identity, String> {
+        self.validate_connected(size)?;
+        let (observed, close) = with_connection(
+            self.adapter_or_bridge,
+            self.local_ip,
+            self.route.as_ref(),
+            size,
+            |connection| identity_from(|path| connection.request(&read_message(path))),
+        )
+        .map_err(|error| error.to_string())?;
+        if !close.is_confirmed() {
+            return Err(format!("Class 3 identity review · Forward_Close {close}"));
+        }
+        observed.map_err(|error| format!("Read target identity · {error}"))
     }
 
     /// Check the pinned identity and send the reviewed write once on that TCP session.
@@ -268,128 +320,160 @@ impl AttributeWrite {
         options: WriteOptions<'_>,
     ) -> Result<WriteReport, String> {
         let request = self.message()?;
-        let mut readback = options.readback.then_some(ReadbackOutcome::Skipped);
-        let mut current_value = options.expected_current.map(|bytes| CurrentValueCheck {
-            expected_hex: hex(bytes),
-            outcome: ReadbackOutcome::Skipped,
-        });
-        let (observed_identity, outcome) = match self.open_target() {
-            Err(error) => (None, WriteOutcome::NotSent { error }),
-            Ok((mut session, actual)) => {
-                let outcome = if actual.pin() == expected_identity {
-                    if let (Some(expected), Some(check)) =
-                        (options.expected_current, &mut current_value)
-                    {
-                        check.outcome = self.compare_value(&mut session, expected);
+        let mut report = WriteReport::pending(expected_identity, options);
+        match self.open_session() {
+            Ok(mut session) => {
+                let actual = identity(&mut session, self.route.as_ref());
+                self.run_reviewed(&request, actual, options, &mut report, |cip| {
+                    let decode = |data: &[u8]| Ok(reply_body(data, cip[0])?.to_vec());
+                    match &self.route {
+                        Some(route) => session.routed(cip, route, decode),
+                        None => session
+                            .unconnected(cip.to_vec(), None)
+                            .and_then(|reply| decode(cip_data(&reply)?))
+                            .map_err(target_error),
                     }
-                    if current_value
-                        .as_ref()
-                        .is_some_and(|check| !check.outcome.is_match())
-                    {
-                        WriteOutcome::NotSent {
-                            error: "Current value check did not pass".into(),
-                        }
-                    } else {
-                        let outcome = self.write_once(&mut session, request);
-                        if options.readback && matches!(outcome, WriteOutcome::Acknowledged { .. })
-                        {
-                            readback = Some(self.compare_value(&mut session, &self.value));
-                        }
-                        outcome
-                    }
-                } else {
-                    WriteOutcome::NotSent {
-                        error: "Target identity did not match the reviewed device".into(),
-                    }
+                });
+            }
+            Err(error) => report.outcome = WriteOutcome::NotSent { error },
+        }
+        Ok(report)
+    }
+
+    /// Apply a reviewed write and optional checks on one Class 3 connection.
+    /// A failed or missing write reply does not trigger a retry.
+    pub fn apply_connected(
+        &self,
+        expected_identity: IdentityPin,
+        options: WriteOptions<'_>,
+        size: Class3Size,
+    ) -> Result<WriteReport, String> {
+        let request = self.connected_message(size)?;
+        let mut report = WriteReport::pending(expected_identity, options);
+        let result = with_connection(
+            self.adapter_or_bridge,
+            self.local_ip,
+            self.route.as_ref(),
+            size,
+            |connection| {
+                let actual = identity_from(|path| connection.request(&read_message(path)));
+                self.run_reviewed(&request, actual, options, &mut report, |cip| {
+                    connection.request(cip).map_err(target_error)
+                });
+            },
+        );
+        match result {
+            Ok(((), close)) => report.forward_close = Some(close),
+            Err(error) => {
+                report.outcome = WriteOutcome::NotSent {
+                    error: error.message,
                 };
-                (Some(actual), outcome)
+                report.forward_close = error.forward_close;
+            }
+        }
+        Ok(report)
+    }
+
+    fn open_session(&self) -> Result<Session, String> {
+        Session::open(self.adapter_or_bridge, self.local_ip)
+            .map_err(|error| format!("RegisterSession · {error}"))
+    }
+
+    fn run_reviewed(
+        &self,
+        request: &[u8],
+        actual: Result<Identity, EipError>,
+        options: WriteOptions<'_>,
+        report: &mut WriteReport,
+        mut exchange: impl FnMut(&[u8]) -> Result<Vec<u8>, RoutedReadError>,
+    ) {
+        let actual = match actual {
+            Ok(actual) => actual,
+            Err(error) => {
+                report.outcome = WriteOutcome::NotSent {
+                    error: format!("Read target identity · {error}"),
+                };
+                return;
             }
         };
-        Ok(WriteReport {
-            expected_identity,
-            observed_identity,
-            outcome,
-            current_value,
-            readback,
-        })
+        let identity_matches = actual.pin() == report.expected_identity;
+        report.observed_identity = Some(actual);
+        if !identity_matches {
+            report.outcome = WriteOutcome::NotSent {
+                error: "Target identity did not match the reviewed device".into(),
+            };
+            return;
+        }
+        let read = read_message(self.path);
+        if let (Some(expected), Some(check)) = (options.expected_current, &mut report.current_value)
+        {
+            check.outcome = compare_value(exchange(&read), expected);
+            if !check.outcome.is_match() {
+                report.outcome = WriteOutcome::NotSent {
+                    error: "Current value check did not pass".into(),
+                };
+                return;
+            }
+        }
+        report.outcome = write_outcome(exchange(request));
+        if options.readback && matches!(report.outcome, WriteOutcome::Acknowledged { .. }) {
+            report.readback = Some(compare_value(exchange(&read), &self.value));
+        }
     }
+}
 
-    fn open_target(&self) -> Result<(Session, Identity), String> {
-        let mut session = Session::open(self.adapter_or_bridge, self.local_ip)
-            .map_err(|error| format!("RegisterSession · {error}"))?;
-        let actual = identity(&mut session, self.route.as_ref())
-            .map_err(|error| format!("Read target identity · {error}"))?;
-        Ok((session, actual))
+fn target_error(error: EipError) -> RoutedReadError {
+    match error {
+        EipError::Cip { .. } => RoutedReadError::Target(error),
+        _ => RoutedReadError::Exchange(error),
     }
+}
 
-    fn write_once(&self, session: &mut Session, request: Vec<u8>) -> WriteOutcome {
-        let decode = |data: &[u8]| Ok(reply_body(data, SET_ATTRIBUTE_SINGLE)?.to_vec());
-        let result = match &self.route {
-            Some(route) => session.routed(&request, route, decode),
-            None => session
-                .unconnected(request, None)
-                .and_then(|reply| decode(cip_data(&reply)?))
-                .map_err(|error| match error {
-                    error @ EipError::Cip { .. } => RoutedReadError::Target(error),
-                    error => RoutedReadError::Exchange(error),
-                }),
-        };
-        match result {
-            Ok(data) => WriteOutcome::Acknowledged {
-                reply_hex: hex(&data),
-            },
-            Err(RoutedReadError::Target(EipError::Cip { status, ext })) => WriteOutcome::Rejected {
+fn write_outcome(result: Result<Vec<u8>, RoutedReadError>) -> WriteOutcome {
+    match result {
+        Ok(data) => WriteOutcome::Acknowledged {
+            reply_hex: hex(&data),
+        },
+        Err(RoutedReadError::Target(EipError::Cip { status, ext })) => WriteOutcome::Rejected {
+            general_status: status,
+            extended_status: ext,
+        },
+        Err(RoutedReadError::Router(EipError::Cip { status, ext })) => WriteOutcome::RouterError {
+            general_status: status,
+            extended_status: ext,
+        },
+        Err(RoutedReadError::Exchange(error)) => WriteOutcome::Unconfirmed {
+            error: error.to_string(),
+        },
+        Err(error) => WriteOutcome::Unconfirmed {
+            error: error.to_string(),
+        },
+    }
+}
+
+fn compare_value(result: Result<Vec<u8>, RoutedReadError>, expected: &[u8]) -> ReadbackOutcome {
+    match result {
+        Ok(data) if data == expected => ReadbackOutcome::Matched {
+            data_hex: hex(&data),
+        },
+        Ok(data) => ReadbackOutcome::Mismatch {
+            data_hex: hex(&data),
+        },
+        Err(RoutedReadError::Target(EipError::Cip { status, ext })) => ReadbackOutcome::Rejected {
+            general_status: status,
+            extended_status: ext,
+        },
+        Err(RoutedReadError::Router(EipError::Cip { status, ext })) => {
+            ReadbackOutcome::RouterError {
                 general_status: status,
                 extended_status: ext,
-            },
-            Err(RoutedReadError::Router(EipError::Cip { status, ext })) => {
-                WriteOutcome::RouterError {
-                    general_status: status,
-                    extended_status: ext,
-                }
             }
-            Err(RoutedReadError::Exchange(error)) => WriteOutcome::Unconfirmed {
-                error: error.to_string(),
-            },
-            Err(error) => WriteOutcome::Unconfirmed {
-                error: error.to_string(),
-            },
         }
-    }
-
-    fn compare_value(&self, session: &mut Session, expected: &[u8]) -> ReadbackOutcome {
-        let result = match &self.route {
-            Some(route) => session.read_routed(self.path, route),
-            None => session.read(self.path).map_err(|error| match error {
-                error @ EipError::Cip { .. } => RoutedReadError::Target(error),
-                error => RoutedReadError::Exchange(error),
-            }),
-        };
-        match result {
-            Ok(data) if data == expected => ReadbackOutcome::Matched {
-                data_hex: hex(&data),
-            },
-            Ok(data) => ReadbackOutcome::Mismatch {
-                data_hex: hex(&data),
-            },
-            Err(RoutedReadError::Target(EipError::Cip { status, ext })) => {
-                ReadbackOutcome::Rejected {
-                    general_status: status,
-                    extended_status: ext,
-                }
-            }
-            Err(RoutedReadError::Router(EipError::Cip { status, ext })) => {
-                ReadbackOutcome::RouterError {
-                    general_status: status,
-                    extended_status: ext,
-                }
-            }
-            Err(RoutedReadError::Exchange(error)) => ReadbackOutcome::Unavailable {
-                error: error.to_string(),
-            },
-            Err(error) => ReadbackOutcome::Unavailable {
-                error: error.to_string(),
-            },
-        }
+        Err(RoutedReadError::Exchange(error)) => ReadbackOutcome::Unavailable {
+            error: error.to_string(),
+        },
+        Err(error) => ReadbackOutcome::Unavailable {
+            error: error.to_string(),
+        },
     }
 }

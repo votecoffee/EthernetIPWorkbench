@@ -79,6 +79,8 @@ Select **Read class info** beside the class field to inspect its revision, insta
 
 Use **Stage attribute write** in Explore to review and send a documented Set_Attribute_Single request. Enter hex or select **Enter typed value** to preview the encoded bytes. The CLI `write-attribute` previews the address, route and bytes offline and accepts typed entry with `--type`. Sending requires the reviewed device identity, including its serial number. For a readable attribute, **Require current value** or `--expect-current` checks the bytes before sending. **Read back after write** or `--readback` checks the returned bytes after acknowledgment. [Review and send an attribute write](docs/OPERATIONS.md#review-and-send-an-attribute-write)
 
+Choose **Use Class 3** in the write review or pass `write-attribute --connected` for a device that requires connected explicit messaging. Identity verification, the write, and any value checks share the direct or routed Class 3 connection. The result reports Forward_Close separately. [Class 3 attribute writes](docs/OPERATIONS.md#send-a-class-3-attribute-write)
+
 ~~~powershell
 .\target\release\eipmaster-cli.exe discover 127.0.0.1 127.0.0.1
 .\target\release\eipmaster-cli.exe read 127.0.0.1 127.0.0.1 0x01 1 6

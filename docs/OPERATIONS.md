@@ -70,7 +70,7 @@ Both commands below preview the same bytes offline. The typed report also retain
 
 Typed entry encodes a complete attribute value. Choose `Bool`, signed or unsigned 8-, 16-, 32- or 64-bit integers such as `I16` or `U32`, `F32`, `F64`, or `Utf8`. Numeric values default to little endian. Use `--endian big` and `--swap bytes_in_words` or `--swap word_order` when specified by the device. `Utf8` encodes a fixed-width field padded with zero bytes to the width given by `--text-bytes`. Supply raw hex for a structured or length-prefixed attribute.
 
-Add `--apply <vendor:type:product:serial>` to send to the reviewed target. All four identity fields are decimal. To write through a bridge, use its IP as the first address and pass `--route <port/link/...>`. The write uses unconnected CIP on TCP and sends a single `Set_Attribute_Single` request. Live writes require authorization for the exact target and value.
+Add `--apply <vendor:type:product:serial>` to send to the reviewed target. All four identity fields are decimal. To write through a bridge, use its IP as the first address and pass `--route <port/link/...>`. The default transport is unconnected CIP on TCP. Live writes require authorization for the exact target and value.
 
 For a readable attribute, select **Require current value** and enter the expected bytes in hex. Changing these bytes clears the review. The CLI accepts `--expect-current "10 20 30 40"`. Preview records those bytes offline. On apply, the Workbench verifies identity and reads the attribute once on the same session. It sends the write only when the returned bytes match exactly. The comparison and write are separate requests. Another client can change the attribute between them.
 
@@ -90,6 +90,18 @@ For a readable attribute, enable **Read back after write** in the review window 
 The optional `result.readback` records `matched` or `mismatch` with the returned `data_hex`. Target and router rejections retain their status words. A failed read exchange reports `unavailable`. A requested readback reports `skipped` when the write lacks a target acknowledgment. Explore shows both results and the returned bytes under **Attribute write result**.
 
 The CLI returns exit code 0 for a valid preview or an acknowledged apply. With `--readback`, an apply also requires a byte-for-byte match for exit code 0. The write acknowledgment stays in the result even when the readback differs or fails. For an unconfirmed write, verify the target state before issuing another write. The Workbench sends each reviewed write at most once.
+
+#### Send a Class 3 attribute write
+
+Select **Use Class 3** in the write review or add `--connected` to `write-attribute`. The review window starts with the profile's Class 3 connection size. Set **Connection size** for this write if needed. Changing the transport or size clears the prior review. The CLI defaults to 504 bytes per direction and accepts `--connection-size <bytes>` with `--connected`. Sizes above 511 bytes use Large Forward_Open. The size includes the two-byte sequence. [Connected explicit messaging reference](https://product-help.schneider-electric.com/Machine%20Expert/V1.1/en/ESMEEtherNetIP/ESMEEtherNetIP/SoM_Industrial_Ethernet_-_EIP_Scanner_Library/SoM_Industrial_Ethernet_-_EIP_Scanner_Library-5.htm)
+
+~~~powershell
+.\target\release\eipmaster-cli.exe write-attribute 127.0.0.1 127.0.0.1 4 154 3 "A5 16 2C 93" --connected --expect-current "10 20 30 40" --readback
+~~~
+
+The example previews the write offline. Its JSON includes `class3_size` and `large_forward_open`. With `--apply`, the Workbench uses the supplied route when opening and closing the Class 3 connection. It verifies the target identity and performs any requested current-value check, the write, and any requested readback on that connection.
+
+An applied Class 3 write reports `result.forward_close` when the scanner attempted to close the connection. Exit code 0 requires the write acknowledgment, a matching readback if requested, and a confirmed close. Check the write outcome before acting on a nonzero exit code. A failed close can accompany an acknowledged write.
 
 ### Run all saved reads
 

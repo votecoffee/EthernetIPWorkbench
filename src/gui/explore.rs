@@ -340,7 +340,11 @@ impl Device {
                 .add_enabled(!explorer.busy(), egui::Button::new("Stage attribute write"))
                 .clicked()
             {
-                explorer.stage_attribute_write(&self.device, local.as_ref().ok().copied());
+                explorer.stage_attribute_write(
+                    &self.device,
+                    local.as_ref().ok().copied(),
+                    self.preferences.cip_class3_size,
+                );
             }
             ui.label("Save as");
             ui.add(egui::TextEdit::singleline(&mut explorer.name).desired_width(160.0));

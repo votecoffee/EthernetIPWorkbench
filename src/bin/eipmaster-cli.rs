@@ -46,7 +46,7 @@ Usage:
   eipmaster-cli discover <local-ipv4> [<destination-ipv4>]
   eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
   eipmaster-cli class-info <adapter-or-bridge-ipv4> <local-ipv4> <class> [--route <port/link/...>]
-  eipmaster-cli write-attribute <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute> \"<value>\" [--type <Kind>] [--endian <little|big>] [--swap <none|bytes_in_words|word_order>] [--text-bytes <count>] [--route <port/link/...>] [--apply <vendor:type:product:serial>] [--expect-current \"<hex bytes>\"] [--readback]
+  eipmaster-cli write-attribute <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute> \"<value>\" [--type <Kind>] [--endian <little|big>] [--swap <none|bytes_in_words|word_order>] [--text-bytes <count>] [--route <port/link/...>] [--apply <vendor:type:product:serial>] [--expect-current \"<hex bytes>\"] [--readback] [--connected [--connection-size <bytes>]]
   eipmaster-cli read-saved <settings.toml> <name>
   eipmaster-cli read-saved-all <settings.toml> [--multiple-service-packet] [--connected]
   eipmaster-cli capture <settings.toml> <new-output-dir> <seconds> <vendor:type:product[:serial]>
