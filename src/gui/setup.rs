@@ -139,7 +139,7 @@ impl Device {
                         self.writes_confirmed = false;
                     }
                 });
-                ui.small("Leave blank for a direct connection. For a route, use the first bridge's IPv4 address and a unicast profile. Read the target identity before authorizing output ownership.");
+                ui.small("Leave blank for a direct connection. Enter the first bridge's IPv4 address for a route. Routed multicast supports controlling input-only profiles. Read the target identity before authorizing unicast output ownership.");
             });
             let s = &mut self.settings;
             let write_settings = |s: &Settings| (

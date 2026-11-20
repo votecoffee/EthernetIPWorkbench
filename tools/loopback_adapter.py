@@ -20,7 +20,8 @@ ROUTED_OWNER_CYCLIC_MODES = {
     "routed-io-large-owner": "large-variable-output",
     "routed-io-owner-unexpected-peer": "owner",
 }
-ROUTED_KEYED_MODES = ("routed-io-large", "routed-io-large-owner")
+ROUTED_KEYED_MODES = ("routed-io-large", "routed-io-large-owner", "routed-io-multicast-large")
+LARGE_INPUT_MODES = ("large-keyed", "routed-io-large", "routed-io-multicast-large")
 MULTICAST_GROUP = "239.255.92.44"
 
 
@@ -132,7 +133,7 @@ def udp_loop(udp, source, endpoint, connection, api, mode, value_base, stop, rep
             drop = mode == "no-input" or (mode == "stall" and seq > 75) or (mode == "faults" and seq == 60)
             if not drop:
                 value = struct.pack("<I", value_base + seq // 16)
-                if mode in ("large-keyed", "routed-io-large"):
+                if mode in LARGE_INPUT_MODES:
                     value += bytes(592) + struct.pack("<I", 0xA1B2C3D4)
                 if variable_max is not None:
                     length = (4, 7, variable_max)[(seq // 8) % 3]
@@ -146,7 +147,16 @@ def udp_loop(udp, source, endpoint, connection, api, mode, value_base, stop, rep
                 packet = io_packet(connection, seq,
                                    (bytes((1, 0, 0, 0)) if owner or variable_max is not None else b"") + value)
                 if multicast and seq == 5:
-                    source.sendto(io_packet(connection ^ 1, seq, b"\xFF" * 4), multicast)
+                    source.sendto(io_packet(connection ^ 1, seq, b"\xFF" * len(value)), multicast)
+                    if mode.startswith("routed-io-"):
+                        # A valid packet from a different sender must be ignored.
+                        with socket.socket(type=socket.SOCK_DGRAM) as other:
+                            other.bind((endpoint[0], 0))
+                            other.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
+                                             socket.inet_aton(endpoint[0]))
+                            other.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 0)
+                            other.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
+                            other.sendto(io_packet(connection, seq, b"\xFF" * len(value)), multicast)
                 source.sendto(packet, multicast or endpoint)
                 sent.append(time.perf_counter_ns())
                 if len(sent) == 1 and mode != "invalid-input":
@@ -357,7 +367,9 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     connected_size = 4002 if connected_large else 511 if mode == "class3-sized" else 504
     explicit_write = mode.startswith("explicit-write")
     report_explicit = connected or explicit_write or mode in ("saved-reads", "multiple-service") or mode.startswith("class-info")
-    multicast = mode.startswith("multicast")
+    multicast_mode = mode.removeprefix("routed-io-")
+    multicast = multicast_mode.startswith("multicast")
+    valid_multicast = multicast_mode in ("multicast", "multicast-large")
     udp_mode = "stall" if mode == "stall-close-reject" else cyclic_mode
     adapter_ip = tcp.getsockname()[0]
     scanner_ip = tcp.getpeername()[0]
@@ -528,6 +540,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                             "large-variable-output": 0x4400000A,
                             "large-keyed": 0x4400025A,
                             "routed-io-large": 0x4400025A,
+                            "routed-io-multicast-large": 0x2400025A,
                         }[cyclic_mode]
                         expected_output = 0x4600025A if cyclic_mode == "large-variable-output" else 0x44000002
                         assert ot_params == expected_output and to_params == expected_input
@@ -574,8 +587,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                             reply = struct.pack("<IIHHIIIBB", OT_ID, to, serial, vendor, origin,
                                                 ot_api, to_api, 0, 0)
                             report["requested_input_port"] = port
-                            if mode != "multicast-missing":
-                                group = (MULTICAST_GROUP if mode == "multicast" else adapter_ip, multicast_port)
+                            if multicast_mode != "multicast-missing":
+                                group = (MULTICAST_GROUP if valid_multicast else adapter_ip, multicast_port)
                                 extras.append((0x8001, sockaddr(*group)))
                         response = rr_reply(bytes([service | 0x80, 0, 0, 0]) + reply, *extras)
                         report["cyclic_io"] = {
@@ -586,7 +599,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                         }
                         if mode == "delayed-start":
                             time.sleep(0.05)
-                        if (not multicast or mode == "multicast") and not unexpected_peer:
+                        if (not multicast or valid_multicast) and not unexpected_peer:
                             if multicast:
                                 # The fixture never emits multicast beyond localhost.
                                 source.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
@@ -660,6 +673,8 @@ def main():
         "routed-io", "routed-io-large", "routed-io-rejected-route", "routed-io-unexpected-peer",
         "variable-output", "large-variable-output",
         "multicast", "multicast-missing", "multicast-unicast",
+        "routed-io-multicast", "routed-io-multicast-large",
+        "routed-io-multicast-missing", "routed-io-multicast-unicast",
         "delayed-start", "split-udp",
     ))
     parser.add_argument("--address", type=IPv4Address, default=IPv4Address(IP))

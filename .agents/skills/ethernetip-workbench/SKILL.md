@@ -84,7 +84,7 @@ For multicast T→O profiles, verify the selected NIC, the returned group and re
 
 For listen-only, verify the adapter's distinct heartbeat connection point and an existing controlling multicast connection. Keep output and configuration payloads empty and O→T Run/Idle disabled. The listener uses manual reconnect.
 
-For routed Class 1, set `device_ip` to the first bridge and `io_route` to the documented port/link pairs. Verify the target with Device → Read identity or CLI identity with --route. Use unicast. Confirm the first bridge can handle both scanner-side UDP directions. Routed Exclusive Owner requires the target's full identity and serial pin plus separate output and configuration authorization. The saved Explore read routes are independent.
+For routed Class 1, set `device_ip` to the first bridge and `io_route` to the documented port/link pairs. Verify the target with Device → Read identity or CLI identity with --route. A controlling input-only profile can use unicast or multicast T→O. For multicast confirm that the first bridge sources the input packets and check the returned group and receive port. Routed Exclusive Owner uses unicast and requires the target's full identity and serial pin plus separate output and configuration authorization. The saved Explore read routes are independent.
 
 Review the electronic key and mode in connection review and offline preflight. Use the documented revision with `[electronic_key].compatible = true` when the adapter supports compatible revision matching. Verify the unit identity separately.
 

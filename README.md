@@ -174,7 +174,7 @@ For a multicast producer, enable **Multicast input (T->O)** in **Device**. The s
 
 Choose **Listen-only** as the connection role to record an existing controlling connection's multicast input. Use the adapter's documented listen-only heartbeat assembly, or import the matching EDS profile. The listener sends an empty unicast heartbeat and takes no output ownership. [Listen-only settings](docs/OPERATIONS.md#configure-a-listen-only-connection)
 
-For routed unicast input-only or Exclusive Owner, enter the first bridge's IPv4 address and set the port/link path under **Device → CIP routing**. The first bridge also carries the cyclic UDP traffic on the scanner's Ethernet segment. For Exclusive Owner, read and verify the target identity before authorizing the staged output and configuration bytes. [Routed Class 1 setup](docs/OPERATIONS.md#configure-routed-class-1)
+For routed Class 1, enter the first bridge's IPv4 address and set the port/link path under **Device → CIP routing**. A controlling input-only profile can use unicast or multicast inputs. The first bridge sources the inputs on the scanner's Ethernet segment. Routed Exclusive Owner uses unicast and requires target identity verification and authorization of the staged output and configuration bytes. [Routed Class 1 setup](docs/OPERATIONS.md#configure-routed-class-1)
 
 Keep device-specific presets, vendor files and raw captures in the Git-ignored `.local/` folder. The tracked [sample EDS](samples/loopback.eds) and [sample TOML](samples/loopback.toml) target the localhost fixture.
 
