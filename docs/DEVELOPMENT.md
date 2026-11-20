@@ -15,7 +15,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/preflight.rs | Effective configuration, EDS comparisons and offline validation |
 | src/settings_file.rs | Named profiles, workspace migration, preferences and file replacement |
 | src/explicit.rs and src/discovery.rs | Registered TCP exchange, identity, CIP reads, typed reply interpretation and UDP ListIdentity |
-| src/explicit/batch.rs and src/gui/explore/batch.rs | Shared saved-read execution and the Explore batch results |
+| src/explicit/batch.rs and src/gui/explore/batch.rs | Shared saved-read execution and the Explore mode picker and results |
 | src/explicit/report.rs | Shared JSON reporting for explicit reads and saved batch exports |
 | src/explicit/multiple.rs | Unconnected Multiple Service Packet for direct saved reads |
 | src/explicit/connected.rs | Direct Class 3 connection lifecycle and connected reads |
@@ -76,7 +76,8 @@ Depend on the `assembly-scanner` library with `default-features = false` to omit
 - Load effective settings with `settings_file::load_profile`. Use `load_named_profile` when you also need the embedded EDS profile for preflight or mapping suggestions. Call `Settings::input_mapping` for validated named fields, then `field.selection.decode(payload)` for a typed value. `Settings::preview_input` adds raw bytes, display values and CSV inclusion for inspections.
 - Start a readback with `Connection::start_input(settings, ExpectedIdentity::Device(pin))`. It creates a session without a recorder or exporter. Use `Connection::diagnostics()` for current status and raw input, requested and negotiated intervals, and send/receive measurements. `shutdown()` requests stop and returns the final diagnostics after Forward_Close. Dropping a handle requests stop. Use `shutdown()` when teardown must finish before continuing.
 - Use `discovery::discover(local, destination)` for ListIdentity. Use `explicit::Reader::connect(adapter, local)` and `reader.read(ReadPath { class, instance, attribute })` for direct explicit reads. Connect to the first bridge and use `reader.read_routed(path, &route)` for a routed read. Parse `Route` from the same port/link string accepted by Explore and CLI. Router and target rejections retain numeric status and extended words in separate error variants. The target reply retains its service code, which the reader checks before decoding. [ODVA CIP routing overview](https://www.odva.org/wp-content/uploads/2020/06/PUB00123R1_Common-Industrial_Protocol_and_Family_of_CIP_Networks.pdf#page=28)
-- Use `explicit::run_saved_reads` for the same ordered batch used by Explore and the CLI. Match the typed result for each saved request. A router or target rejection leaves later requests eligible to run. An exchange failure marks the remaining requests unattempted.
+- Use `explicit::run_saved_reads_with_mode` for the four modes shared by Explore and the CLI. The returned report retains the selected mode, per-read results, any packet error and the Class 3 Forward_Close outcome.
+- Use `explicit::run_saved_reads` for the default ordered batch. Match the typed result for each saved request. A router or target rejection leaves later requests eligible to run. An exchange failure marks the remaining requests unattempted.
 - Use `explicit::run_saved_reads_packet` to pack direct saved reads into one unconnected Message Router request. Each valid embedded reply uses the same typed outcome as the sequential runner.
 - Use `explicit::run_saved_reads_connected` for one direct Class 3 batch. It validates the reply connection ID and CIP sequence and reports the outcome of Forward_Close separately.
 - Use `explicit::run_saved_reads_connected_packet` for one Multiple Service Packet on Class 3. It shares the connection lifecycle and offset decoder with the other read modes.
@@ -113,6 +114,8 @@ The CLI check defaults to 8 ms. --rpi-us 1000 exercises the same cases at 1 ms. 
 
 Add `--explore --seconds 3` to the OpENer check for discovery, direct unconnected and Class 3 reads, keyed Large Forward_Open and a comparison of exact and compatible keys for an older minor revision.
 Use `--multicast --seconds 3` to also verify OpENer's adapter-selected multicast group and CSV capture.
+
+The release GUI tests exercise mode selection and routed-request gating headlessly. The ignored test `explore_displays_connected_packet_results_and_rejected_close` uses the localhost fixture in `class3-packet-close-reject` mode. The ignored test `explore_displays_connected_packet_rejection_and_confirmed_close` uses the pinned OpENer adapter on localhost. Run each test with its matching peer listening, using `cargo test --locked --offline --release --bin assembly-scanner <test_name> -- --ignored`.
 Use `--listen-only --seconds 3` to check rejection without a controller and two sequential listener captures on the same producer. This test adapts the pinned Windows loopback build so the fixture keeps its shared UDP socket across connection opens and closes and handles `WSAEWOULDBLOCK` as a retryable receive result.
 
 The workspace tests render egui in memory at 900×580 and 1240×860 and simulate pointer events without a native window. They check workflow isolation, visible connection controls, write-review content and capture-stop behavior.

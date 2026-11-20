@@ -1,7 +1,7 @@
 use assembly_scanner::{
     explicit::{
-        ReadPath, Reader, Route, SavedRead, SavedReadOutcome, read_reply_document, run_saved_reads,
-        run_saved_reads_connected, run_saved_reads_connected_packet, run_saved_reads_packet,
+        ReadPath, Reader, Route, SavedRead, SavedReadMode, read_reply_document,
+        run_saved_reads_with_mode,
     },
     model::Selection,
 };
@@ -26,45 +26,13 @@ pub(super) fn single(
     Ok(reply.is_ok())
 }
 
-pub(super) enum Mode {
-    Sequential,
-    Packet,
-    Connected,
-    ConnectedPacket,
-}
-
 pub(super) fn all(
     adapter: Ipv4Addr,
     local: Ipv4Addr,
     reads: Vec<SavedRead>,
-    mode: Mode,
+    mode: SavedReadMode,
 ) -> Result<bool, String> {
-    let (batch, confirmed) = match mode {
-        Mode::ConnectedPacket => {
-            let packet = run_saved_reads_connected_packet(adapter, local, reads)?;
-            println!("{}", packet.report_json()?);
-            let complete =
-                packet.packet_error.is_none() && packet.connection.forward_close.is_confirmed();
-            (packet.connection.batch, complete)
-        }
-        Mode::Connected => {
-            let connected = run_saved_reads_connected(adapter, local, reads)?;
-            println!("{}", connected.report_json()?);
-            (connected.batch, connected.forward_close.is_confirmed())
-        }
-        Mode::Sequential | Mode::Packet => {
-            let batch = if matches!(mode, Mode::Packet) {
-                run_saved_reads_packet(adapter, local, reads)?
-            } else {
-                run_saved_reads(adapter, local, reads)?
-            };
-            println!("{}", batch.report_json()?);
-            (batch, true)
-        }
-    };
-    Ok(confirmed
-        && batch
-            .results
-            .iter()
-            .all(|entry| matches!(entry.outcome, SavedReadOutcome::Reply(_))))
+    let report = run_saved_reads_with_mode(adapter, local, reads, mode)?;
+    println!("{}", report.report_json()?);
+    Ok(report.is_complete())
 }

@@ -16,6 +16,7 @@ pub(super) enum Tab {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assembly_scanner::explicit::{ReadPath, SavedRead};
 
     fn draw(
         device: &mut Device,
@@ -169,43 +170,47 @@ mod tests {
         assert!(device.connection.is_none());
     }
 
-    #[test]
-    #[ignore = "requires tools/loopback_adapter.py --mode saved-reads on localhost"]
-    fn runs_and_displays_saved_reads_from_explore_headlessly() {
-        let ctx = egui::Context::default();
-        ctx.style_mut(|style| style.animation_time = 0.0);
-        let size = egui::vec2(1240.0, 1100.0);
+    fn explore_device(reads: &[(&str, u32, Option<&str>)]) -> Device {
         let mut device = Device::new(1, None);
         device.tab = Tab::Explore;
-        device.preferences.cip_reads = [
-            ("Product name", 7, None),
-            ("Unavailable route", 6, Some("1/7")),
-            ("Serial", 6, Some("1/3")),
-            ("Peer closes", 126, None),
-            ("Later", 4, None),
-        ]
-        .into_iter()
-        .map(
-            |(name, attribute, route)| assembly_scanner::explicit::SavedRead {
-                name: name.into(),
-                path: assembly_scanner::explicit::ReadPath {
+        device.preferences.cip_reads = reads
+            .iter()
+            .map(|&(name, attribute, route)| SavedRead {
+                name: name.to_owned(),
+                path: ReadPath {
                     class: 1,
                     instance: 1,
                     attribute: Some(attribute),
                 },
                 route: route.map(|route| route.parse().unwrap()),
                 selection: None,
-            },
-        )
-        .collect();
-        let wait_for_explore = |device: &mut Device| {
-            let deadline = Instant::now() + std::time::Duration::from_secs(5);
-            while device.explorer.busy() && Instant::now() < deadline {
-                device.explorer.poll();
-                std::thread::sleep(std::time::Duration::from_millis(5));
-            }
-            assert!(!device.explorer.busy());
-        };
+            })
+            .collect();
+        device
+    }
+
+    fn wait_for_explore(device: &mut Device) {
+        let deadline = Instant::now() + std::time::Duration::from_secs(5);
+        while device.explorer.busy() && Instant::now() < deadline {
+            device.explorer.poll();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(!device.explorer.busy());
+    }
+
+    #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode saved-reads on localhost"]
+    fn runs_and_displays_saved_reads_from_explore_headlessly() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[
+            ("Product name", 7, None),
+            ("Unavailable route", 6, Some("1/7")),
+            ("Serial", 6, Some("1/3")),
+            ("Peer closes", 126, None),
+            ("Later", 4, None),
+        ]);
         click(&mut device, &ctx, size, "Saved reads");
         click(&mut device, &ctx, size, "Read all saved");
         wait_for_explore(&mut device);
@@ -273,6 +278,118 @@ mod tests {
         }
         fs::remove_dir(folder).unwrap();
         assert!(device.connection.is_none());
+    }
+
+    #[test]
+    fn explore_blocks_routed_reads_in_direct_modes() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(900.0, 860.0);
+        let mut device = explore_device(&[("Serial", 6, Some("1/3"))]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Unconnected sequential");
+        let choices = draw(&mut device, &ctx, size);
+        for label in [
+            "Unconnected Multiple Service Packet",
+            "Class 3 sequential",
+            "Class 3 Multiple Service Packet",
+        ] {
+            assert!(choices.iter().any(|(text, _)| text == label), "{label}");
+        }
+        click(&mut device, &ctx, size, "Class 3 sequential");
+        let labels = draw(&mut device, &ctx, size);
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text == "Use Unconnected sequential for saved reads with routes.")
+        );
+        click(&mut device, &ctx, size, "Read all saved");
+        assert!(!device.explorer.busy());
+        assert_eq!(device.snapshot(), saved);
+    }
+
+    fn explore_connected_packet(adapter: &str) -> (Device, egui::Context, egui::Vec2) {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[
+            ("Product name", 7, None),
+            ("Unsupported attribute", 127, None),
+            ("Serial", 6, None),
+        ]);
+        device.device = adapter.into();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Unconnected sequential");
+        click(&mut device, &ctx, size, "Class 3 Multiple Service Packet");
+        click(&mut device, &ctx, size, "Read all saved");
+        assert!(device.explorer.busy());
+        wait_for_explore(&mut device);
+        click(&mut device, &ctx, size, "Saved read results");
+        (device, ctx, size)
+    }
+
+    fn save_explore_report(
+        device: &mut Device,
+        ctx: &egui::Context,
+        size: egui::Vec2,
+    ) -> serde_json::Value {
+        let directory = super::super::tests::temporary("connected-read-report");
+        device.preferences.directory = directory.display().to_string();
+        click(device, ctx, size, "Save JSON");
+        wait_for_explore(device);
+        let files = fs::read_dir(&directory).unwrap().collect::<Vec<_>>();
+        assert_eq!(files.len(), 1);
+        let path = files.into_iter().next().unwrap().unwrap().path();
+        let report = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        fs::remove_file(path).unwrap();
+        fs::remove_dir(directory).unwrap();
+        assert!(!device.explorer.busy() && device.connection.is_none());
+        report
+    }
+
+    #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode class3-packet-close-reject"]
+    fn explore_displays_connected_packet_results_and_rejected_close() {
+        let (mut device, ctx, size) = explore_connected_packet("127.0.0.1");
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Product name · Reply",
+            "Unsupported attribute · CIP rejection",
+            "Serial · Reply",
+            "Forward_Close · rejected (CIP general 0x01, extended 0x0107)",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        let report = save_explore_report(&mut device, &ctx, size);
+        assert_eq!(report["results"][1]["extended_status"][0], 0x0302);
+        assert_eq!(report["results"][2]["decoded"], "0x12345678");
+        assert_eq!(report["forward_close"]["outcome"], "rejected");
+        assert!(report.get("packet_error").is_none());
+    }
+
+    #[test]
+    #[ignore = "requires the pinned OpENer adapter on localhost"]
+    fn explore_displays_connected_packet_rejection_and_confirmed_close() {
+        let (mut device, ctx, size) = explore_connected_packet("127.0.0.2");
+        let labels = draw(&mut device, &ctx, size);
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text.starts_with("Multiple Service Packet failed"))
+        );
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text == "Forward_Close · confirmed")
+        );
+        let report = save_explore_report(&mut device, &ctx, size);
+        assert_eq!(report["results"], serde_json::json!([]));
+        assert_eq!(report["packet_error"]["general_status"], 0x08);
+        assert_eq!(report["forward_close"]["outcome"], "confirmed");
     }
 
     #[test]

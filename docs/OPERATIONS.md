@@ -48,7 +48,16 @@ selection = { offset = 2, kind = "I32", big_endian = true, swap = "word_order" }
 
 ### Run all saved reads
 
-In **Explore**, expand **Saved reads** and select **Read all saved**. When the job finishes, expand **Saved read results**. Each row shows the outcome and expands to show the request details, decoded value and raw bytes, or the error. The batch runs on the configured adapter or bridge and NIC in **Device**.
+In **Explore**, expand **Saved reads**, choose a **Read mode**, and select **Read all saved**. The batch runs on the configured adapter or bridge and NIC in **Device**. The mode starts at **Unconnected sequential** in each new application session.
+
+| Read mode | CLI options | Use |
+|---|---|---|
+| Unconnected sequential | None | Direct or routed reads in profile order |
+| Unconnected Multiple Service Packet | `--multiple-service-packet` | Direct reads grouped into one CIP request on a supported target |
+| Class 3 sequential | `--connected` | Direct reads in profile order on one Class 3 connection |
+| Class 3 Multiple Service Packet | `--connected --multiple-service-packet` | Direct reads grouped into one CIP request on a supported Class 3 connection |
+
+If any saved read has a route, switch to **Unconnected sequential** to enable **Read all saved**. When the job finishes, expand **Saved read results** to see the mode used and each request's decoded value, raw bytes or error. Class 3 results show the Forward_Close outcome. A Class 3 Multiple Service Packet error appears above the individual results.
 
 Select **Save JSON** to save the displayed batch, including any failures, in the output directory configured under **Logging**. The filename starts with `saved-reads-` and includes the UTC save time. The app creates a new file for each save, shows its path, and reports any write error while keeping the batch available. The report uses the same JSON fields as `read-saved-all`.
 
@@ -58,7 +67,7 @@ For the same batch headlessly, run:
 .\target\release\eipmaster-cli.exe read-saved-all .local\device.toml
 ~~~
 
-The GUI and CLI run the profile's saved requests in order on one registered explicit TCP session. Each request uses its own optional route and reply selection. The CLI's JSON `results` array preserves order and includes the request name, path, and any returned data or error.
+In the default mode, the GUI and CLI run the profile's saved requests in order on one registered explicit TCP session. Each request uses its own optional route and reply selection. The CLI's JSON `results` array preserves order and includes the request name, path, and any returned data or error.
 
 | Status | Meaning |
 |---|---|

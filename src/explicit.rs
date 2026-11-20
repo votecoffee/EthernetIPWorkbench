@@ -22,7 +22,10 @@ mod connected;
 mod multiple;
 mod report;
 mod route;
-pub use batch::{SavedReadBatch, SavedReadOutcome, SavedReadResult, run_saved_reads};
+pub use batch::{
+    SavedReadBatch, SavedReadMode, SavedReadOutcome, SavedReadReport, SavedReadResult,
+    run_saved_reads, run_saved_reads_with_mode,
+};
 pub use connected::{
     ConnectedPacketBatch, ConnectedReadBatch, run_saved_reads_connected,
     run_saved_reads_connected_packet,

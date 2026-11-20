@@ -85,7 +85,7 @@ For a documented field within a reply, enable **Decode reply field** and enter i
 
 The commands return JSON. A CIP rejection returns its general and extended status words and a nonzero exit code. Routed reports identify whether the reply came from the router or the target. [Saved request format](docs/OPERATIONS.md#discover-and-read).
 
-Use **Explore → Saved reads → Read all saved** or CLI `read-saved-all` to run the requests in profile order on one registered session. In Explore, expand **Saved read results** to inspect each reply or error. Both keep earlier replies if the session ends partway through. [Batch results](docs/OPERATIONS.md#run-all-saved-reads)
+Use **Explore → Saved reads → Read all saved** or CLI `read-saved-all` to run the requests in profile order on one registered session. The GUI's **Read mode** picker offers the same sequential, grouped and Class 3 modes as the CLI. Choose **Unconnected sequential** for saved reads with routes. Expand **Saved read results** to inspect each reply or error. [Batch results](docs/OPERATIONS.md#run-all-saved-reads)
 
 Choose **Save JSON** in **Saved read results** to keep the batch in the output directory configured in Logging.
 

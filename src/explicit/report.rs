@@ -1,15 +1,16 @@
 use super::{
     ConnectedPacketBatch, ConnectedReadBatch, EipError, ReadPath, Route, RoutedReadError,
-    SavedReadBatch, SavedReadOutcome,
+    SavedReadBatch, SavedReadOutcome, SavedReadReport,
 };
 use crate::model::{Selection, hex};
+use crate::scanner::CloseOutcome;
 use serde_json::{Value, json};
 use std::net::Ipv4Addr;
 
 impl SavedReadBatch {
     /// Format this batch for the CLI and for saving the GUI results.
     pub fn report_json(&self) -> Result<String, String> {
-        serde_json::to_string_pretty(&self.report_document()?).map_err(|error| error.to_string())
+        batch_json(self, None, None)
     }
 
     fn report_document(&self) -> Result<Value, String> {
@@ -52,30 +53,50 @@ impl SavedReadBatch {
 impl ConnectedReadBatch {
     /// Format the read results with the separate Class 3 Forward_Close outcome.
     pub fn report_json(&self) -> Result<String, String> {
-        serde_json::to_string_pretty(&self.report_document()?).map_err(|error| error.to_string())
-    }
-
-    fn report_document(&self) -> Result<Value, String> {
-        let mut document = self.batch.report_document()?;
-        document["forward_close"] = json!(self.forward_close);
-        Ok(document)
+        batch_json(&self.batch, Some(&self.forward_close), None)
     }
 }
 
 impl ConnectedPacketBatch {
     /// Format the results, any whole-packet failure, and the Class 3 close outcome.
     pub fn report_json(&self) -> Result<String, String> {
-        let mut document = self.connection.report_document()?;
-        if let Some(error) = &self.packet_error {
-            document["packet_error"] = match error {
-                EipError::Cip { status, ext } => {
-                    json!({"general_status": status, "extended_status": ext})
-                }
-                error => json!({"error": error.to_string()}),
-            };
-        }
-        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
+        batch_json(
+            &self.connection.batch,
+            Some(&self.connection.forward_close),
+            self.packet_error.as_ref(),
+        )
     }
+}
+
+impl SavedReadReport {
+    /// Format the batch using the same report fields as the individual read runners.
+    pub fn report_json(&self) -> Result<String, String> {
+        batch_json(
+            &self.batch,
+            self.forward_close.as_ref(),
+            self.packet_error.as_ref(),
+        )
+    }
+}
+
+fn batch_json(
+    batch: &SavedReadBatch,
+    forward_close: Option<&CloseOutcome>,
+    packet_error: Option<&EipError>,
+) -> Result<String, String> {
+    let mut document = batch.report_document()?;
+    if let Some(outcome) = forward_close {
+        document["forward_close"] = json!(outcome);
+    }
+    if let Some(error) = packet_error {
+        document["packet_error"] = match error {
+            EipError::Cip { status, ext } => {
+                json!({"general_status": status, "extended_status": ext})
+            }
+            error => json!({"error": error.to_string()}),
+        };
+    }
+    serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
 }
 
 /// Format a successful reply or a CIP rejection with its raw data and source.

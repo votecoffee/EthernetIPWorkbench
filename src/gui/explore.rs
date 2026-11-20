@@ -1,7 +1,7 @@
 use super::*;
 use assembly_scanner::{
     discovery,
-    explicit::{self, ReadPath, Reader, Route, SavedRead, SavedReadBatch},
+    explicit::{self, ReadPath, Reader, Route, SavedRead, SavedReadMode, SavedReadReport},
 };
 use std::sync::Arc;
 
@@ -22,7 +22,7 @@ const PRESETS: [(&str, u32, u32); 9] = [
 enum Response {
     Discovery(Ipv4Addr, discovery::Report),
     Read(ReadReply),
-    Batch(SavedReadBatch),
+    Batch(SavedReadReport),
     SavedReport(PathBuf),
 }
 
@@ -41,7 +41,8 @@ pub(super) struct Explorer {
     name: String,
     selection: Option<Selection>,
     read_result: Option<ReadReply>,
-    saved_batch: Option<Arc<SavedReadBatch>>,
+    batch_mode: SavedReadMode,
+    saved_batch: Option<Arc<SavedReadReport>>,
     saved_report: Option<PathBuf>,
     discovered: Option<(Ipv4Addr, discovery::Report)>,
     work: Option<mpsc::Receiver<Result<Response, String>>>,
@@ -59,6 +60,7 @@ impl Default for Explorer {
             name: String::new(),
             selection: None,
             read_result: None,
+            batch_mode: SavedReadMode::default(),
             saved_batch: None,
             saved_report: None,
             discovered: None,
@@ -335,21 +337,22 @@ impl Device {
             }
         });
         ui.collapsing("Saved reads", |ui| {
-            if ui
-                .add_enabled(
-                    !explorer.busy() && !self.preferences.cip_reads.is_empty(),
-                    egui::Button::new("Read all saved"),
-                )
-                .clicked()
-            {
+            if batch::controls(
+                ui,
+                &mut explorer.batch_mode,
+                &self.preferences.cip_reads,
+                explorer.work.is_none(),
+            ) {
                 match (self.device.parse::<Ipv4Addr>(), &local) {
                     (Ok(adapter), Ok(nic)) => {
                         let nic = *nic;
                         let reads = self.preferences.cip_reads.clone();
+                        let mode = explorer.batch_mode;
                         explorer.saved_batch = None;
                         explorer.saved_report = None;
                         explorer.start(move || {
-                            explicit::run_saved_reads(adapter, nic, reads).map(Response::Batch)
+                            explicit::run_saved_reads_with_mode(adapter, nic, reads, mode)
+                                .map(Response::Batch)
                         });
                     }
                     _ => {

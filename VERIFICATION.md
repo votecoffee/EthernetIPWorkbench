@@ -622,3 +622,7 @@ The pinned OpENer 2.3 Windows loopback build accepted a standard Class 3 Forward
 ## Multiple Service Packet over Class 3
 
 The Windows localhost fixture confirmed one connected exchange and an ordered result for each embedded read. A mixed reply with packet status `0x1E` retained the embedded rejection and later successful replies. A separate test kept all successful reads when Forward_Close was rejected. A 508-byte request was rejected before opening a session because the Class 3 connection allows 502 CIP bytes after the sequence field. The pinned OpENer 2.3 build returned packet-level CIP status `0x08` and confirmed Forward_Close. The CLI reported that rejection separately from close and left the individual results empty. Successful grouped reads still need a physical target test.
+
+## Explore saved-read modes
+
+Headless GUI tests opened the mode picker, verified that routed requests require unconnected sequential mode, and ran the existing routed batch against the localhost bridge fixture. Class 3 Multiple Service Packet retained mixed individual replies and a rejected Forward_Close from the localhost fixture, then saved them as JSON. With the pinned OpENer adapter, Explore displayed its packet-level CIP `0x08` and confirmed close and saved both with an empty results array. The GUI and CLI use the same typed batch runner and JSON formatter. The CLI fixture suite passed all four modes.

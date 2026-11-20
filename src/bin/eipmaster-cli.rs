@@ -1,7 +1,7 @@
 use assembly_scanner::{
     capture::{Capture, FieldSummary, MAX_CAPTURE_SECONDS, Options, Slot},
     discovery, eds,
-    explicit::{self, ReadPath, Route},
+    explicit::{self, ReadPath, Route, SavedReadMode},
     integration::{self, Integration},
     model::{ConnectionTimeout, Settings, parse_hex},
     preflight,
@@ -153,14 +153,14 @@ fn run(args: &[OsString]) -> Result<bool, String> {
         }
         [command, profile, options @ ..] if command == "read-saved-all" => {
             let mode = match options {
-                [] => reads::Mode::Sequential,
-                [option] if option == "--multiple-service-packet" => reads::Mode::Packet,
-                [option] if option == "--connected" => reads::Mode::Connected,
+                [] => SavedReadMode::Sequential,
+                [option] if option == "--multiple-service-packet" => SavedReadMode::Packet,
+                [option] if option == "--connected" => SavedReadMode::Connected,
                 [first, second]
                     if first == "--connected" && second == "--multiple-service-packet"
                         || first == "--multiple-service-packet" && second == "--connected" =>
                 {
-                    reads::Mode::ConnectedPacket
+                    SavedReadMode::ConnectedPacket
                 }
                 _ => return Err(USAGE.into()),
             };

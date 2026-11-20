@@ -44,6 +44,7 @@ For a supported target configuration layout, review the CLI `eds` report's `conf
 - Use Explore or CLI discover, read and read-saved for approved discovery and read-only CIP inspection. For routed explicit reads, use the first bridge address and a documented port/link path. Use named TOML profiles to preserve saved requests. Use the development guide to reuse the Rust library without the GUI.
 - In Explore, enable **Decode reply field** to save a documented byte offset, type and byte order with a request. Inspect the raw bytes and any separate `decode_error` in the CLI `read-saved` result.
 - Run the whole list on one registered session with **Explore → Saved reads → Read all saved** or `read-saved-all <settings.toml>`. Check the per-request outcomes, including any unattempted requests after an exchange failure.
+- Use **Read mode** in **Saved reads** to select the GUI equivalent of the CLI options below. Saved requests with routes require **Unconnected sequential**.
 - For direct saved reads on a target that supports unconnected Multiple Service Packet, pass `--multiple-service-packet` to `read-saved-all` and inspect the status of each embedded reply.
 - Use `read-saved-all <settings.toml> --connected` for direct Class 3 reads on a target that supports them. Review both the individual results and `forward_close`.
 - Combine `--connected --multiple-service-packet` when the target supports the packet service on Class 3. Check `packet_error` separately from any embedded result or close error.

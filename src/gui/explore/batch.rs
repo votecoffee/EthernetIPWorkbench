@@ -1,17 +1,80 @@
 use super::*;
 use assembly_scanner::explicit::{SavedReadOutcome, SavedReadResult};
 
+fn mode_label(mode: SavedReadMode) -> &'static str {
+    match mode {
+        SavedReadMode::Sequential => "Unconnected sequential",
+        SavedReadMode::Packet => "Unconnected Multiple Service Packet",
+        SavedReadMode::Connected => "Class 3 sequential",
+        SavedReadMode::ConnectedPacket => "Class 3 Multiple Service Packet",
+    }
+}
+
+pub(super) fn controls(
+    ui: &mut Ui,
+    mode: &mut SavedReadMode,
+    reads: &[SavedRead],
+    ready: bool,
+) -> bool {
+    let mut run = false;
+    let has_routes = reads.iter().any(|read| read.route.is_some());
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Read mode");
+        ui.add_enabled_ui(ready, |ui| {
+            egui::ComboBox::from_id_salt("saved-read-mode")
+                .selected_text(mode_label(*mode))
+                .show_ui(ui, |ui| {
+                    for choice in [
+                        SavedReadMode::Sequential,
+                        SavedReadMode::Packet,
+                        SavedReadMode::Connected,
+                        SavedReadMode::ConnectedPacket,
+                    ] {
+                        ui.selectable_value(mode, choice, mode_label(choice));
+                    }
+                });
+        });
+        run = ui
+            .add_enabled(
+                ready && !reads.is_empty() && !(mode.requires_direct() && has_routes),
+                egui::Button::new("Read all saved"),
+            )
+            .clicked();
+    });
+    if mode.requires_direct() && has_routes {
+        ui.colored_label(
+            AMBER,
+            "Use Unconnected sequential for saved reads with routes.",
+        );
+    }
+    run
+}
+
 pub(super) fn show(
     ui: &mut Ui,
-    batch: &SavedReadBatch,
+    report: &SavedReadReport,
     saved_report: Option<&Path>,
     can_save: bool,
 ) -> bool {
     ui.collapsing("Saved read results", |ui| {
+        let batch = &report.batch;
         ui.small(format!(
-            "{} · Local NIC {}",
-            batch.adapter_or_bridge, batch.local_ip
+            "{} · {} · Local NIC {}",
+            mode_label(report.mode),
+            batch.adapter_or_bridge,
+            batch.local_ip
         ));
+        if let Some(error) = &report.packet_error {
+            ui.colored_label(AMBER, format!("Multiple Service Packet failed · {error}"));
+        }
+        if let Some(close) = &report.forward_close {
+            let message = format!("Forward_Close · {close}");
+            if close.is_confirmed() {
+                ui.small(message);
+            } else {
+                ui.colored_label(AMBER, message);
+            }
+        }
         let save = ui
             .add_enabled(can_save, egui::Button::new("Save JSON"))
             .on_hover_text("Save the batch to the output directory in Logging.")
@@ -33,7 +96,7 @@ pub(super) fn show(
     .unwrap_or(false)
 }
 
-pub(super) fn save_report(batch: &SavedReadBatch, directory: &Path) -> Result<PathBuf, String> {
+pub(super) fn save_report(report: &SavedReadReport, directory: &Path) -> Result<PathBuf, String> {
     if directory.as_os_str().is_empty() {
         return Err("Set an output directory in Logging".into());
     }
@@ -41,7 +104,7 @@ pub(super) fn save_report(batch: &SavedReadBatch, directory: &Path) -> Result<Pa
         .format("saved-reads-%Y%m%dT%H%M%S%.9fZ.json")
         .to_string();
     let path = directory.join(timestamp);
-    let mut text = batch.report_json()?;
+    let mut text = report.report_json()?;
     text.push('\n');
     fs::create_dir_all(directory).map_err(|error| format!("{}: {error}", directory.display()))?;
     settings_file::write_new(&path, &text)
