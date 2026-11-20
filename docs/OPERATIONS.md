@@ -54,10 +54,10 @@ In **Explore**, expand **Saved reads**, choose a **Read mode**, and select **Rea
 |---|---|---|
 | Unconnected sequential | None | Direct or routed reads in profile order |
 | Unconnected Multiple Service Packet | `--multiple-service-packet` | One CIP request for direct reads or reads with a shared route |
-| Class 3 sequential | `--connected` | Direct reads in profile order on one Class 3 connection |
-| Class 3 Multiple Service Packet | `--connected --multiple-service-packet` | Direct reads grouped into one CIP request on a supported Class 3 connection |
+| Class 3 sequential | `--connected` | Ordered reads on one direct or routed Class 3 connection |
+| Class 3 Multiple Service Packet | `--connected --multiple-service-packet` | One CIP request on a supported direct or routed Class 3 connection |
 
-Choose **Unconnected sequential** when the list contains different routes or a mix of direct and routed reads. Class 3 modes require direct reads. When the job finishes, expand **Saved read results** to see the mode used and each request's decoded value, raw bytes or error. Class 3 results show the Forward_Close outcome. A Class 3 Multiple Service Packet error appears above the individual results.
+Choose **Unconnected sequential** when the list contains different routes or a mix of direct and routed reads. When the job finishes, expand **Saved read results** to see the mode used and each request's decoded value, raw bytes or error. Class 3 results show the Forward_Close outcome and the route when used. A Class 3 Multiple Service Packet error appears above the individual results.
 
 Select **Save JSON** to save the displayed batch, including any failures, in the output directory configured under **Logging**. The filename starts with `saved-reads-` and includes the UTC save time. The app creates a new file for each save, shows its path, and reports any write error while keeping the batch available. The report uses the same JSON fields as `read-saved-all`.
 
@@ -88,15 +88,17 @@ Use this option with a target that supports unconnected CIP Multiple Service Pac
 
 Each embedded CIP rejection keeps its status words in the JSON report and produces exit code 1. Routed embedded replies also include the bridge, route, and `reply_from`. A rejection of the whole packet or an invalid reply table produces a diagnostic on stderr and exit code 1. A routed diagnostic identifies the bridge rejection or target rejection. Hosts and bridges can limit unconnected packet size. For a target that cannot accept a full packet, use the default sequential mode.
 
-#### Run direct Class 3 connected reads
+#### Run Class 3 connected reads
 
 ~~~powershell
 .\target\release\eipmaster-cli.exe read-saved-all .local\device.toml --connected
 ~~~
 
-The target must accept a standard Class 3 Forward_Open to its Message Router. This mode requests variable sizes up to 504 bytes per direction, including the two-byte sequence. It sends each direct saved read over TCP in profile order and closes the connection after the batch. The option uses the profile's IPv4 addresses and saved requests. The default sequential mode handles routed reads. [OpENer Class 3 target](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipclass3connection.c)
+The target must accept a standard Class 3 Forward_Open to its Message Router. This mode requests variable sizes up to 504 bytes per direction, including the two-byte sequence. It sends each saved read over TCP in profile order and closes the connection after the batch. [OpENer Class 3 target](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipclass3connection.c)
 
-The JSON includes `forward_close` separately from the read results. A CIP rejection still allows later reads. An exchange failure leaves later requests unattempted. Exit code 0 requires successful CIP replies and a confirmed close. If Forward_Open fails, the CLI reports the setup error on stderr and exits 1.
+For a routed batch, set `device_ip` to the first bridge's IPv4 address and put the same `route` on every saved read. The scanner puts that route before the Message Router in both Forward_Open and Forward_Close. The bridge carries the connected read traffic on the same TCP session. This route comes from the saved reads. [pycomm3 Class 3 path construction](https://github.com/ottowayi/pycomm3/blob/master/pycomm3/cip_driver.py)
+
+The JSON includes `forward_close` separately from the read results and includes `connection_route` for routed Class 3 batches. A CIP rejection still allows later reads. An exchange failure leaves later requests unattempted. Exit code 0 requires successful CIP replies and a confirmed close. If Forward_Open fails, the CLI reports the setup error on stderr with the route when used and exits 1.
 
 #### Combine reads on a Class 3 connection
 
@@ -104,7 +106,7 @@ The JSON includes `forward_close` separately from the read results. A CIP reject
 .\target\release\eipmaster-cli.exe read-saved-all .local\device.toml --connected --multiple-service-packet
 ~~~
 
-The target must support Multiple Service Packet on its Class 3 connection. Both flags can appear in either order. The command sends one packet for all direct saved reads. The connected size leaves 502 bytes for the CIP request or reply. The CLI rejects oversized requests before Forward_Open, and the target controls how much reply data it can return. [Rockwell CIP Multiple Service Packet format](https://literature.rockwellautomation.com/idc/groups/literature/documents/pm/1756-pm020_-en-p.pdf)
+The target must support Multiple Service Packet on its Class 3 connection. Both flags can appear in either order. The command sends one packet for a direct batch or a batch with one shared route. The connected size leaves 502 bytes for the CIP request or reply. The CLI rejects oversized requests before Forward_Open, and the target controls how much reply data it can return. [Rockwell CIP Multiple Service Packet format](https://literature.rockwellautomation.com/idc/groups/literature/documents/pm/1756-pm020_-en-p.pdf)
 
 Valid embedded replies and rejections appear in `results` in profile order. A whole-packet rejection or an invalid reply produces a `packet_error` and an empty `results` array. The report keeps the separate `forward_close` result. Exit code 0 requires successful reads and a confirmed close.
 

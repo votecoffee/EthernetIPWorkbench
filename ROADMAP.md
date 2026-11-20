@@ -53,7 +53,7 @@ The C# examples demonstrate HTTP and shared-memory latest values, retained HTTP 
 - Run all saved CIP requests in profile order on one explicit session from Explore or the CLI. Both report replies, rejections and unattempted requests. Explore can save the batch report as JSON.
 - Unconnected Multiple Service Packet groups direct reads or saved reads with one shared route in Explore, CLI and Rust. The localhost fixture covers successful and mixed replies and separate bridge and target rejections. Verify with a physical target and bridge that support the service.
 - Direct Class 3 connected reads and Forward_Close have independent OpENer coverage through the CLI and Rust API. Verify on a physical adapter.
-- Multiple Service Packet can run over direct Class 3. Explore offers all four saved-read modes and shows packet and Forward_Close errors separately. Software checks cover embedded replies, whole-packet rejection, and unsuccessful close. Verify on a physical adapter with connected packet support.
+- Sequential and Multiple Service Packet reads can run over a routed Class 3 connection when the batch shares one path. Explore and CLI report the connection route and Forward_Close separately from read or packet outcomes. Verify routed operation through a physical bridge and compatible target.
 - Routed explicit reads support backplane and IPv4 links in Explore, CLI and the Rust API. Verify them through a physical bridge.
 - Variable-size T→O supports standard and Large Forward_Open, offline decoding, CSV and all three export feeds. Verify it on a physical adapter that produces variable-size assemblies.
 - Multicast T→O uses the adapter's group, port and connection ID with unicast O→T. Verify group membership and capture through a physical bench switch.

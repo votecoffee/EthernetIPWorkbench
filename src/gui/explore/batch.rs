@@ -65,6 +65,9 @@ pub(super) fn show(
             batch.adapter_or_bridge,
             batch.local_ip
         ));
+        if let Some(route) = &report.connection_route {
+            ui.small(format!("Connection route · {route}"));
+        }
         if let Some(error) = &report.packet_error {
             ui.colored_label(AMBER, format!("Multiple Service Packet failed · {error}"));
         }

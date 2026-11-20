@@ -1,7 +1,7 @@
 use super::{
     EipError, Reader, ReplyHeader, Result, Route, RoutedReadError, SavedRead, SavedReadBatch,
-    SavedReadOutcome, SavedReadResult, cip_data, le16, protocol, read_message, reply_body,
-    validate_saved_reads,
+    SavedReadMode, SavedReadOutcome, SavedReadResult, cip_data, le16, protocol, read_message,
+    reply_body, validate_saved_reads,
 };
 use std::net::Ipv4Addr;
 
@@ -19,7 +19,7 @@ pub fn run_saved_reads_packet(
         return Err("The profile has no saved CIP reads".into());
     }
     validate_saved_reads(&reads)?;
-    let route = common_packet_route(&reads)?;
+    let route = SavedReadMode::Packet.batch_route(&reads)?;
     let requests: Vec<_> = reads.iter().map(|entry| read_message(entry.path)).collect();
     let mut reader = Reader::connect(adapter, local).map_err(|error| error.to_string())?;
     let replies = reader.read_packet(&requests, route)?;
@@ -33,16 +33,6 @@ pub fn run_saved_reads_packet(
         local_ip: local,
         results,
     })
-}
-
-pub(super) fn common_packet_route(
-    reads: &[SavedRead],
-) -> std::result::Result<Option<&Route>, &'static str> {
-    let route = reads.first().and_then(|entry| entry.route.as_ref());
-    if reads.iter().any(|entry| entry.route.as_ref() != route) {
-        return Err("Multiple Service Packet requires one shared route or all direct reads");
-    }
-    Ok(route)
 }
 
 impl Reader {

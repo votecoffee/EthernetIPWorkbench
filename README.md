@@ -91,7 +91,7 @@ Choose **Save JSON** in **Saved read results** to keep the batch in the output d
 
 For targets that support unconnected Multiple Service Packet, add `--multiple-service-packet` to CLI `read-saved-all` to send the reads in one CIP request. The list can contain all direct reads or reads with one shared route. The JSON retains each decoded reply and CIP error. [Packet mode](docs/OPERATIONS.md#combine-reads-in-one-unconnected-packet)
 
-Add `--connected` to run direct saved reads on one Class 3 connection and report its Forward_Close outcome. [Connected read mode](docs/OPERATIONS.md#run-direct-class-3-connected-reads)
+Add `--connected` to run saved reads on one Class 3 connection and report its Forward_Close outcome. Leave all routes unset for a direct connection, or set the same route on every saved read and enter the first bridge's IP in **Device**. [Connected read mode](docs/OPERATIONS.md#run-class-3-connected-reads)
 
 Combine `--connected --multiple-service-packet` to group the saved reads on that Class 3 connection. The report preserves any packet-level error and the close outcome. [Connected packet mode](docs/OPERATIONS.md#combine-reads-on-a-class-3-connection)
 

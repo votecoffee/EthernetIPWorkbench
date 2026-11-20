@@ -281,11 +281,11 @@ mod tests {
     }
 
     #[test]
-    fn explore_blocks_routed_reads_in_direct_modes() {
+    fn explore_blocks_mixed_routes_in_class3() {
         let ctx = egui::Context::default();
         ctx.style_mut(|style| style.animation_time = 0.0);
         let size = egui::vec2(900.0, 860.0);
-        let mut device = explore_device(&[("Serial", 6, Some("1/3"))]);
+        let mut device = explore_device(&[("Serial", 6, Some("1/3")), ("Name", 7, Some("1/4"))]);
         let saved = device.snapshot();
         click(&mut device, &ctx, size, "Saved reads");
         click(&mut device, &ctx, size, "Unconnected sequential");
@@ -300,20 +300,23 @@ mod tests {
         click(&mut device, &ctx, size, "Class 3 sequential");
         let labels = draw(&mut device, &ctx, size);
         assert!(labels.iter().any(|(text, _)| text
-            == "Class 3 connected mode requires direct saved reads. Choose Unconnected sequential to run this list."));
+            == "Class 3 connected mode requires one shared route or all direct reads. Choose Unconnected sequential to run this list."));
         click(&mut device, &ctx, size, "Read all saved");
         assert!(!device.explorer.busy());
         assert_eq!(device.snapshot(), saved);
     }
 
-    fn explore_connected_packet(adapter: &str) -> (Device, egui::Context, egui::Vec2) {
+    fn explore_connected_packet(
+        adapter: &str,
+        route: Option<&str>,
+    ) -> (Device, egui::Context, egui::Vec2) {
         let ctx = egui::Context::default();
         ctx.style_mut(|style| style.animation_time = 0.0);
         let size = egui::vec2(1240.0, 1100.0);
         let mut device = explore_device(&[
-            ("Product name", 7, None),
-            ("Unsupported attribute", 127, None),
-            ("Serial", 6, None),
+            ("Product name", 7, route),
+            ("Unsupported attribute", 127, route),
+            ("Serial", 6, route),
         ]);
         device.device = adapter.into();
         click(&mut device, &ctx, size, "Saved reads");
@@ -383,7 +386,7 @@ mod tests {
     #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode class3-packet-close-reject"]
     fn explore_displays_connected_packet_results_and_rejected_close() {
-        let (mut device, ctx, size) = explore_connected_packet("127.0.0.1");
+        let (mut device, ctx, size) = explore_connected_packet("127.0.0.1", None);
         let labels = draw(&mut device, &ctx, size);
         for expected in [
             "Product name · Reply",
@@ -406,7 +409,7 @@ mod tests {
     #[test]
     #[ignore = "requires the pinned OpENer adapter on localhost"]
     fn explore_displays_connected_packet_rejection_and_confirmed_close() {
-        let (mut device, ctx, size) = explore_connected_packet("127.0.0.2");
+        let (mut device, ctx, size) = explore_connected_packet("127.0.0.2", None);
         let labels = draw(&mut device, &ctx, size);
         assert!(
             labels
@@ -419,6 +422,34 @@ mod tests {
                 .any(|(text, _)| text == "Forward_Close · confirmed")
         );
         let report = save_explore_report(&mut device, &ctx, size);
+        assert_eq!(report["results"], serde_json::json!([]));
+        assert_eq!(report["packet_error"]["general_status"], 0x08);
+        assert_eq!(report["forward_close"]["outcome"], "confirmed");
+    }
+
+    #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode class3-routed-packet-unsupported"]
+    fn explore_retains_the_class3_route_on_a_packet_rejection() {
+        let route = "1/2/2/192.0.2.100/1/0";
+        let (mut device, ctx, size) = explore_connected_packet("127.0.0.1", Some(route));
+        let labels = draw(&mut device, &ctx, size);
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text == &format!("Connection route · {route}"))
+        );
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text.starts_with("Multiple Service Packet failed"))
+        );
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text == "Forward_Close · confirmed")
+        );
+        let report = save_explore_report(&mut device, &ctx, size);
+        assert_eq!(report["connection_route"], route);
         assert_eq!(report["results"], serde_json::json!([]));
         assert_eq!(report["packet_error"]["general_status"], 0x08);
         assert_eq!(report["forward_close"]["outcome"], "confirmed");

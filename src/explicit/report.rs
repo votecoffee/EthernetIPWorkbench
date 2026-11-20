@@ -10,7 +10,7 @@ use std::net::Ipv4Addr;
 impl SavedReadBatch {
     /// Format this batch for the CLI and for saving the GUI results.
     pub fn report_json(&self) -> Result<String, String> {
-        batch_json(self, None, None)
+        batch_json(self, None, None, None)
     }
 
     fn report_document(&self) -> Result<Value, String> {
@@ -53,7 +53,12 @@ impl SavedReadBatch {
 impl ConnectedReadBatch {
     /// Format the read results with the separate Class 3 Forward_Close outcome.
     pub fn report_json(&self) -> Result<String, String> {
-        batch_json(&self.batch, Some(&self.forward_close), None)
+        batch_json(
+            &self.batch,
+            self.route.as_ref(),
+            Some(&self.forward_close),
+            None,
+        )
     }
 }
 
@@ -62,6 +67,7 @@ impl ConnectedPacketBatch {
     pub fn report_json(&self) -> Result<String, String> {
         batch_json(
             &self.connection.batch,
+            self.connection.route.as_ref(),
             Some(&self.connection.forward_close),
             self.packet_error.as_ref(),
         )
@@ -73,6 +79,7 @@ impl SavedReadReport {
     pub fn report_json(&self) -> Result<String, String> {
         batch_json(
             &self.batch,
+            self.connection_route.as_ref(),
             self.forward_close.as_ref(),
             self.packet_error.as_ref(),
         )
@@ -81,10 +88,14 @@ impl SavedReadReport {
 
 fn batch_json(
     batch: &SavedReadBatch,
+    connection_route: Option<&Route>,
     forward_close: Option<&CloseOutcome>,
     packet_error: Option<&EipError>,
 ) -> Result<String, String> {
     let mut document = batch.report_document()?;
+    if let Some(route) = connection_route {
+        document["connection_route"] = json!(route);
+    }
     if let Some(outcome) = forward_close {
         document["forward_close"] = json!(outcome);
     }

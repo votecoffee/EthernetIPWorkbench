@@ -205,6 +205,15 @@ def routed_reply(cip, attrs, report):
     return bytes.fromhex("8E 00 00 00") + attrs[6]
 
 
+def identity_attribute_reply(request, attrs):
+    assert len(request) == 8 and request[:7] == bytes.fromhex("0E 03 20 01 24 01 30")
+    attribute = request[7]
+    if attribute == 0x7F:
+        return bytes.fromhex("8E 00 14 01 02 03")
+    assert 1 <= attribute <= 7
+    return bytes.fromhex("8E 00 00 00") + attrs[attribute]
+
+
 def multiple_service_reply(cip, attrs):
     assert cip[:6] == bytes.fromhex("0A 02 20 02 24 01")
     data = cip[6:]
@@ -218,14 +227,9 @@ def multiple_service_reply(cip, attrs):
         if request == bytes.fromhex("01 02 20 01 24 01"):
             replies.append(bytes.fromhex("81 00 00 00") + b"".join(attrs))
         else:
-            assert len(request) == 8 and request[:7] == bytes.fromhex("0E 03 20 01 24 01 30")
-            attribute = request[7]
-            if attribute == 0x7F:
-                replies.append(bytes.fromhex("8E 00 14 01 02 03"))
-                rejected = True
-            else:
-                assert 1 <= attribute <= 7
-                replies.append(bytes.fromhex("8E 00 00 00") + attrs[attribute])
+            reply = identity_attribute_reply(request, attrs)
+            rejected |= reply[2] != 0
+            replies.append(reply)
     offsets = bytearray()
     offset = 2 + len(replies) * 2
     for reply in replies:
@@ -269,7 +273,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     stop = threading.Event()
     io = None
     owner = mode == "owner" or mode in VARIABLE_OUTPUT_MAX
-    connected_packet = mode.startswith("class3-packet")
+    connected = mode.startswith("class3-")
+    connected_packet = connected and "packet" in mode
     multicast = mode.startswith("multicast")
     udp_mode = "stall" if mode == "stall-close-reject" else mode
     adapter_ip = tcp.getsockname()[0]
@@ -279,7 +284,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     value_base = (adapter_index % 1000) * 100_000
     report.update(serial_number=serial_number, value_base=value_base)
     path = bytes.fromhex("20 04 24 01 2C 64 2C 65" if owner else "20 04 24 01 2C FE 2C 65")
-    if connected_packet:
+    if connected:
         path = bytes.fromhex("20 02 24 01")
     keyed = mode in ("large-keyed", "routed-io-large")
     if keyed:
@@ -287,6 +292,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     route = b""
     if mode.startswith("routed-io"):
         route = b"\x01\x02\x12\x09127.0.0.3\x00\x01\x00" if keyed else b"\x01\x03"
+    if mode.startswith("class3-routed"):
+        route = b"\x01\x02\x12\x0B192.0.2.100\x00\x01\x00" if connected_packet else b"\x01\x03"
     path = route + path
     name = b"Loopback Routed Target" if route else b"Loopback Adapter"
     attrs = [b"", struct.pack("<H", 1 if keyed else 0),
@@ -302,24 +309,29 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
             assert status == options == 0
             if cmd == 0x65:
                 assert handle == 0 and request == b"\x01\x00\x00\x00"
-                if mode in ("saved-reads", "multiple-service") or connected_packet:
+                if mode in ("saved-reads", "multiple-service") or connected:
                     report["registrations"] = report.get("registrations", 0) + 1
                 response = request
             elif cmd == 0x66:
                 assert handle == SESSION
-                if mode in ("saved-reads", "multiple-service") or connected_packet:
+                if mode in ("saved-reads", "multiple-service") or connected:
                     report["unregistered"] = True
                 break
-            elif cmd == 0x70 and connected_packet:
+            elif cmd == 0x70 and connected:
                 assert handle == SESSION and ctx == bytes(8) and request[4:6] == b"\0\0"
+                assert "open_path_hex" in report and not report["forward_close"]
+                assert mode != "class3-routed-open-reject"
                 items = rr_items(request)
                 assert set(items) == {0xA1, 0xB1} and items[0xA1] == struct.pack("<I", OT_ID)
-                assert items[0xB1][:2] == b"\x01\x00"
-                packet = items[0xB1][2:]
-                report.setdefault("connected_requests", []).append(packet.hex())
-                cip = multiple_service_reply(packet, attrs)
+                requests = report.setdefault("connected_requests", [])
+                sequence, message = items[0xB1][:2], items[0xB1][2:]
+                assert sequence == struct.pack("<H", len(requests) + 1)
+                requests.append(message.hex())
+                cip = multiple_service_reply(message, attrs) if connected_packet else identity_attribute_reply(message, attrs)
+                if mode == "class3-routed-packet-unsupported":
+                    cip = bytes.fromhex("8A 00 08 00")
                 response = (struct.pack("<IHHHHIHH", 0, 0, 2, 0xA1, 4, to, 0xB1, len(cip) + 2)
-                            + b"\x01\x00" + cip)
+                            + sequence + cip)
             elif cmd == 0x6F:
                 assert handle == SESSION
                 items = rr_items(request)
@@ -368,14 +380,16 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                     assert not route, "Read the routed target identity before opening I/O"
                     response = rr_reply(bytes.fromhex("81 00 08 00") if mode == "explicit"
                                         else b"\x81\0\0\0" + b"".join(attrs))
-                elif connected_packet and service == 0x54 and object_class == 6:
+                elif connected and service == 0x54 and object_class == 6:
                     assert set(items) == {0, 0xB2} and not items[0]
                     _, to, serial, vendor, origin = struct.unpack_from("<IIHHI", body, 2)
                     ot, ot_params, to_rpi, to_params, transport, path_words = struct.unpack_from("<IHIHBB", body, 22)
-                    assert (ot_params, to_params, transport, path_words) == (0x43F8, 0x43F8, 0xA3, 2)
+                    assert (ot_params, to_params, transport, path_words) == (0x43F8, 0x43F8, 0xA3, len(path) // 2)
                     assert body[36:] == path and to and serial and origin
+                    report["open_path_hex"] = body[36:].hex()
                     reply = struct.pack("<IIHHIIIBB", OT_ID, to, serial, vendor, origin, ot, to_rpi, 0, 0)
-                    response = rr_reply(bytes.fromhex("D4 00 00 00") + reply)
+                    response = rr_reply(bytes.fromhex("D4 00 01 01 11 03") if mode == "class3-routed-open-reject"
+                                        else bytes.fromhex("D4 00 00 00") + reply)
                 elif service in (0x54, 0x5B) and object_class == 6:
                     assert io is None
                     if route:
@@ -502,6 +516,7 @@ def main():
         "identity-then-owner",
         "explicit", "saved-reads", "multiple-service", "large-keyed", "routed", "variable-input", "large-variable-input",
         "class3-packet", "class3-packet-close-reject",
+        "class3-routed", "class3-routed-open-reject", "class3-routed-packet", "class3-routed-packet-unsupported",
         "routed-io", "routed-io-large", "routed-io-rejected-route", "routed-io-unexpected-peer",
         "variable-output", "large-variable-output",
         "multicast", "multicast-missing", "multicast-unicast",

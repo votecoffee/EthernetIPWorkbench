@@ -18,7 +18,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/explicit/batch.rs and src/gui/explore/batch.rs | Shared saved-read execution and the Explore mode picker and results |
 | src/explicit/report.rs | Shared JSON reporting for explicit reads and saved batch exports |
 | src/explicit/multiple.rs | Multiple Service Packet encoding, decoding and direct or routed unconnected batches |
-| src/explicit/connected.rs | Direct Class 3 connection lifecycle and connected reads |
+| src/explicit/connected.rs | Direct and routed Class 3 connection lifecycle and connected reads |
 | src/scanner.rs and src/scanner/ | Session lifecycle, Forward_Open/Close, cyclic workers and diagnostics |
 | src/scanner/supervision.rs | Blocking read-only runner with identity-pinned reconnects |
 | src/deadline_wait.rs | Windows deadline wait resource |
@@ -79,7 +79,7 @@ Depend on the `assembly-scanner` library with `default-features = false` to omit
 - Use `explicit::run_saved_reads_with_mode` for the four modes shared by Explore and the CLI. The returned report retains the selected mode, per-read results, any packet error and the Class 3 Forward_Close outcome.
 - Use `explicit::run_saved_reads` for the default ordered batch. Match the typed result for each saved request. A router or target rejection leaves later requests eligible to run. An exchange failure marks the remaining requests unattempted.
 - Use `explicit::run_saved_reads_packet` to pack direct saved reads or reads with one shared route into one unconnected Message Router request. Routed packets reuse the single-read Unconnected Send envelope and router/target reply distinction. Each valid embedded reply uses the same typed outcome as the sequential runner.
-- Use `explicit::run_saved_reads_connected` for one direct Class 3 batch. It validates the reply connection ID and CIP sequence and reports the outcome of Forward_Close separately.
+- Use `explicit::run_saved_reads_connected` for one direct Class 3 batch or one batch with a shared route. It validates the reply connection ID and CIP sequence and reports the outcome of Forward_Close separately. The routed connection path contains port segments followed by the Message Router. The same path is used when closing.
 - Use `explicit::run_saved_reads_connected_packet` for one Multiple Service Packet on Class 3. It shares the connection lifecycle and offset decoder with the other read modes.
 
 ## Build and choose checks
@@ -115,7 +115,7 @@ The CLI check defaults to 8 ms. --rpi-us 1000 exercises the same cases at 1 ms. 
 Add `--explore --seconds 3` to the OpENer check for discovery, direct unconnected and Class 3 reads, keyed Large Forward_Open and a comparison of exact and compatible keys for an older minor revision.
 Use `--multicast --seconds 3` to also verify OpENer's adapter-selected multicast group and CSV capture.
 
-The release GUI tests exercise mode selection and routed-request gating headlessly. The ignored test `explore_runs_a_multiple_service_packet_on_one_route` uses the localhost fixture in `multiple-service` mode. The ignored test `explore_displays_connected_packet_results_and_rejected_close` uses `class3-packet-close-reject`. The ignored test `explore_displays_connected_packet_rejection_and_confirmed_close` uses the pinned OpENer adapter on localhost. Run each test with its matching peer listening, using `cargo test --locked --offline --release --bin assembly-scanner <test_name> -- --ignored`.
+The release GUI tests exercise mode selection and routed-request gating headlessly. The ignored test `explore_runs_a_multiple_service_packet_on_one_route` uses the localhost fixture in `multiple-service` mode. The ignored test `explore_retains_the_class3_route_on_a_packet_rejection` uses `class3-routed-packet-unsupported`. The ignored test `explore_displays_connected_packet_results_and_rejected_close` uses `class3-packet-close-reject`. The ignored test `explore_displays_connected_packet_rejection_and_confirmed_close` uses the pinned OpENer adapter on localhost. Run each test with its matching peer listening, using `cargo test --locked --offline --release --bin assembly-scanner <test_name> -- --ignored`.
 Use `--listen-only --seconds 3` to check rejection without a controller and two sequential listener captures on the same producer. This test adapts the pinned Windows loopback build so the fixture keeps its shared UDP socket across connection opens and closes and handles `WSAEWOULDBLOCK` as a retryable receive result.
 
 The workspace tests render egui in memory at 900×580 and 1240×860 and simulate pointer events without a native window. They check workflow isolation, visible connection controls, write-review content and capture-stop behavior.

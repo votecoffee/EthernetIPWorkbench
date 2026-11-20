@@ -1,7 +1,6 @@
 use super::{
-    EipError, Reader, RoutedReadError, SavedRead, multiple::common_packet_route,
-    run_saved_reads_connected, run_saved_reads_connected_packet, run_saved_reads_packet,
-    validate_saved_reads,
+    EipError, Reader, Route, RoutedReadError, SavedRead, run_saved_reads_connected,
+    run_saved_reads_connected_packet, run_saved_reads_packet, validate_saved_reads,
 };
 use crate::scanner::CloseOutcome;
 use std::net::Ipv4Addr;
@@ -34,26 +33,38 @@ pub enum SavedReadMode {
 }
 
 impl SavedReadMode {
-    /// Class 3 batches require direct reads.
+    /// Every mode can now address routed reads subject to the mode's routing rules.
+    #[deprecated(note = "Use validate_routes to check which reads can run together")]
     pub fn requires_direct(self) -> bool {
-        matches!(self, Self::Connected | Self::ConnectedPacket)
+        false
     }
 
     /// Check whether the selected mode can address the saved requests together.
     pub fn validate_routes(self, reads: &[SavedRead]) -> Result<(), &'static str> {
-        match self {
-            Self::Packet => common_packet_route(reads).map(|_| ()),
-            mode if mode.requires_direct() && reads.iter().any(|read| read.route.is_some()) => {
-                Err("Class 3 connected mode requires direct saved reads")
+        self.batch_route(reads).map(|_| ())
+    }
+
+    pub(super) fn batch_route(self, reads: &[SavedRead]) -> Result<Option<&Route>, &'static str> {
+        let error = match self {
+            Self::Sequential => return Ok(None),
+            Self::Packet => "Multiple Service Packet requires one shared route or all direct reads",
+            Self::Connected | Self::ConnectedPacket => {
+                "Class 3 connected mode requires one shared route or all direct reads"
             }
-            _ => Ok(()),
+        };
+        let route = reads.first().and_then(|entry| entry.route.as_ref());
+        if reads.iter().any(|entry| entry.route.as_ref() != route) {
+            return Err(error);
         }
+        Ok(route)
     }
 }
 
 pub struct SavedReadReport {
     pub mode: SavedReadMode,
     pub batch: SavedReadBatch,
+    /// Path used by a routed Class 3 connection.
+    pub connection_route: Option<Route>,
     pub forward_close: Option<CloseOutcome>,
     pub packet_error: Option<EipError>,
 }
@@ -81,17 +92,28 @@ pub fn run_saved_reads_with_mode(
     reads: Vec<SavedRead>,
     mode: SavedReadMode,
 ) -> Result<SavedReadReport, String> {
-    let (batch, forward_close, packet_error) = match mode {
-        SavedReadMode::Sequential => (run_saved_reads(adapter, local, reads)?, None, None),
-        SavedReadMode::Packet => (run_saved_reads_packet(adapter, local, reads)?, None, None),
+    let (batch, connection_route, forward_close, packet_error) = match mode {
+        SavedReadMode::Sequential => (run_saved_reads(adapter, local, reads)?, None, None, None),
+        SavedReadMode::Packet => (
+            run_saved_reads_packet(adapter, local, reads)?,
+            None,
+            None,
+            None,
+        ),
         SavedReadMode::Connected => {
             let connected = run_saved_reads_connected(adapter, local, reads)?;
-            (connected.batch, Some(connected.forward_close), None)
+            (
+                connected.batch,
+                connected.route,
+                Some(connected.forward_close),
+                None,
+            )
         }
         SavedReadMode::ConnectedPacket => {
             let packet = run_saved_reads_connected_packet(adapter, local, reads)?;
             (
                 packet.connection.batch,
+                packet.connection.route,
                 Some(packet.connection.forward_close),
                 packet.packet_error,
             )
@@ -100,6 +122,7 @@ pub fn run_saved_reads_with_mode(
     Ok(SavedReadReport {
         mode,
         batch,
+        connection_route,
         forward_close,
         packet_error,
     })

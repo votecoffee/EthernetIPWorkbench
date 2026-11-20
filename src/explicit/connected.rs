@@ -1,6 +1,6 @@
 use super::multiple::{decode_packet, request_packet};
 use super::{
-    Command, EipError, Envelope, Item, Result, RoutedReadError, SavedRead, SavedReadBatch,
+    Command, EipError, Envelope, Item, Result, Route, RoutedReadError, SavedRead, SavedReadBatch,
     SavedReadMode, SavedReadResult, Session, batch::run_ordered, cpf, is_unicast, item_type, le16,
     le32, protocol, read_message, reply_body, validate_saved_reads,
 };
@@ -16,6 +16,7 @@ const RPI_US: u32 = 2_000_000;
 
 pub struct ConnectedReadBatch {
     pub batch: SavedReadBatch,
+    pub route: Option<Route>,
     pub forward_close: CloseOutcome,
 }
 
@@ -24,46 +25,48 @@ pub struct ConnectedPacketBatch {
     pub packet_error: Option<EipError>,
 }
 
-/// Run direct saved reads over one short-lived Class 3 TCP connection.
+/// Run direct saved reads or reads with one shared route over one Class 3 TCP connection.
 /// A CIP rejection is saved with its request. An exchange failure stops subsequent reads.
 pub fn run_saved_reads_connected(
     adapter: Ipv4Addr,
     local: Ipv4Addr,
     reads: Vec<SavedRead>,
 ) -> std::result::Result<ConnectedReadBatch, String> {
-    validate_direct_reads(&reads)?;
-    let (results, forward_close) = with_connection(adapter, local, |session, reply| {
-        let mut sequence = 0u16;
-        run_ordered(reads, |request| {
-            sequence = sequence.wrapping_add(1);
-            let cip = read_message(request.path);
-            connected_exchange(session, reply, sequence, &cip, |data| {
-                Ok(reply_body(data, cip[0])?.to_vec())
+    let route = connection_route(&reads)?;
+    let (results, forward_close) =
+        with_connection(adapter, local, route.as_ref(), |session, reply| {
+            let mut sequence = 0u16;
+            run_ordered(reads, |request| {
+                sequence = sequence.wrapping_add(1);
+                let cip = read_message(request.path);
+                connected_exchange(session, reply, sequence, &cip, |data| {
+                    Ok(reply_body(data, cip[0])?.to_vec())
+                })
+                .map_err(|error| match error {
+                    error @ EipError::Cip { .. } => RoutedReadError::Target(error),
+                    error => RoutedReadError::Exchange(error),
+                })
             })
-            .map_err(|error| match error {
-                error @ EipError::Cip { .. } => RoutedReadError::Target(error),
-                error => RoutedReadError::Exchange(error),
-            })
-        })
-    })?;
+        })?;
     Ok(ConnectedReadBatch {
         batch: SavedReadBatch {
             adapter_or_bridge: adapter,
             local_ip: local,
             results,
         },
+        route,
         forward_close,
     })
 }
 
-/// Run a direct Multiple Service Packet on one Class 3 connection.
+/// Run a Multiple Service Packet on one direct or routed Class 3 connection.
 /// A whole-packet error leaves the individual outcomes unavailable and retains Forward_Close.
 pub fn run_saved_reads_connected_packet(
     adapter: Ipv4Addr,
     local: Ipv4Addr,
     reads: Vec<SavedRead>,
 ) -> std::result::Result<ConnectedPacketBatch, String> {
-    validate_direct_reads(&reads)?;
+    let route = connection_route(&reads)?;
     let requests: Vec<_> = reads.iter().map(|entry| read_message(entry.path)).collect();
     let packet = request_packet(&requests);
     let limit = usize::from(CONNECTED_SIZE) - 2;
@@ -73,11 +76,12 @@ pub fn run_saved_reads_connected_packet(
             packet.len()
         ));
     }
-    let (reply, forward_close) = with_connection(adapter, local, |session, open| {
-        connected_exchange(session, open, 1, &packet, |data| {
-            decode_packet(data, &requests)
-        })
-    })?;
+    let (reply, forward_close) =
+        with_connection(adapter, local, route.as_ref(), |session, open| {
+            connected_exchange(session, open, 1, &packet, |data| {
+                decode_packet(data, &requests)
+            })
+        })?;
     let (results, packet_error) = match reply {
         Ok(outcomes) => (
             reads
@@ -96,24 +100,25 @@ pub fn run_saved_reads_connected_packet(
                 local_ip: local,
                 results,
             },
+            route,
             forward_close,
         },
         packet_error,
     })
 }
 
-fn validate_direct_reads(reads: &[SavedRead]) -> std::result::Result<(), String> {
+fn connection_route(reads: &[SavedRead]) -> std::result::Result<Option<Route>, String> {
     if reads.is_empty() {
         return Err("The profile has no saved CIP reads".into());
     }
     validate_saved_reads(reads)?;
-    SavedReadMode::Connected.validate_routes(reads)?;
-    Ok(())
+    Ok(SavedReadMode::Connected.batch_route(reads)?.cloned())
 }
 
 fn with_connection<T>(
     adapter: Ipv4Addr,
     local: Ipv4Addr,
+    route: Option<&Route>,
     run: impl FnOnce(&mut Session, &ForwardOpenResponse) -> T,
 ) -> std::result::Result<(T, CloseOutcome), String> {
     if !is_unicast(adapter) || !is_unicast(local) {
@@ -121,10 +126,14 @@ fn with_connection<T>(
     }
 
     let mut session = Session::open(adapter, local).map_err(|error| error.to_string())?;
-    let open = open_request().map_err(|error| error.to_string())?;
+    let open = open_request(route).map_err(|error| error.to_string())?;
+    let operation = || match route {
+        Some(route) => format!("Class 3 Forward_Open via {route}"),
+        None => "Class 3 Forward_Open".to_owned(),
+    };
     let (body, _) = session
         .cip(0x54, 6, &open.encode(), None)
-        .map_err(|error| format!("Class 3 Forward_Open: {error}"))?;
+        .map_err(|error| format!("{}: {error}", operation()))?;
     let close = ForwardCloseRequest {
         priority_tick: open.priority_tick,
         timeout_ticks: open.timeout_ticks,
@@ -137,9 +146,7 @@ fn with_connection<T>(
         Ok(reply) => reply,
         Err(error) => {
             let outcome = CloseOutcome::from_result(forward_close(&mut session, &close));
-            return Err(format!(
-                "Class 3 Forward_Open: {error}. Forward_Close {outcome}"
-            ));
+            return Err(format!("{}: {error}. Forward_Close {outcome}", operation(),));
         }
     };
     let result = run(&mut session, &reply);
@@ -147,7 +154,7 @@ fn with_connection<T>(
     Ok((result, forward_close))
 }
 
-fn open_request() -> Result<ForwardOpenRequest> {
+fn open_request(route: Option<&Route>) -> Result<ForwardOpenRequest> {
     let mut ids = [0; 10];
     getrandom::fill(&mut ids).map_err(|error| protocol(error.to_string()))?;
     let params = NetworkConnectionParameters {
@@ -157,6 +164,8 @@ fn open_request() -> Result<ForwardOpenRequest> {
         variable_size: true,
         size: CONNECTED_SIZE,
     };
+    let mut connection_path = route.map(Route::port_segments).unwrap_or_default();
+    connection_path.extend(MESSAGE_ROUTER);
     Ok(ForwardOpenRequest {
         priority_tick: 0x0a,
         timeout_ticks: 0x0a,
@@ -171,7 +180,7 @@ fn open_request() -> Result<ForwardOpenRequest> {
         t_to_o_rpi_us: RPI_US,
         t_to_o_params: params,
         transport_type: 0xa3,
-        connection_path: MESSAGE_ROUTER.to_vec(),
+        connection_path,
     })
 }
 

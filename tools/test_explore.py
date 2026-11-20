@@ -430,6 +430,7 @@ def main():
     serial = saved_request("Serial with selection", 6, selection + "\n")
     all_attributes = ('\n[[app.cip_reads]]\nname = "Identity object"\n'
                       'path = { class = 1, instance = 1 }\n')
+    connected_args = ("--connected", "--multiple-service-packet")
     for mode, additional, wanted in (
         ("success", "", ["success"] * 3),
         ("partial", saved_request("Unsupported attribute", 127),
@@ -471,7 +472,6 @@ def main():
         assert len(peer["explicit_requests"]) == 1 and peer["route_hex"] == route_hex
         assert peer["embedded_hex"] == request
 
-        connected_args = ("--connected", "--multiple-service-packet")
         case = f"class3-packet-{mode}"
         result, peer = with_adapter(root, case, [exe, "read-saved-all", packet, *connected_args], "class3-packet")
         assert result.returncode == (1 if additional else 0), (result.stdout, result.stderr)
@@ -493,6 +493,56 @@ def main():
     }
     assert [read["status"] for read in connected["results"]] == ["success"] * 3
     assert peer["forward_close"] and len(peer["connected_requests"]) == 1
+
+    routed_sequential = root / "class3-routed-sequential.toml"
+    routed_sequential.write_text(source + "".join(
+        saved_request(name, attribute, 'route = "1/3"\n') for name, attribute in
+        (("Product name", 7), ("Unsupported attribute", 127), ("Serial number", 6))
+    ), encoding="utf-8")
+    routed_connected_packet = root / "class3-routed-packet.toml"
+    multi_hop = "1/2/2/192.0.2.100/1/0"
+    routed_connected_packet.write_text((root / "routed-packet-partial.toml").read_text(encoding="utf-8")
+                                       .replace('route = "1/3"', f'route = "{multi_hop}"'), encoding="utf-8")
+    multi_hop_path = "0102120b3139322e302e322e31303000010020022401"
+    for label, mode, profile, flags, route, path, request_count, exit_code, expected_statuses in (
+        ("sequential", "class3-routed", routed_sequential, ["--connected"], "1/3",
+         "010320022401", 3, 1, ["success", "cip_rejected", "success"]),
+        ("success", "class3-routed-packet", root / "routed-packet-success.toml", connected_args, multi_hop,
+         multi_hop_path, 1, 0, ["success"] * 3),
+        ("mixed", "class3-routed-packet", routed_connected_packet, connected_args, multi_hop,
+         multi_hop_path, 1, 1, ["success", "cip_rejected", "success", "success"]),
+        ("unsupported", "class3-routed-packet-unsupported", routed_connected_packet, connected_args, multi_hop,
+         multi_hop_path, 1, 1, []),
+    ):
+        result, peer = with_adapter(root, f"class3-routed-{label}", [exe, "read-saved-all", profile, *flags], mode)
+        assert result.returncode == exit_code, (result.stdout, result.stderr)
+        reply = json.loads(result.stdout)
+        assert reply["connection_route"] == route and reply["forward_close"] == {"outcome": "confirmed"}
+        assert [item["status"] for item in reply["results"]] == expected_statuses
+        if expected_statuses:
+            assert all(item["route"] == route and item["bridge"] == LOCAL and item["reply_from"] == "target"
+                       for item in reply["results"])
+            assert reply["results"][0]["decoded"] == "Loopback Routed Target"
+            serial_index = 1
+            if "cip_rejected" in expected_statuses:
+                assert reply["results"][1]["extended_status"] == [0x0302]
+                serial_index = 2
+            assert reply["results"][serial_index]["data_hex"] == "78 56 34 12"
+            assert "packet_error" not in reply
+        else:
+            assert reply["packet_error"] == {"general_status": 8, "extended_status": []}
+        assert peer["open_path_hex"] == peer["close_path_hex"] == path
+        assert peer["registrations"] == 1 and peer["unregistered"] and peer["forward_close"]
+        assert len(peer["connected_requests"]) == request_count and "cyclic_io" not in peer
+
+    result, peer = with_adapter(
+        root, "class3-routed-open-reject", [exe, "read-saved-all", routed_sequential, "--connected"],
+        "class3-routed-open-reject",
+    )
+    assert result.returncode == 1 and not result.stdout
+    assert "Class 3 Forward_Open via 1/3" in result.stderr and "0x0311" in result.stderr
+    assert peer["open_path_hex"] == "010320022401" and peer["unregistered"]
+    assert "connected_requests" not in peer and not peer["forward_close"]
 
     oversized = root / "class3-packet-oversized.toml"
     oversized.write_text(source + "".join(saved_request(f"Field {i}", 7) for i in range(50)), encoding="utf-8")
@@ -522,9 +572,10 @@ def main():
         result = subprocess.run([exe, "read-saved-all", profile, "--multiple-service-packet"],
                                 capture_output=True, text=True, timeout=4, creationflags=NO_WINDOW)
         assert result.returncode == 1 and "requires one shared route or all direct reads" in result.stderr
-    routed_connected = subprocess.run([exe, "read-saved-all", routed_profile, "--connected"],
-                                      capture_output=True, text=True, timeout=4, creationflags=NO_WINDOW)
-    assert routed_connected.returncode == 1 and "requires direct saved reads" in routed_connected.stderr
+    for profile, flags in ((all_ok, ["--connected"]), (split_routes, connected_args)):
+        result = subprocess.run([exe, "read-saved-all", profile, *flags],
+                                capture_output=True, text=True, timeout=4, creationflags=NO_WINDOW)
+        assert result.returncode == 1 and "requires one shared route or all direct reads" in result.stderr
 
     empty = subprocess.run([exe, "read-saved-all", PROFILE], capture_output=True, text=True,
                            timeout=4, creationflags=NO_WINDOW)
