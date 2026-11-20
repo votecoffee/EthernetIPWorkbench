@@ -1,5 +1,5 @@
 use super::{
-    EipError, Reader, ReplyHeader, Result, RoutedReadError, SavedRead, SavedReadBatch,
+    EipError, Reader, ReplyHeader, Result, Route, RoutedReadError, SavedRead, SavedReadBatch,
     SavedReadOutcome, SavedReadResult, cip_data, le16, protocol, read_message, reply_body,
     validate_saved_reads,
 };
@@ -8,7 +8,7 @@ use std::net::Ipv4Addr;
 const SERVICE: u8 = 0x0a;
 const EMBEDDED_SERVICE_ERROR: u8 = 0x1e;
 
-/// Run direct saved reads in one unconnected Multiple Service Packet.
+/// Run direct saved reads or reads with a shared route in one unconnected Multiple Service Packet.
 /// Return an error for a failed envelope or an inconsistent reply table.
 pub fn run_saved_reads_packet(
     adapter: Ipv4Addr,
@@ -19,14 +19,10 @@ pub fn run_saved_reads_packet(
         return Err("The profile has no saved CIP reads".into());
     }
     validate_saved_reads(&reads)?;
-    if reads.iter().any(|entry| entry.route.is_some()) {
-        return Err("Multiple Service Packet requires direct saved reads".into());
-    }
+    let route = common_packet_route(&reads)?;
     let requests: Vec<_> = reads.iter().map(|entry| read_message(entry.path)).collect();
     let mut reader = Reader::connect(adapter, local).map_err(|error| error.to_string())?;
-    let replies = reader
-        .read_packet(&requests)
-        .map_err(|error| format!("Multiple Service Packet: {error}"))?;
+    let replies = reader.read_packet(&requests, route)?;
     let results = reads
         .into_iter()
         .zip(replies)
@@ -39,11 +35,36 @@ pub fn run_saved_reads_packet(
     })
 }
 
+pub(super) fn common_packet_route(
+    reads: &[SavedRead],
+) -> std::result::Result<Option<&Route>, &'static str> {
+    let route = reads.first().and_then(|entry| entry.route.as_ref());
+    if reads.iter().any(|entry| entry.route.as_ref() != route) {
+        return Err("Multiple Service Packet requires one shared route or all direct reads");
+    }
+    Ok(route)
+}
+
 impl Reader {
-    fn read_packet(&mut self, requests: &[Vec<u8>]) -> Result<Vec<SavedReadOutcome>> {
-        let session = self.0.as_mut().ok_or(EipError::Closed)?;
-        let reply = session.unconnected(request_packet(requests), None)?;
-        decode_packet(cip_data(&reply)?, requests)
+    fn read_packet(
+        &mut self,
+        requests: &[Vec<u8>],
+        route: Option<&Route>,
+    ) -> std::result::Result<Vec<SavedReadOutcome>, String> {
+        let packet = request_packet(requests);
+        let session = self
+            .0
+            .as_mut()
+            .ok_or_else(|| EipError::Closed.to_string())?;
+        if let Some(route) = route {
+            return session
+                .routed(&packet, route, |data| decode_packet(data, requests))
+                .map_err(|error| format!("Multiple Service Packet via {route}: {error}"));
+        }
+        session
+            .unconnected(packet, None)
+            .and_then(|reply| decode_packet(cip_data(&reply)?, requests))
+            .map_err(|error| format!("Multiple Service Packet: {error}"))
     }
 }
 

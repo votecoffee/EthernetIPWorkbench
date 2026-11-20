@@ -53,11 +53,11 @@ In **Explore**, expand **Saved reads**, choose a **Read mode**, and select **Rea
 | Read mode | CLI options | Use |
 |---|---|---|
 | Unconnected sequential | None | Direct or routed reads in profile order |
-| Unconnected Multiple Service Packet | `--multiple-service-packet` | Direct reads grouped into one CIP request on a supported target |
+| Unconnected Multiple Service Packet | `--multiple-service-packet` | One CIP request for direct reads or reads with a shared route |
 | Class 3 sequential | `--connected` | Direct reads in profile order on one Class 3 connection |
 | Class 3 Multiple Service Packet | `--connected --multiple-service-packet` | Direct reads grouped into one CIP request on a supported Class 3 connection |
 
-If any saved read has a route, switch to **Unconnected sequential** to enable **Read all saved**. When the job finishes, expand **Saved read results** to see the mode used and each request's decoded value, raw bytes or error. Class 3 results show the Forward_Close outcome. A Class 3 Multiple Service Packet error appears above the individual results.
+Choose **Unconnected sequential** when the list contains different routes or a mix of direct and routed reads. Class 3 modes require direct reads. When the job finishes, expand **Saved read results** to see the mode used and each request's decoded value, raw bytes or error. Class 3 results show the Forward_Close outcome. A Class 3 Multiple Service Packet error appears above the individual results.
 
 Select **Save JSON** to save the displayed batch, including any failures, in the output directory configured under **Logging**. The filename starts with `saved-reads-` and includes the UTC save time. The app creates a new file for each save, shows its path, and reports any write error while keeping the batch available. The report uses the same JSON fields as `read-saved-all`.
 
@@ -78,13 +78,15 @@ In the default mode, the GUI and CLI run the profile's saved requests in order o
 
 Exit code 0 means every CIP read returned a successful reply. A CIP rejection or lost exchange produces exit code 1 with the per-request report. If the profile contains no requests or the session fails to register, the CLI reports the setup error on stderr.
 
-#### Combine direct reads in one packet
+#### Combine reads in one unconnected packet
 
 ~~~powershell
 .\target\release\eipmaster-cli.exe read-saved-all .local\device.toml --multiple-service-packet
 ~~~
 
-Use this option with a target that supports unconnected CIP Multiple Service Packet. Every entry must be a direct saved read. The scanner sends one request to the Message Router and decodes each embedded reply in profile order. Each embedded CIP rejection keeps its status words in the usual JSON report and produces exit code 1. A rejection of the whole packet or an invalid reply table produces a diagnostic on stderr and exit code 1. The default sequential mode remains available for routed reads and other targets. [Rockwell CIP Multiple Service Packet format](https://literature.rockwellautomation.com/idc/groups/literature/documents/pm/1756-pm020_-en-p.pdf)
+Use this option with a target that supports unconnected CIP Multiple Service Packet. Leave every saved read's `route` unset for a direct batch. To route the packet, set the same `route` on every saved read and set the first bridge's address in `device_ip`. For example, assign `route = "1/3"` to every entry to read from slot 3. The scanner sends one Unconnected Send through the bridge and decodes the target's embedded replies in profile order. [Rockwell CIP Multiple Service Packet format](https://literature.rockwellautomation.com/idc/groups/literature/documents/pm/1756-pm020_-en-p.pdf) · [Unconnected Send encoding in pycomm3](https://github.com/ottowayi/pycomm3/blob/master/pycomm3/packets/util.py)
+
+Each embedded CIP rejection keeps its status words in the JSON report and produces exit code 1. Routed embedded replies also include the bridge, route, and `reply_from`. A rejection of the whole packet or an invalid reply table produces a diagnostic on stderr and exit code 1. A routed diagnostic identifies the bridge rejection or target rejection. Hosts and bridges can limit unconnected packet size. For a target that cannot accept a full packet, use the default sequential mode.
 
 #### Run direct Class 3 connected reads
 

@@ -1,6 +1,7 @@
 use super::{
-    EipError, Reader, RoutedReadError, SavedRead, run_saved_reads_connected,
-    run_saved_reads_connected_packet, run_saved_reads_packet, validate_saved_reads,
+    EipError, Reader, RoutedReadError, SavedRead, multiple::common_packet_route,
+    run_saved_reads_connected, run_saved_reads_connected_packet, run_saved_reads_packet,
+    validate_saved_reads,
 };
 use crate::scanner::CloseOutcome;
 use std::net::Ipv4Addr;
@@ -33,9 +34,20 @@ pub enum SavedReadMode {
 }
 
 impl SavedReadMode {
-    /// Only sequential unconnected reads can use individual CIP routes.
+    /// Class 3 batches require direct reads.
     pub fn requires_direct(self) -> bool {
-        self != Self::Sequential
+        matches!(self, Self::Connected | Self::ConnectedPacket)
+    }
+
+    /// Check whether the selected mode can address the saved requests together.
+    pub fn validate_routes(self, reads: &[SavedRead]) -> Result<(), &'static str> {
+        match self {
+            Self::Packet => common_packet_route(reads).map(|_| ()),
+            mode if mode.requires_direct() && reads.iter().any(|read| read.route.is_some()) => {
+                Err("Class 3 connected mode requires direct saved reads")
+            }
+            _ => Ok(()),
+        }
     }
 }
 

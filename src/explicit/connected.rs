@@ -1,8 +1,8 @@
 use super::multiple::{decode_packet, request_packet};
 use super::{
     Command, EipError, Envelope, Item, Result, RoutedReadError, SavedRead, SavedReadBatch,
-    SavedReadResult, Session, batch::run_ordered, cpf, is_unicast, item_type, le16, le32, protocol,
-    read_message, reply_body, validate_saved_reads,
+    SavedReadMode, SavedReadResult, Session, batch::run_ordered, cpf, is_unicast, item_type, le16,
+    le32, protocol, read_message, reply_body, validate_saved_reads,
 };
 use crate::scanner::{CloseOutcome, forward_close};
 use ethernetip_connections::forward_open::{
@@ -107,9 +107,7 @@ fn validate_direct_reads(reads: &[SavedRead]) -> std::result::Result<(), String>
         return Err("The profile has no saved CIP reads".into());
     }
     validate_saved_reads(reads)?;
-    if reads.iter().any(|request| request.route.is_some()) {
-        return Err("Class 3 connected mode requires direct saved reads".into());
-    }
+    SavedReadMode::Connected.validate_routes(reads)?;
     Ok(())
 }
 

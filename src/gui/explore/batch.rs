@@ -17,7 +17,7 @@ pub(super) fn controls(
     ready: bool,
 ) -> bool {
     let mut run = false;
-    let has_routes = reads.iter().any(|read| read.route.is_some());
+    let mut route_error = None;
     ui.horizontal_wrapped(|ui| {
         ui.label("Read mode");
         ui.add_enabled_ui(ready, |ui| {
@@ -34,17 +34,18 @@ pub(super) fn controls(
                     }
                 });
         });
+        route_error = mode.validate_routes(reads).err();
         run = ui
             .add_enabled(
-                ready && !reads.is_empty() && !(mode.requires_direct() && has_routes),
+                ready && !reads.is_empty() && route_error.is_none(),
                 egui::Button::new("Read all saved"),
             )
             .clicked();
     });
-    if mode.requires_direct() && has_routes {
+    if let Some(error) = route_error {
         ui.colored_label(
             AMBER,
-            "Use Unconnected sequential for saved reads with routes.",
+            format!("{error}. Choose Unconnected sequential to run this list."),
         );
     }
     run

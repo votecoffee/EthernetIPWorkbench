@@ -361,11 +361,22 @@ impl Session {
         route: &Route,
     ) -> std::result::Result<Vec<u8>, RoutedReadError> {
         let message = read_message(path);
+        self.routed(&message, route, |data| {
+            Ok(reply_body(data, message[0])?.to_vec())
+        })
+    }
+
+    fn routed<T>(
+        &mut self,
+        message: &[u8],
+        route: &Route,
+        decode: impl FnOnce(&[u8]) -> Result<T>,
+    ) -> std::result::Result<T, RoutedReadError> {
         let reply = self
-            .unconnected(route.wrap(&message), None)
+            .unconnected(route.wrap(message), None)
             .map_err(RoutedReadError::Exchange)?;
         let data = cip_data(&reply).map_err(RoutedReadError::Exchange)?;
-        RoutedReadError::from_reply(data, message[0])
+        route::decode_routed_reply(data, decode)
     }
 
     fn cip_path(

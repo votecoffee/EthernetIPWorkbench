@@ -234,6 +234,18 @@ def multiple_service_reply(cip, attrs):
     return bytes((0x8A, 0, 0x1E if rejected else 0, 0)) + struct.pack("<H", count) + offsets + b"".join(replies)
 
 
+def routed_packet_reply(cip, attrs, report):
+    route, message = routed_request(cip)
+    report.update(route_hex=route.hex(), embedded_hex=message.hex())
+    assert message[:6] == bytes.fromhex("0A 02 20 02 24 01")
+    if route == b"\x01\x07":
+        return bytes.fromhex("D2 00 01 01 11 03")
+    if route == b"\x01\x08":
+        return bytes.fromhex("8A 00 08 00")
+    assert route in (b"\x01\x03", b"\x01\x02\x12\x0B192.0.2.100\x00\x01\x00")
+    return multiple_service_reply(message, attrs)
+
+
 def routed_identity_reply(cip, attrs, route, mode, report):
     received_route, message = routed_request(cip)
     assert received_route == route
@@ -317,7 +329,9 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                     report.setdefault("explicit_requests", []).append(cip.hex())
                 if mode == "multiple-service":
                     assert set(items) == {0, 0xB2} and not items[0]
-                    response = rr_reply(multiple_service_reply(cip, attrs))
+                    result = (routed_packet_reply(cip, attrs, report) if service == 0x52
+                              else multiple_service_reply(cip, attrs))
+                    response = rr_reply(result)
                     tcp.sendall(struct.pack("<HHII8sI", cmd, len(response), SESSION, 0, ctx, 0) + response)
                     continue
                 if route and service == 0x52:

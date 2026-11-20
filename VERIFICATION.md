@@ -626,3 +626,7 @@ The Windows localhost fixture confirmed one connected exchange and an ordered re
 ## Explore saved-read modes
 
 Headless GUI tests opened the mode picker, verified that routed requests require unconnected sequential mode, and ran the existing routed batch against the localhost bridge fixture. Class 3 Multiple Service Packet retained mixed individual replies and a rejected Forward_Close from the localhost fixture, then saved them as JSON. With the pinned OpENer adapter, Explore displayed its packet-level CIP `0x08` and confirmed close and saved both with an empty results array. The GUI and CLI use the same typed batch runner and JSON formatter. The CLI fixture suite passed all four modes.
+
+## Unconnected Multiple Service Packet through a bridge
+
+The Windows localhost bridge fixture verified one registered session and one Unconnected Send per batch. It checked the embedded packet and route bytes for a single backplane hop and a three-hop route with a padded IPv4 link. Successful and mixed replies matched the direct packet results, with bridge and route added to each record. A bridge rejection retained extended status `0x0311` and a separate target packet rejection retained general status `0x08`. Mixed direct and routed reads and lists with different routes failed preflight. A headless Explore test treated `1/03` and `1/3` as the same route and saved three results, including the embedded CIP rejection, as JSON. Routed packet mode still needs a physical bridge and target test.

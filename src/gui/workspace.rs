@@ -299,11 +299,8 @@ mod tests {
         }
         click(&mut device, &ctx, size, "Class 3 sequential");
         let labels = draw(&mut device, &ctx, size);
-        assert!(
-            labels
-                .iter()
-                .any(|(text, _)| text == "Use Unconnected sequential for saved reads with routes.")
-        );
+        assert!(labels.iter().any(|(text, _)| text
+            == "Class 3 connected mode requires direct saved reads. Choose Unconnected sequential to run this list."));
         click(&mut device, &ctx, size, "Read all saved");
         assert!(!device.explorer.busy());
         assert_eq!(device.snapshot(), saved);
@@ -334,7 +331,7 @@ mod tests {
         ctx: &egui::Context,
         size: egui::Vec2,
     ) -> serde_json::Value {
-        let directory = super::super::tests::temporary("connected-read-report");
+        let directory = super::super::tests::temporary("saved-read-report");
         device.preferences.directory = directory.display().to_string();
         click(device, ctx, size, "Save JSON");
         wait_for_explore(device);
@@ -346,6 +343,41 @@ mod tests {
         fs::remove_dir(directory).unwrap();
         assert!(!device.explorer.busy() && device.connection.is_none());
         report
+    }
+
+    #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode multiple-service"]
+    fn explore_runs_a_multiple_service_packet_on_one_route() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[
+            ("Name", 7, Some("1/3")),
+            ("Unsupported", 127, Some("1/03")),
+            ("Serial", 6, Some("1/3")),
+        ]);
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Unconnected sequential");
+        click(
+            &mut device,
+            &ctx,
+            size,
+            "Unconnected Multiple Service Packet",
+        );
+        click(&mut device, &ctx, size, "Read all saved");
+        assert!(device.explorer.busy());
+        wait_for_explore(&mut device);
+        click(&mut device, &ctx, size, "Saved read results");
+        let report = save_explore_report(&mut device, &ctx, size);
+        let replies = report["results"].as_array().unwrap();
+        assert_eq!(replies.len(), 3);
+        assert!(replies.iter().all(|reply| reply["route"] == "1/3"
+            && reply["bridge"] == "127.0.0.1"
+            && reply["reply_from"] == "target"));
+        assert_eq!(replies[0]["decoded"], "Loopback Adapter");
+        assert_eq!(replies[1]["extended_status"][0], 0x0302);
+        assert_eq!(replies[2]["decoded"], "0x12345678");
+        assert!(report.get("forward_close").is_none());
     }
 
     #[test]

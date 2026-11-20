@@ -452,6 +452,25 @@ def main():
         assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
         [request] = peer["explicit_requests"]
         assert bytes.fromhex(request)[:6] == bytes.fromhex("0A 02 20 02 24 01")
+        route, route_hex = ("1/3", "0103") if additional else (
+            "1/2/2/192.0.2.100/1/0", "0102120b3139322e302e322e313030000100",
+        )
+        routed_packet = root / f"routed-packet-{mode}.toml"
+        routed_packet.write_text(packet.read_text(encoding="utf-8").replace(
+            "[[app.cip_reads]]\n", f'[[app.cip_reads]]\nroute = "{route}"\n'), encoding="utf-8")
+        result, peer = with_adapter(
+            root, f"routed-packet-{mode}",
+            [exe, "read-saved-all", routed_packet, "--multiple-service-packet"], "multiple-service",
+        )
+        assert result.returncode == (1 if additional else 0), (result.stdout, result.stderr)
+        routed = json.loads(result.stdout)
+        assert routed["results"] == [
+            {**reply, "route": route, "bridge": LOCAL, "reply_from": "target"} for reply in replies
+        ]
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert len(peer["explicit_requests"]) == 1 and peer["route_hex"] == route_hex
+        assert peer["embedded_hex"] == request
+
         connected_args = ("--connected", "--multiple-service-packet")
         case = f"class3-packet-{mode}"
         result, peer = with_adapter(root, case, [exe, "read-saved-all", packet, *connected_args], "class3-packet")
@@ -481,9 +500,28 @@ def main():
                             capture_output=True, text=True, timeout=4, creationflags=NO_WINDOW)
     assert result.returncode == 1 and "limit is 502 bytes" in result.stderr
 
-    routed_packet = subprocess.run([exe, "read-saved-all", routed_profile, "--multiple-service-packet"],
-                                   capture_output=True, text=True, timeout=4, creationflags=NO_WINDOW)
-    assert routed_packet.returncode == 1 and "requires direct saved reads" in routed_packet.stderr
+    for route, error, status in [
+        ("1/7", "CIP router rejected Unconnected Send", "0x0311"),
+        ("1/8", "CIP target rejected read", "0x08"),
+    ]:
+        profile = root / f"routed-packet-{route[-1]}-rejected.toml"
+        profile.write_text((root / "routed-packet-partial.toml").read_text(encoding="utf-8")
+                           .replace('route = "1/3"', f'route = "{route}"'), encoding="utf-8")
+        result, peer = with_adapter(
+            root, f"routed-packet-{route[-1]}-rejected",
+            [exe, "read-saved-all", profile, "--multiple-service-packet"], "multiple-service",
+        )
+        assert result.returncode == 1 and not result.stdout, (result.stdout, result.stderr)
+        assert f"Multiple Service Packet via {route}: {error}" in result.stderr and status in result.stderr
+        assert len(peer["explicit_requests"]) == 1 and peer["unregistered"] and not peer["forward_close"]
+
+    split_routes = root / "routed-packet-split.toml"
+    split_routes.write_text((root / "routed-packet-partial.toml").read_text(encoding="utf-8")
+                            .replace('route = "1/3"', 'route = "1/7"', 1), encoding="utf-8")
+    for profile in (all_ok, split_routes):
+        result = subprocess.run([exe, "read-saved-all", profile, "--multiple-service-packet"],
+                                capture_output=True, text=True, timeout=4, creationflags=NO_WINDOW)
+        assert result.returncode == 1 and "requires one shared route or all direct reads" in result.stderr
     routed_connected = subprocess.run([exe, "read-saved-all", routed_profile, "--connected"],
                                       capture_output=True, text=True, timeout=4, creationflags=NO_WINDOW)
     assert routed_connected.returncode == 1 and "requires direct saved reads" in routed_connected.stderr

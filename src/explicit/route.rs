@@ -148,18 +148,22 @@ impl std::error::Error for RoutedReadError {
     }
 }
 
-impl RoutedReadError {
-    pub(super) fn from_reply(raw: &[u8], service: u8) -> Result<Vec<u8>, Self> {
-        let router = raw.first() == Some(&(UNCONNECTED_SEND | 0x80));
-        let expected = if router { UNCONNECTED_SEND } else { service };
-        match super::reply_body(raw, expected) {
-            Ok(_) if router => Err(Self::Exchange(protocol(
+pub(super) fn decode_routed_reply<T>(
+    raw: &[u8],
+    decode: impl FnOnce(&[u8]) -> super::Result<T>,
+) -> Result<T, RoutedReadError> {
+    use RoutedReadError::{Exchange, Router, Target};
+    if raw.first() == Some(&(UNCONNECTED_SEND | 0x80)) {
+        return Err(match super::reply_body(raw, UNCONNECTED_SEND) {
+            Ok(_) => Exchange(protocol(
                 "Unconnected Send reply omitted the target service",
-            ))),
-            Ok(body) => Ok(body.to_vec()),
-            Err(error @ EipError::Cip { .. }) if router => Err(Self::Router(error)),
-            Err(error @ EipError::Cip { .. }) => Err(Self::Target(error)),
-            Err(error) => Err(Self::Exchange(error)),
-        }
+            )),
+            Err(error @ EipError::Cip { .. }) => Router(error),
+            Err(error) => Exchange(error),
+        });
     }
+    decode(raw).map_err(|error| match error {
+        error @ EipError::Cip { .. } => Target(error),
+        error => Exchange(error),
+    })
 }

@@ -51,7 +51,7 @@ The C# examples demonstrate HTTP and shared-memory latest values, retained HTTP 
 - Discovery, the direct CIP read browser, saved read requests and Large Forward_Open have localhost coverage. Exact and compatible format 4 keys have independent OpENer software coverage. Verify them against documented physical adapters.
 - Saved CIP reads support an optional typed reply field with zero-based offsets, byte order and swaps. The GUI and CLI retain the raw response for review.
 - Run all saved CIP requests in profile order on one explicit session from Explore or the CLI. Both report replies, rejections and unattempted requests. Explore can save the batch report as JSON.
-- Unconnected Multiple Service Packet groups direct saved reads into one request through the CLI and Rust API. The localhost fixture covers successful and mixed replies. Verify with a physical target that implements this service.
+- Unconnected Multiple Service Packet groups direct reads or saved reads with one shared route in Explore, CLI and Rust. The localhost fixture covers successful and mixed replies and separate bridge and target rejections. Verify with a physical target and bridge that support the service.
 - Direct Class 3 connected reads and Forward_Close have independent OpENer coverage through the CLI and Rust API. Verify on a physical adapter.
 - Multiple Service Packet can run over direct Class 3. Explore offers all four saved-read modes and shows packet and Forward_Close errors separately. Software checks cover embedded replies, whole-packet rejection, and unsuccessful close. Verify on a physical adapter with connected packet support.
 - Routed explicit reads support backplane and IPv4 links in Explore, CLI and the Rust API. Verify them through a physical bridge.

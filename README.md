@@ -85,11 +85,11 @@ For a documented field within a reply, enable **Decode reply field** and enter i
 
 The commands return JSON. A CIP rejection returns its general and extended status words and a nonzero exit code. Routed reports identify whether the reply came from the router or the target. [Saved request format](docs/OPERATIONS.md#discover-and-read).
 
-Use **Explore → Saved reads → Read all saved** or CLI `read-saved-all` to run the requests in profile order on one registered session. The GUI's **Read mode** picker offers the same sequential, grouped and Class 3 modes as the CLI. Choose **Unconnected sequential** for saved reads with routes. Expand **Saved read results** to inspect each reply or error. [Batch results](docs/OPERATIONS.md#run-all-saved-reads)
+Use **Explore → Saved reads → Read all saved** or CLI `read-saved-all` to run the requests in profile order on one registered session. The GUI's **Read mode** picker offers the same sequential, grouped and Class 3 modes as the CLI. Choose **Unconnected sequential** for a list with different routes or a mix of direct and routed requests. Expand **Saved read results** to inspect each reply or error. [Batch results](docs/OPERATIONS.md#run-all-saved-reads)
 
 Choose **Save JSON** in **Saved read results** to keep the batch in the output directory configured in Logging.
 
-For targets that support unconnected Multiple Service Packet, add `--multiple-service-packet` to CLI `read-saved-all` to send the direct reads in one CIP request. The JSON retains each decoded reply and CIP error. [Packet mode](docs/OPERATIONS.md#combine-direct-reads-in-one-packet)
+For targets that support unconnected Multiple Service Packet, add `--multiple-service-packet` to CLI `read-saved-all` to send the reads in one CIP request. The list can contain all direct reads or reads with one shared route. The JSON retains each decoded reply and CIP error. [Packet mode](docs/OPERATIONS.md#combine-reads-in-one-unconnected-packet)
 
 Add `--connected` to run direct saved reads on one Class 3 connection and report its Forward_Close outcome. [Connected read mode](docs/OPERATIONS.md#run-direct-class-3-connected-reads)
 
