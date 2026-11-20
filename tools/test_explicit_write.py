@@ -114,6 +114,8 @@ def check_write_drafts(command, root):
     exe = command[0]
     direct = root / "direct write draft.toml"
     routed = root / "routed-class3-draft.toml"
+    bridge = root / "routed-unconnected-draft.toml"
+    connected = root / "direct-class3-draft.toml"
     large_route = "1/2/2/192.0.2.100/1/0"
     options = ["--expect-current", CURRENT, "--readback"]
     typed = [*command[:-1], "747873558", "--type", "U32", "--endian", "big", "--swap", "word_order"]
@@ -122,6 +124,8 @@ def check_write_drafts(command, root):
         listener.listen(1)
         for draft, save, additional_fields in (
             (direct, command, {}),
+            (bridge, [*command, "--route", "1/3"], {"route": "1/3"}),
+            (connected, [*command, "--connected"], {"class3_size": 504}),
             (routed, [*typed, "--route", large_route, "--connected", "--connection-size", "4002"],
              {"route": large_route, "class3_size": 4002}),
         ):
@@ -195,6 +199,32 @@ def check_write_drafts(command, root):
         if draft == routed:
             assert result["forward_close"]["outcome"] == "confirmed"
         (root / f"{draft.stem}-apply.json").write_text(applied.stdout, encoding="utf-8")
+
+    read = {"outcome": "read", "data_hex": CURRENT, "bytes": 4}
+    for label, draft, mode, current, close, exit_code in (
+        ("direct", direct, "explicit-write-current", read, None, 0),
+        ("routed-large", routed, "class3-routed-large-write", read, "confirmed", 0),
+        ("target-rejected", direct, "explicit-write-current-rejected",
+         {"outcome": "rejected", "general_status": 0x2c, "extended_status": [0x0302]}, None, 1),
+        ("router-error", bridge, "explicit-write-current-router",
+         {"outcome": "router_error", "general_status": 1, "extended_status": [0x0204]}, None, 1),
+        ("close-rejected", connected, "class3-write-close-reject", read, "rejected", 1),
+    ):
+        label = f"inspect-{label}"
+        before = draft.read_bytes()
+        received, peer = with_adapter(root, label, [exe, "write-draft", draft, "--inspect"], mode)
+        assert received.returncode == exit_code and not received.stderr, (received.stdout, received.stderr)
+        result = json.loads(received.stdout)["result"]
+        assert result["outcome"] == "inspection" and result["service"] == "Get_Attribute_Single"
+        assert result["observed_identity"]["serial"] == 305419896 and result["current"] == current
+        assert peer["registrations"] == 1 and peer["unregistered"] and "writes" not in peer
+        assert peer["current_reads"] == ["0e032004249a3003"] and draft.read_bytes() == before
+        if close:
+            assert result["forward_close"]["outcome"] == close
+            assert peer["connected_requests"] == ["010220012401", "0e032004249a3003"]
+        else:
+            assert "forward_close" not in result
+        (root / f"{label}.json").write_text(received.stdout, encoding="utf-8")
 
 
 def check_connected_preflight(command, root):
@@ -392,4 +422,4 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
     check_writes(args.exe.resolve(strict=True), args.output.resolve())
-    print("Unconnected and Class 3 write previews, identity, current-value, readback, close, and draft checks passed.")
+    print("Unconnected and Class 3 write previews, identity, current-value, readback, close, and draft inspection passed.")

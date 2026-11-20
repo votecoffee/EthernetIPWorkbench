@@ -688,3 +688,9 @@ The pinned OpENer 2.3 localhost build accepted a reopened Class 3 draft after a 
 Headless Explore saved JSON for an acknowledged Class 3 write and for a write whose reply had the wrong sequence. Both receipts retained the UTC completion time, staged bytes, expected and observed identities, matched current-value check and confirmed close. The acknowledged run reported matching readback. The wrong-sequence run reported an unconfirmed write with readback skipped. The fixture observed one write per attempt and no new session during export.
 
 Both GUI checks also targeted a regular file as the output directory. Explore surfaced the disk error and preserved the displayed result and original receipt. Saved-read JSON export passed its headless regression check. All 41 CLI write-suite JSON documents matched the preceding build.
+
+## Current-value inspection for write drafts
+
+The localhost adapter verified that the CLI's `--inspect` read identity and the current attribute on one session. Tests covered direct unconnected and routed Large Forward_Open connections, target and router errors, and a Class 3 close rejection that preserved the received bytes. All cases left the draft file intact and sent no Set_Attribute_Single request.
+
+Headless Explore displayed the inspected bytes and copied them into the expected-value field only after the operator selected **Use as expected value**. A separate identity review enabled Send. The fixture changed the last byte before the apply session, and Explore displayed both values and blocked the write. The pinned OpENer 2.3 adapter independently returned all 32 bytes of its explicit Assembly using Class 3 inspection and confirmed Forward_Close.

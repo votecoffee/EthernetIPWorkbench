@@ -21,6 +21,23 @@ pub struct AttributeWrite {
     pub value: Vec<u8>,
 }
 
+#[derive(Debug)]
+pub struct WriteInspection {
+    pub identity: Identity,
+    pub current: Result<Vec<u8>, RoutedReadError>,
+    pub forward_close: Option<CloseOutcome>,
+}
+
+impl WriteInspection {
+    pub fn is_success(&self) -> bool {
+        self.current.is_ok()
+            && self
+                .forward_close
+                .as_ref()
+                .is_none_or(CloseOutcome::is_confirmed)
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum WriteOutcome {
@@ -289,6 +306,49 @@ impl AttributeWrite {
             return Err(format!("Class 3 identity review · Forward_Close {close}"));
         }
         observed.map_err(|error| format!("Read target identity · {error}"))
+    }
+
+    pub(super) fn inspect_current(
+        &self,
+        size: Option<Class3Size>,
+    ) -> Result<WriteInspection, String> {
+        let identity_error = |error| format!("Read target identity · {error}");
+        if let Some(size) = size {
+            self.validate_connected(size)?;
+            let (observed, close) = with_connection(
+                self.adapter_or_bridge,
+                self.local_ip,
+                self.route.as_ref(),
+                size,
+                |connection| {
+                    let identity = identity_from(|path| connection.request(&read_message(path)))?;
+                    let value = connection
+                        .request(&read_message(self.path))
+                        .map_err(target_error);
+                    Ok::<_, EipError>((identity, value))
+                },
+            )
+            .map_err(|error| error.to_string())?;
+            let (identity, current) = observed
+                .map_err(|error| format!("{}. Forward_Close {close}", identity_error(error)))?;
+            return Ok(WriteInspection {
+                identity,
+                current,
+                forward_close: Some(close),
+            });
+        }
+        self.validate()?;
+        let mut session = self.open_session()?;
+        let identity = identity(&mut session, self.route.as_ref()).map_err(identity_error)?;
+        let current = match &self.route {
+            Some(route) => session.read_routed(self.path, route),
+            None => session.read(self.path).map_err(target_error),
+        };
+        Ok(WriteInspection {
+            identity,
+            current,
+            forward_close: None,
+        })
     }
 
     /// Check the pinned identity and send the reviewed write once on that TCP session.

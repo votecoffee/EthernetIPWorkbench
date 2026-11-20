@@ -1,6 +1,7 @@
 use super::{
     Class3Size, ClassInfo, ConnectedPacketBatch, ConnectedReadBatch, EipError, ReadPath, Route,
     RoutedReadError, SavedReadBatch, SavedReadOutcome, SavedReadReport, WriteDraft,
+    WriteInspection,
 };
 use crate::model::{Selection, hex};
 use crate::scanner::CloseOutcome;
@@ -31,6 +32,32 @@ impl WriteDraft {
             document["large_forward_open"] = json!(size.uses_large_forward_open());
         }
         document
+    }
+}
+
+impl WriteInspection {
+    /// Format the attribute read and any Class 3 close as separate results.
+    pub fn result_document(&self) -> Value {
+        let current = match &self.current {
+            Ok(data) => json!({"outcome": "read", "data_hex": hex(data), "bytes": data.len()}),
+            Err(RoutedReadError::Target(EipError::Cip { status, ext })) => {
+                json!({"outcome": "rejected", "general_status": status, "extended_status": ext})
+            }
+            Err(RoutedReadError::Router(EipError::Cip { status, ext })) => {
+                json!({"outcome": "router_error", "general_status": status, "extended_status": ext})
+            }
+            Err(error) => json!({"outcome": "unavailable", "error": error.to_string()}),
+        };
+        let mut report = json!({
+            "outcome": "inspection",
+            "service": "Get_Attribute_Single",
+            "observed_identity": self.identity,
+            "current": current,
+        });
+        if let Some(close) = &self.forward_close {
+            report["forward_close"] = json!(close);
+        }
+        report
     }
 }
 

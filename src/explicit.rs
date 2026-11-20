@@ -38,7 +38,8 @@ pub use multiple::run_saved_reads_packet;
 pub use report::read_reply_document;
 pub use route::{Route, RoutedReadError};
 pub use write::{
-    AttributeWrite, CurrentValueCheck, ReadbackOutcome, WriteOptions, WriteOutcome, WriteReport,
+    AttributeWrite, CurrentValueCheck, ReadbackOutcome, WriteInspection, WriteOptions,
+    WriteOutcome, WriteReport,
 };
 pub use write_draft::WriteDraft;
 pub(crate) const TO_SOCKET: u16 = 0x8001;

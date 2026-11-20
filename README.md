@@ -83,6 +83,8 @@ Choose **Use Class 3** in the write review or pass `write-attribute --connected`
 
 Save a write review as a reusable TOML draft. Reopen it in Explore or preview it with `write-draft <draft.toml>`. The draft preserves the exact bytes and connection options. Each send requires a reviewed target identity. [Save and reopen a write draft](docs/OPERATIONS.md#save-and-reopen-a-write-draft)
 
+Read the current attribute from the write review or with `write-draft <draft.toml> --inspect`. In Explore, you can copy the returned bytes into the expected-value check. [Read the current value before review](docs/OPERATIONS.md#read-the-current-value-before-review)
+
 Save the latest write result as JSON from Explore to keep the reviewed identity, staged bytes and device replies together. [Save an attribute write receipt](docs/OPERATIONS.md#save-an-attribute-write-receipt)
 
 ~~~powershell

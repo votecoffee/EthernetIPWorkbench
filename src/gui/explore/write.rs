@@ -13,6 +13,7 @@ pub(super) struct Draft {
     connected: bool,
     class3_size: Class3Size,
     current_input: Option<String>,
+    pub(super) inspection: Option<WriteInspection>,
     pub(super) saved_file: Option<PathBuf>,
 }
 
@@ -39,6 +40,7 @@ impl Receipt {
 
 enum Action {
     Verify,
+    InspectCurrent,
     Save,
     Send(IdentityPin),
     Cancel,
@@ -52,6 +54,7 @@ impl Draft {
             typed_value: String::new(),
             format: Selection::default(),
             identity: None,
+            inspection: None,
             connected: plan.class3_size.is_some(),
             class3_size: plan.class3_size.unwrap_or(class3_default),
             current_input: plan.expected_current.as_deref().map(model::hex),
@@ -68,16 +71,21 @@ impl Draft {
         }
     }
 
-    fn compile(&self) -> Result<WriteDraft, String> {
+    fn staged_value(&self) -> Result<WriteDraft, String> {
         let mut plan = self.plan.clone();
         plan.request.value = self.encode_value()?;
+        plan.class3_size = self.connected.then_some(self.class3_size);
+        Ok(plan)
+    }
+
+    fn compile(&self) -> Result<WriteDraft, String> {
+        let mut plan = self.staged_value()?;
         plan.expected_current = self
             .current_input
             .as_deref()
             .map(model::parse_hex)
             .transpose()
             .map_err(|error| format!("Expected current bytes · {error}"))?;
-        plan.class3_size = self.connected.then_some(self.class3_size);
         Ok(plan)
     }
 }
@@ -161,11 +169,11 @@ impl Explorer {
             egui::Modal::new(egui::Id::new("cip-attribute-write")).show(ui.ctx(), |ui| {
                 ui.heading("Review attribute write");
                 show_address(ui, &draft.plan.request);
-                ui.add_enabled_ui(ready, |ui| {
+                let inspect = ui.add_enabled_ui(ready, |ui| {
                     edit_transport(ui, draft);
                     edit_value(ui, draft);
-                    edit_current_value(ui, draft);
-                });
+                    edit_current_value(ui, draft)
+                }).inner;
                 ui.add_enabled(ready, egui::Checkbox::new(&mut draft.plan.readback, "Read back after write"))
                     .on_hover_text("Compare the returned bytes from this attribute after the target acknowledges the write.");
                 if let Some(identity) = &draft.identity {
@@ -192,6 +200,9 @@ impl Explorer {
                 }
                 if save {
                     return Some(Action::Save);
+                }
+                if inspect {
+                    return Some(Action::InspectCurrent);
                 }
                 ui.horizontal_wrapped(|ui| {
                     if ui
@@ -231,6 +242,17 @@ impl Explorer {
                             plan.read_target_identity().map(Response::WriteIdentity)
                         });
                     }
+                    Err(error) => self.notice = Some(error),
+                }
+            }
+            Some(Action::InspectCurrent) => {
+                draft.inspection = None;
+                draft.identity = None;
+                match draft.staged_value() {
+                    Ok(plan) => self.start(move || {
+                        plan.inspect_current()
+                            .map(|report| Response::WriteInspection(Box::new(report)))
+                    }),
                     Err(error) => self.notice = Some(error),
                 }
             }
@@ -277,6 +299,7 @@ fn draft_file_control(ui: &mut Ui, path: &mut String, button: &str) -> bool {
 fn edit_transport(ui: &mut Ui, draft: &mut Draft) {
     if ui.checkbox(&mut draft.connected, "Use Class 3").changed() {
         draft.identity = None;
+        draft.inspection = None;
     }
     if draft.connected {
         ui.horizontal(|ui| {
@@ -293,12 +316,13 @@ fn edit_transport(ui: &mut Ui, draft: &mut Draft) {
             {
                 draft.class3_size = size;
                 draft.identity = None;
+                draft.inspection = None;
             }
         });
     }
 }
 
-fn edit_current_value(ui: &mut Ui, draft: &mut Draft) {
+fn edit_current_value(ui: &mut Ui, draft: &mut Draft) -> bool {
     let mut required = draft.current_input.is_some();
     if ui
         .checkbox(&mut required, "Require current value")
@@ -306,6 +330,7 @@ fn edit_current_value(ui: &mut Ui, draft: &mut Draft) {
     {
         draft.current_input = required.then(String::new);
         draft.identity = None;
+        draft.inspection = None;
     }
     if let Some(value) = &mut draft.current_input
         && ui
@@ -319,6 +344,42 @@ fn edit_current_value(ui: &mut Ui, draft: &mut Draft) {
     {
         draft.identity = None;
     }
+    if !required {
+        return false;
+    }
+    let read = ui.button("Read current from target").clicked();
+    if let Some(report) = &draft.inspection {
+        show_identity(ui, &report.identity);
+        if let Some(close) = &report.forward_close {
+            let label = format!("Inspection Forward_Close · {close}");
+            if close.is_confirmed() {
+                ui.small(label);
+            } else {
+                ui.colored_label(AMBER, label);
+            }
+        }
+        match &report.current {
+            Ok(bytes) => {
+                let value = model::hex(bytes);
+                show_hex(ui, "Current attribute bytes", &value);
+                if ui
+                    .add_enabled(
+                        report.is_success(),
+                        egui::Button::new("Use as expected value"),
+                    )
+                    .clicked()
+                {
+                    draft.current_input = Some(value);
+                    draft.identity = None;
+                    draft.inspection = None;
+                }
+            }
+            Err(error) => {
+                ui.colored_label(AMBER, error.to_string());
+            }
+        }
+    }
+    read
 }
 
 fn edit_value(ui: &mut Ui, draft: &mut Draft) {

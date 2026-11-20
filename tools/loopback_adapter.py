@@ -402,7 +402,9 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                 assert sequence == struct.pack("<H", len(requests) + 1)
                 requests.append(message.hex())
                 if connected_write:
-                    cip = explicit_write_reply(message, "explicit-write-current", attrs, report)
+                    write_mode = ("explicit-write-current-mismatch" if mode == "class3-write-current-changed"
+                                  else "explicit-write-current")
+                    cip = explicit_write_reply(message, write_mode, attrs, report)
                     if message[0] == 0x10 and mode.endswith("-bad-sequence"):
                         sequence = struct.pack("<H", len(requests) + 1)
                 elif connected_packet:
@@ -637,6 +639,7 @@ def main():
         "class3-write", "class3-routed-large-write", "class3-write-open-reject",
         "class3-write-close-reject", "class3-write-bad-sequence", "class3-write-gui",
         "class3-write-gui-unconfirmed",
+        "class3-write-inspect-gui",
         "routed-io", "routed-io-large", "routed-io-rejected-route", "routed-io-unexpected-peer",
         "variable-output", "large-variable-output",
         "multicast", "multicast-missing", "multicast-unicast",
@@ -662,6 +665,7 @@ def main():
             "explicit-write-gui-current": ("explicit-write-review", "explicit-write-review", "explicit-write-current"),
             "class3-write-gui": ("explicit-write-review", "class3-write", "class3-write"),
             "class3-write-gui-unconfirmed": ("explicit-write-review", "class3-write", "class3-write-bad-sequence"),
+            "class3-write-inspect-gui": ("class3-write", "class3-write", "class3-write-current-changed"),
             "reconnect": ("normal", "normal"),
             "recover": ("stall", "normal"),
             "recover-slower-api": ("stall", "slower-api"),

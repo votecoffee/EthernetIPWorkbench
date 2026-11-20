@@ -13,6 +13,7 @@ enum Action<'a> {
     Preview,
     Save(&'a Path),
     Verify,
+    Inspect,
     Apply(IdentityPin),
 }
 
@@ -31,6 +32,7 @@ pub(super) fn file(path: &Path, options: &[OsString]) -> Result<bool, String> {
     let action = match options {
         [] => Action::Preview,
         [flag] if flag == "--verify" => Action::Verify,
+        [flag] if flag == "--inspect" => Action::Inspect,
         [flag, value] if flag == "--apply" => Action::Apply(identity_pin(value)?),
         _ => return Err(USAGE.into()),
     };
@@ -193,6 +195,10 @@ fn run(
                 true,
                 json!({"outcome": "identity_read", "observed_identity": identity}),
             )
+        }
+        Action::Inspect => {
+            let inspection = draft.inspect_current()?;
+            (inspection.is_success(), inspection.result_document())
         }
         Action::Apply(pin) => {
             let result = draft.apply(pin)?;

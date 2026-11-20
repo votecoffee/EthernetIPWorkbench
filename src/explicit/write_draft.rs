@@ -1,5 +1,6 @@
 use super::{
-    AttributeWrite, Class3Size, Identity, IdentityPin, ReadPath, Route, WriteOptions, WriteReport,
+    AttributeWrite, Class3Size, Identity, IdentityPin, ReadPath, Route, WriteInspection,
+    WriteOptions, WriteReport,
 };
 use crate::{
     model::{hex, parse_hex},
@@ -108,6 +109,11 @@ impl WriteDraft {
             Some(size) => self.request.read_target_identity_connected(size),
             None => self.request.read_target_identity(),
         }
+    }
+
+    /// Read identity and the current attribute bytes on a single read-only session.
+    pub fn inspect_current(&self) -> Result<WriteInspection, String> {
+        self.request.inspect_current(self.class3_size)
     }
 
     /// Check the supplied identity and send the staged write at most once.

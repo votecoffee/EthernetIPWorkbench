@@ -475,6 +475,65 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode class3-write-inspect-gui"]
+    fn explore_stages_inspected_bytes_and_rechecks_them_on_apply() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[]);
+        device.settings.input_instance = 154;
+        click(&mut device, &ctx, size, "Common attributes");
+        click(&mut device, &ctx, size, "Assembly · Data");
+        click(&mut device, &ctx, size, "Stage attribute write");
+        click(&mut device, &ctx, size, "Use Class 3");
+        click(&mut device, &ctx, size, "Space-separated hex bytes");
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+            events: vec![egui::Event::Text("A5 16 2C 93".into())],
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| device.show(ctx, &[]));
+        click(&mut device, &ctx, size, "Require current value");
+        click(&mut device, &ctx, size, "Read current from target");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Loopback Adapter · identity 0:12:1:305419896",
+            "Inspection Forward_Close · confirmed",
+            "10 20 30 40",
+            "Expected current value in hex",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Use as expected value");
+        click(&mut device, &ctx, size, "Send reviewed write");
+        assert!(!device.explorer.busy());
+        click(&mut device, &ctx, size, "Verify target identity");
+        wait_for_explore(&mut device);
+        click(&mut device, &ctx, size, "Send reviewed write");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Write not sent · Current value check did not pass",
+            "Current value differs from the expected bytes",
+            "Forward_Close · confirmed",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Attribute write result");
+        let labels = draw(&mut device, &ctx, size);
+        assert!(labels.iter().any(|(text, _)| text == "10 20 30 40"));
+        assert!(labels.iter().any(|(text, _)| text == "10 20 30 41"));
+        assert!(device.connection.is_none());
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode class3-write-gui"]
     fn explore_requires_fresh_review_when_switching_to_class3_write() {
         exercise_class3_write_receipt(true);

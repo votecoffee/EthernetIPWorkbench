@@ -118,6 +118,12 @@ For an authorized identity read, add `--verify` to `write-draft`. The command us
 
 The version 1 file stores the adapter and NIC, the CIP path, an optional route, the exact encoded hex, any expected current hex, the readback choice and an optional Class 3 size. A typed value reopens as its encoded hex. Identity and approval state are session-specific. Keep device-specific drafts in ignored `.local/` or in a separate private location.
 
+#### Read the current value before review
+
+For a readable attribute, select **Require current value → Read current from target** in the write review. Explore reads the device identity and attribute bytes on one session using the draft's route and transport. Review the returned identity and bytes, then select **Use as expected value** to stage them for the comparison. Select **Verify target identity** and review the write before sending. Apply reads the value again immediately before sending. If it changed, the write is skipped.
+
+Run `write-draft <draft.toml> --inspect` for the same read-only inspection from the CLI. The JSON reports `result.observed_identity` and `result.current`, including the raw `data_hex` or the target, router or exchange error. A Class 3 result also reports `result.forward_close`. Exit code 0 requires a successful read and, for Class 3, confirmed close. The draft file stays intact.
+
 #### Save an attribute write receipt
 
 Set the output directory in **Logging**. After an apply attempt returns, expand **Explore → Attribute write result** and select **Save write receipt JSON**. Explore saves the latest result as a new `attribute-write-*.json` file. Save a result before applying the next write if you want to retain both.

@@ -3,7 +3,7 @@ use assembly_scanner::{
     discovery,
     explicit::{
         self, AttributeWrite, Class3Size, ClassInfo, ReadPath, Reader, Route, SavedRead,
-        SavedReadMode, SavedReadReport, WriteOutcome, WriteReport,
+        SavedReadMode, SavedReadReport, WriteInspection, WriteOutcome, WriteReport,
     },
 };
 use std::sync::Arc;
@@ -33,6 +33,7 @@ enum Response {
     OpenedWriteDraft(Box<write::Draft>),
     SavedWriteDraft(PathBuf),
     WriteIdentity(Identity),
+    WriteInspection(Box<WriteInspection>),
     WriteResult(Arc<write::Receipt>),
     SavedWriteReceipt(PathBuf),
 }
@@ -126,6 +127,11 @@ impl Explorer {
             Ok(Ok(Response::WriteIdentity(identity))) => {
                 if let Some(draft) = &mut self.write_draft {
                     draft.identity = Some(identity);
+                }
+            }
+            Ok(Ok(Response::WriteInspection(report))) => {
+                if let Some(draft) = &mut self.write_draft {
+                    draft.inspection = Some(*report);
                 }
             }
             Ok(Ok(Response::WriteResult(result))) => {
