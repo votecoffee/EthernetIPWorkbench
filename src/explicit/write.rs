@@ -61,14 +61,75 @@ impl fmt::Display for WriteOutcome {
                 } else {
                     "Router replied · target outcome unconfirmed"
                 };
-                write!(f, "{source} · CIP general 0x{general_status:02X}")?;
-                for word in extended_status {
-                    write!(f, ", extended 0x{word:04X}")?;
-                }
-                Ok(())
+                cip_status(f, source, *general_status, extended_status)
             }
         }
     }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum ReadbackOutcome {
+    Skipped,
+    Matched {
+        data_hex: String,
+    },
+    Mismatch {
+        data_hex: String,
+    },
+    Rejected {
+        general_status: u8,
+        extended_status: Vec<u16>,
+    },
+    RouterError {
+        general_status: u8,
+        extended_status: Vec<u16>,
+    },
+    Unavailable {
+        error: String,
+    },
+}
+
+impl fmt::Display for ReadbackOutcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Skipped => f.write_str("Readback skipped · target acknowledgment required"),
+            Self::Matched { .. } => f.write_str("Readback matched the staged bytes"),
+            Self::Mismatch { .. } => f.write_str("Readback differs from the staged bytes"),
+            Self::Rejected {
+                general_status,
+                extended_status,
+            } => cip_status(
+                f,
+                "Target rejected readback",
+                *general_status,
+                extended_status,
+            ),
+            Self::RouterError {
+                general_status,
+                extended_status,
+            } => cip_status(
+                f,
+                "Router rejected readback",
+                *general_status,
+                extended_status,
+            ),
+            Self::Unavailable { error } => write!(f, "Readback unavailable · {error}"),
+        }
+    }
+}
+
+fn cip_status(
+    f: &mut fmt::Formatter<'_>,
+    source: &str,
+    general_status: u8,
+    extended_status: &[u16],
+) -> fmt::Result {
+    write!(f, "{source} · CIP general 0x{general_status:02X}")?;
+    for word in extended_status {
+        write!(f, ", extended 0x{word:04X}")?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, Serialize)]
@@ -78,6 +139,19 @@ pub struct WriteReport {
     pub observed_identity: Option<Identity>,
     #[serde(flatten)]
     pub outcome: WriteOutcome,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub readback: Option<ReadbackOutcome>,
+}
+
+impl WriteReport {
+    /// True when the target acknowledged the write and any requested readback matched.
+    pub fn is_success(&self) -> bool {
+        matches!(self.outcome, WriteOutcome::Acknowledged { .. })
+            && self
+                .readback
+                .as_ref()
+                .is_none_or(|outcome| matches!(outcome, ReadbackOutcome::Matched { .. }))
+    }
 }
 
 impl AttributeWrite {
@@ -110,48 +184,65 @@ impl AttributeWrite {
     /// Read the proposed target's identity without sending the staged value.
     pub fn read_target_identity(&self) -> Result<Identity, String> {
         self.validate()?;
-        let mut session = Session::open(self.adapter_or_bridge, self.local_ip)
-            .map_err(|error| error.to_string())?;
-        identity(&mut session, self.route.as_ref()).map_err(|error| error.to_string())
+        self.open_target().map(|(_, identity)| identity)
     }
 
     /// Check the pinned identity and send the reviewed write once on that TCP session.
     /// A router reply or loss of the target reply leaves application of the value unconfirmed.
     pub fn apply(&self, expected_identity: IdentityPin) -> Result<WriteReport, String> {
+        self.apply_request(expected_identity, false)
+    }
+
+    /// Read the same attribute on the write session after a target acknowledgment.
+    /// Preserve the acknowledgment even when the read fails or returns different bytes.
+    pub fn apply_with_readback(
+        &self,
+        expected_identity: IdentityPin,
+    ) -> Result<WriteReport, String> {
+        self.apply_request(expected_identity, true)
+    }
+
+    fn apply_request(
+        &self,
+        expected_identity: IdentityPin,
+        verify: bool,
+    ) -> Result<WriteReport, String> {
         let request = self.message()?;
-        let mut observed_identity = None;
-        let outcome = self.write_once(request, expected_identity, &mut observed_identity);
+        let mut readback = verify.then_some(ReadbackOutcome::Skipped);
+        let (observed_identity, outcome) = match self.open_target() {
+            Err(error) => (None, WriteOutcome::NotSent { error }),
+            Ok((mut session, actual)) => {
+                let outcome = if actual.pin() == expected_identity {
+                    let outcome = self.write_once(&mut session, request);
+                    if verify && matches!(outcome, WriteOutcome::Acknowledged { .. }) {
+                        readback = Some(self.read_back(&mut session));
+                    }
+                    outcome
+                } else {
+                    WriteOutcome::NotSent {
+                        error: "Target identity did not match the reviewed device".into(),
+                    }
+                };
+                (Some(actual), outcome)
+            }
+        };
         Ok(WriteReport {
             expected_identity,
             observed_identity,
             outcome,
+            readback,
         })
     }
 
-    fn write_once(
-        &self,
-        request: Vec<u8>,
-        expected: IdentityPin,
-        observed: &mut Option<Identity>,
-    ) -> WriteOutcome {
-        let target = || {
-            let mut session = Session::open(self.adapter_or_bridge, self.local_ip)
-                .map_err(|error| format!("RegisterSession · {error}"))?;
-            let actual = identity(&mut session, self.route.as_ref())
-                .map_err(|error| format!("Read target identity · {error}"))?;
-            Ok::<_, String>((session, actual))
-        };
-        let (mut session, actual) = match target() {
-            Ok(target) => target,
-            Err(error) => return WriteOutcome::NotSent { error },
-        };
-        let actual_pin = actual.pin();
-        *observed = Some(actual);
-        if actual_pin != expected {
-            return WriteOutcome::NotSent {
-                error: "Target identity did not match the reviewed device".into(),
-            };
-        }
+    fn open_target(&self) -> Result<(Session, Identity), String> {
+        let mut session = Session::open(self.adapter_or_bridge, self.local_ip)
+            .map_err(|error| format!("RegisterSession · {error}"))?;
+        let actual = identity(&mut session, self.route.as_ref())
+            .map_err(|error| format!("Read target identity · {error}"))?;
+        Ok((session, actual))
+    }
+
+    fn write_once(&self, session: &mut Session, request: Vec<u8>) -> WriteOutcome {
         let decode = |data: &[u8]| Ok(reply_body(data, SET_ATTRIBUTE_SINGLE)?.to_vec());
         let result = match &self.route {
             Some(route) => session.routed(&request, route, decode),
@@ -181,6 +272,42 @@ impl AttributeWrite {
                 error: error.to_string(),
             },
             Err(error) => WriteOutcome::Unconfirmed {
+                error: error.to_string(),
+            },
+        }
+    }
+
+    fn read_back(&self, session: &mut Session) -> ReadbackOutcome {
+        let result = match &self.route {
+            Some(route) => session.read_routed(self.path, route),
+            None => session.read(self.path).map_err(|error| match error {
+                error @ EipError::Cip { .. } => RoutedReadError::Target(error),
+                error => RoutedReadError::Exchange(error),
+            }),
+        };
+        match result {
+            Ok(data) if data == self.value => ReadbackOutcome::Matched {
+                data_hex: hex(&data),
+            },
+            Ok(data) => ReadbackOutcome::Mismatch {
+                data_hex: hex(&data),
+            },
+            Err(RoutedReadError::Target(EipError::Cip { status, ext })) => {
+                ReadbackOutcome::Rejected {
+                    general_status: status,
+                    extended_status: ext,
+                }
+            }
+            Err(RoutedReadError::Router(EipError::Cip { status, ext })) => {
+                ReadbackOutcome::RouterError {
+                    general_status: status,
+                    extended_status: ext,
+                }
+            }
+            Err(RoutedReadError::Exchange(error)) => ReadbackOutcome::Unavailable {
+                error: error.to_string(),
+            },
+            Err(error) => ReadbackOutcome::Unavailable {
                 error: error.to_string(),
             },
         }

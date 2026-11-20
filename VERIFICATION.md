@@ -652,3 +652,9 @@ The independent OpENer 2.3 software target reported Assembly class revision 2, m
 The Windows localhost fixture verified that preview and an incomplete identity pin opened no session. Applying a mismatched serial sent only the identity query. Direct and routed successful applies each used one registered session for the identity query and the exact four-byte Set_Attribute_Single value. Target rejection preserved general status `0x0E` and extended word `0x0302`. A router timeout preserved `0x0204` with an unconfirmed target outcome. The test that dropped the write reply recorded one request and an unconfirmed result. Both write failures and uncertain outcomes returned exit code 1.
 
 In the headless GUI, editing a reviewed value cleared the approved identity. Two read-only review sessions preceded the single apply session. The independent OpENer 2.3 software target acknowledged a write to its dedicated explicit Assembly instance 154 and returned the same 32 bytes on a separate Get_Attribute_Single read. This verification used localhost targets.
+
+## Optional same-session write readback
+
+The Windows localhost fixture verified the reviewed identity, one write, and one Get_Attribute_Single in the same registered session. Direct and routed readbacks matched the four staged bytes. In other cases, the write remained acknowledged while readback reported differing bytes, target status `0x2C`, router extended status `0x0204`, or a lost reply. Those applies returned exit code 1. Readback was skipped for a blocked, rejected, or unconfirmed write. Preview with the readback option opened no connection.
+
+Headless Explore preserved write review and displayed the matched readback separately. The independent OpENer 2.3 software target matched all 32 bytes on the write session and returned the same value on a subsequent separate read. The Explore and Class 1 CLI regression suite passed. Physical-device verification remains open.

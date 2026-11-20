@@ -77,7 +77,7 @@ For a documented field within a reply, enable **Decode reply field** and enter i
 
 Select **Read class info** beside the class field to inspect its revision, instance limits, and optional attributes and services advertised by the device. Expand a result for raw bytes or CIP status. The CLI `class-info` command provides the same inspection as JSON. [Class inspection](docs/OPERATIONS.md#inspect-a-cip-class)
 
-Use **Stage attribute write** in Explore to review and send a documented Set_Attribute_Single request. The CLI `write-attribute` previews the address, route and hex bytes offline. Sending requires the reviewed device identity, including its serial number. [Review and send an attribute write](docs/OPERATIONS.md#review-and-send-an-attribute-write)
+Use **Stage attribute write** in Explore to review and send a documented Set_Attribute_Single request. The CLI `write-attribute` previews the address, route and hex bytes offline. Sending requires the reviewed device identity, including its serial number. For a readable attribute, enable **Read back after write** or add `--readback` to compare its returned bytes with the staged value. [Review and send an attribute write](docs/OPERATIONS.md#review-and-send-an-attribute-write)
 
 ~~~powershell
 .\target\release\eipmaster-cli.exe discover 127.0.0.1 127.0.0.1

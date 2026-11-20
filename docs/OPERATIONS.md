@@ -78,7 +78,11 @@ Add `--apply <vendor:type:product:serial>` to send to the reviewed target. All f
 | `router_error` | The router returned a CIP error. The target outcome is unconfirmed. |
 | `unconfirmed` | The exchange ended without a valid target response. The value may have been applied. |
 
-The CLI returns exit code 0 for a valid preview or an acknowledged apply and exit code 1 for other outcomes. For an unconfirmed write, review the reported error and verify the target state before issuing another write. The Workbench sends each reviewed write at most once.
+For a readable attribute, enable **Read back after write** in the review window or add `--readback` to the CLI command. The Workbench sends one Get_Attribute_Single for the same address and route on the write session after the target acknowledges the write. It compares the returned bytes with the staged value. A preview with `--readback` adds `readback_requested` to the offline JSON. [Get_Attribute_Single reference](https://product-help.schneider-electric.com/Machine%20Expert/V1.2/en/lmcprg/lmcprg/Ethernet_Configuration/Ethernet_Configuration-17.htm)
+
+The optional `result.readback` records `matched` or `mismatch` with the returned `data_hex`. Target and router rejections retain their status words. A failed read exchange reports `unavailable`. A requested readback reports `skipped` when the write lacks a target acknowledgment. Explore shows both results and the returned bytes under **Attribute write result**.
+
+The CLI returns exit code 0 for a valid preview or an acknowledged apply. With `--readback`, an apply also requires a byte-for-byte match for exit code 0. The write acknowledgment stays in the result even when the readback differs or fails. For an unconfirmed write, verify the target state before issuing another write. The Workbench sends each reviewed write at most once.
 
 ### Run all saved reads
 

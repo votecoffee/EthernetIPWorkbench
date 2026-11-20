@@ -261,12 +261,24 @@ mod tests {
                 .iter()
                 .any(|(text, _)| text == "4 bytes to send")
         );
+        click(&mut device, &ctx, size, "Read back after write");
         click(&mut device, &ctx, size, "Send reviewed write");
         wait_for_explore(&mut device);
         assert!(
             draw(&mut device, &ctx, size)
                 .iter()
                 .any(|(text, _)| text == "Write acknowledged by target")
+        );
+        assert!(
+            draw(&mut device, &ctx, size)
+                .iter()
+                .any(|(text, _)| text == "Readback matched the staged bytes")
+        );
+        click(&mut device, &ctx, size, "Attribute write result");
+        assert!(
+            draw(&mut device, &ctx, size)
+                .iter()
+                .any(|(text, _)| text == "Readback bytes")
         );
         assert_eq!(device.snapshot(), saved);
         assert!(device.connection.is_none());

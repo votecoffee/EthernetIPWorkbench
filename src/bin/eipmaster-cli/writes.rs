@@ -1,6 +1,6 @@
 use super::{USAGE, explicit_endpoint, parse_expected_identity};
 use assembly_scanner::{
-    explicit::{AttributeWrite, IdentityPin, ReadPath, Route, WriteOutcome},
+    explicit::{AttributeWrite, IdentityPin, ReadPath, Route},
     model::{hex, parse_hex},
 };
 use serde_json::json;
@@ -16,15 +16,15 @@ pub(super) fn attribute(
     let (adapter_or_bridge, local_ip, _) = explicit_endpoint(adapter, local, &[])?;
     let mut route: Option<Route> = None;
     let mut apply = None;
-    let options = options.chunks_exact(2);
-    if !options.remainder().is_empty() {
-        return Err(USAGE.into());
-    }
-    for pair in options {
-        if pair[0] == "--route" && route.is_none() {
-            route = Some(pair[1].to_string_lossy().parse()?);
-        } else if pair[0] == "--apply" && apply.is_none() {
-            let expected = parse_expected_identity(&pair[1].to_string_lossy())?;
+    let mut readback = false;
+    let mut options = options.iter();
+    while let Some(option) = options.next() {
+        if option == "--route" && route.is_none() {
+            let value = options.next().ok_or(USAGE)?;
+            route = Some(value.to_string_lossy().parse()?);
+        } else if option == "--apply" && apply.is_none() {
+            let value = options.next().ok_or(USAGE)?;
+            let expected = parse_expected_identity(&value.to_string_lossy())?;
             let serial = expected
                 .serial
                 .ok_or("Apply requires decimal vendor:type:product:serial")?;
@@ -32,6 +32,8 @@ pub(super) fn attribute(
                 key: expected.key,
                 serial,
             });
+        } else if option == "--readback" && !readback {
+            readback = true;
         } else {
             return Err(USAGE.into());
         }
@@ -52,11 +54,18 @@ pub(super) fn attribute(
         "value_hex": hex(&request.value),
         "bytes": request.value.len(),
     });
+    if readback {
+        report["readback_requested"] = json!(true);
+    }
     let success = if let Some(pin) = apply {
-        let result = request.apply(pin)?;
-        let acknowledged = matches!(result.outcome, WriteOutcome::Acknowledged { .. });
+        let result = if readback {
+            request.apply_with_readback(pin)?
+        } else {
+            request.apply(pin)?
+        };
+        let success = result.is_success();
         report["result"] = json!(result);
-        acknowledged
+        success
     } else {
         request.validate()?;
         report["result"] = json!({"outcome": "preview"});

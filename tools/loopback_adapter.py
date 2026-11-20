@@ -239,6 +239,19 @@ def explicit_write_reply(cip, mode, attrs, report):
         assert "identity_route" not in report and not report.get("writes")
         report["identity_route"] = route.hex()
         return bytes.fromhex("81 00 00 00") + b"".join(attrs)
+    if message == bytes.fromhex("0E 03 20 04 24 9A 30 03"):
+        assert mode.startswith("explicit-write-readback") and report.get("writes")
+        assert report["identity_route"] == route.hex() and "readbacks" not in report
+        report["readbacks"] = [message.hex()]
+        if mode.endswith("-no-reply"):
+            return None
+        if mode.endswith("-rejected"):
+            return bytes.fromhex("8E 00 2C 01 02 03")
+        if mode.endswith("-router"):
+            assert route
+            return bytes.fromhex("D2 00 01 01 04 02")
+        value = "A5 16 2C 92" if mode.endswith("-mismatch") else "A5 16 2C 93"
+        return bytes.fromhex("8E 00 00 00 " + value)
     assert mode != "explicit-write-review"
     assert report["identity_route"] == route.hex() and "writes" not in report
     assert message[:8] == bytes.fromhex("10 03 20 04 24 9A 30 03")
@@ -587,6 +600,8 @@ def main():
         "class-info", "class-info-malformed",
         "explicit-write", "explicit-write-review", "explicit-write-gui", "explicit-write-rejected",
         "explicit-write-no-reply", "explicit-write-router-timeout",
+        "explicit-write-readback", "explicit-write-readback-mismatch", "explicit-write-readback-rejected",
+        "explicit-write-readback-no-reply", "explicit-write-readback-router",
         "class3-packet", "class3-packet-close-reject",
         "class3-routed", "class3-routed-open-reject", "class3-routed-packet", "class3-routed-packet-unsupported",
         "class3-sized", "class3-large-packet", "class3-routed-large-packet", "class3-large-open-reject",
@@ -611,7 +626,7 @@ def main():
         listener.settimeout(30)
         print("Ready on loopback", flush=True)
         sequences = {
-            "explicit-write-gui": ("explicit-write-review", "explicit-write-review", "explicit-write"),
+            "explicit-write-gui": ("explicit-write-review", "explicit-write-review", "explicit-write-readback"),
             "reconnect": ("normal", "normal"),
             "recover": ("stall", "normal"),
             "recover-slower-api": ("stall", "slower-api"),

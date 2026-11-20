@@ -1,9 +1,11 @@
 use super::*;
+use assembly_scanner::explicit::ReadbackOutcome;
 
 pub(super) struct Draft {
     request: AttributeWrite,
     bytes: String,
     pub(super) identity: Option<Identity>,
+    readback: bool,
 }
 
 enum Action {
@@ -30,6 +32,7 @@ impl Explorer {
                 request,
                 bytes: String::new(),
                 identity: None,
+                readback: false,
             })
         };
         match prepare() {
@@ -62,6 +65,8 @@ impl Explorer {
                 if ui.add_enabled(ready, edit).changed() {
                     draft.identity = None;
                 }
+                ui.add_enabled(ready, egui::Checkbox::new(&mut draft.readback, "Read back after write"))
+                    .on_hover_text("Compare the returned bytes from this attribute after the target acknowledges the write.");
                 if let Some(identity) = &draft.identity {
                     show_identity(ui, identity);
                     ui.label(format!("{} bytes to send", draft.request.value.len()));
@@ -117,10 +122,15 @@ impl Explorer {
             }
             Some(Action::Send(pin)) => {
                 let request = draft.request.clone();
+                let readback = draft.readback;
                 self.write_draft = None;
                 self.write_result = None;
                 self.start(move || {
-                    let report = request.apply(pin)?;
+                    let report = if readback {
+                        request.apply_with_readback(pin)?
+                    } else {
+                        request.apply(pin)?
+                    };
                     Ok(Response::WriteResult(Box::new((request, report))))
                 });
             }
@@ -159,6 +169,13 @@ fn show_result(ui: &mut Ui, request: &AttributeWrite, report: &WriteReport) {
     } else {
         ui.colored_label(AMBER, report.outcome.to_string());
     }
+    if let Some(readback) = &report.readback {
+        if matches!(readback, ReadbackOutcome::Matched { .. }) {
+            ui.label(readback.to_string());
+        } else {
+            ui.colored_label(AMBER, readback.to_string());
+        }
+    }
     ui.collapsing("Attribute write result", |ui| {
         show_address(ui, request);
         let IdentityPin {
@@ -173,5 +190,15 @@ fn show_result(ui: &mut Ui, request: &AttributeWrite, report: &WriteReport) {
         }
         ui.label(format!("{} staged bytes", request.value.len()));
         show_reply_payload(ui, &request.value, &Ok(None));
+        if let Some(
+            ReadbackOutcome::Matched { data_hex } | ReadbackOutcome::Mismatch { data_hex },
+        ) = &report.readback
+        {
+            ui.label("Readback bytes");
+            egui::ScrollArea::vertical()
+                .id_salt("attribute-readback")
+                .max_height(120.0)
+                .show(ui, |ui| ui.monospace(data_hex));
+        }
     });
 }

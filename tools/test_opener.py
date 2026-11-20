@@ -279,7 +279,7 @@ def check_explicit_write(cli, adapter, root, identity):
     with run_adapter(adapter, root):
         for name, args in (
             ("before", ["read", *address]),
-            ("write", ["write-attribute", *address, value, "--apply", pin]),
+            ("write", ["write-attribute", *address, value, "--apply", pin, "--readback"]),
             ("after", ["read", *address]),
         ):
             result = subprocess.run([cli, *args], capture_output=True, timeout=10,
@@ -290,9 +290,10 @@ def check_explicit_write(cli, adapter, root, identity):
     write = json.loads((root / "write.json").read_text(encoding="utf-8"))
     after = json.loads((root / "after.json").read_text(encoding="utf-8"))
     assert write["result"]["outcome"] == "acknowledged"
+    assert write["result"]["readback"] == {"outcome": "matched", "data_hex": value}
     assert write["result"]["observed_identity"]["serial"] == identity["serial"]
     assert after["data_hex"] == write["value_hex"] == value and before["data_hex"] != value
-    print("OpENer acknowledged Set_Attribute_Single and read back all 32 bytes from its explicit assembly.")
+    print("OpENer acknowledged Set_Attribute_Single and matched all 32 bytes on same-session readback.")
 
 
 def check_connected_reads(cli, adapter, root, identity):
