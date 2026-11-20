@@ -431,9 +431,12 @@ def main():
     ))
     parser.add_argument("--address", type=IPv4Address, default=IPv4Address(IP))
     parser.add_argument("--multicast-port", type=int, default=2222)
+    parser.add_argument("--tcp-timeout", type=int, help="Override the fixture's TCP inactivity timeout in seconds")
     args = parser.parse_args()
     if not args.address.is_loopback:
         parser.error("--address must be an IPv4 loopback address")
+    if args.tcp_timeout is not None and args.tcp_timeout <= 0:
+        parser.error("--tcp-timeout must be positive")
     address = str(args.address)
     report = {"mode": args.mode, "forward_close": False}
     with socket.socket() as listener:
@@ -459,7 +462,7 @@ def main():
         for index, mode in enumerate(modes):
             conn, _ = listener.accept()
             with conn, socket.socket(type=socket.SOCK_DGRAM) as udp:
-                conn.settimeout(75 if args.mode.startswith("qualify") else 20)
+                conn.settimeout(args.tcp_timeout or (75 if args.mode.startswith("qualify") else 20))
                 udp.bind((address, 0))
                 attempt = {"forward_close": False} if record_attempts else report
                 replacement = args.mode in ("replacement", "qualify-replacement") and index == 1

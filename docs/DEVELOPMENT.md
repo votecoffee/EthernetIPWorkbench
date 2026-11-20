@@ -34,6 +34,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/bin/eipmaster-cli/interrupt.rs | Windows console stop handling |
 | tools/join_capture.py | CSV joining, report verification and saved-row timing by connection generation |
 | tools/review_gui_qualification.py | Offline review of four saved GUI runs against the bench qualification checks |
+| tools/benchmark_integration.py | Paired localhost capture timing and software-feed observation counts |
 | tools/package_windows.py | Clean-commit Windows build, manifest and license bundle |
 
 ## Data and lifecycle contracts
@@ -90,6 +91,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 | Multicast T→O, returned endpoints and failed setup cleanup | python tools/test_multicast.py target/release/eipmaster-cli.exe .local/multicast-check-01 |
 | Reconnect, concurrent capture and writer failure | python tools/test_recovery.py target/release/eipmaster-cli.exe .local/recovery-check-01 |
 | HTTP, MQTT and shared memory | python tools/test_integration.py target/release/eipmaster-cli.exe .local/integration-check-01 |
+| Paired feed timing | python tools/benchmark_integration.py target/release/eipmaster-cli.exe .local/feed-comparison-01 --pairs 3 --seconds 5 |
 | Headless feeds without CSV, including reconnect | python tools/test_integration.py target/release/eipmaster-cli.exe .local/serve-check-01 --serve |
 | C# HTTP latest and history, retention boundaries, and shared-memory consumer | Build the example and run tools/test_dotnet_consumer.py per the [example verification recipe](../examples/dotnet/README.md#verify-on-windows) |
 | C# MQTT subscriber and broker reconnect | Restore in locked mode and run tools/test_dotnet_mqtt.py per the [example verification recipe](../examples/dotnet-mqtt/README.md#verify-on-localhost) |

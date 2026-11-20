@@ -467,6 +467,20 @@ One five-second headless pair requested and negotiated 1,000 µs in both directi
 
 The enabled run recorded zero integration queue drops. The client polled 221 HTTP batches and read shared memory 221 times. The MQTT fixture received 104 publications, including publications after its deliberate disconnect. The final API poll was 14 samples behind the completed connection. These figures measure one localhost pair. Physical-device timing and transport latency require separate measurement.
 
+### Repeatable paired feed benchmark
+
+`tools/benchmark_integration.py` ran three five-second pairs using the headless Windows CLI and localhost adapter. Both directions requested and negotiated 1,000 µs in every run, with the same deadline scheduler and CSV settings. The order alternated between feeds disabled first and feeds enabled first. All six runs confirmed Forward_Close with zero receive sequence gaps, watchdog timeouts, or CSV overruns. The three enabled runs reported zero export queue drops and zero MQTT publisher errors.
+
+| Pair | Receive p99 off / on (µs) | Longest receive gap off / on (µs) | Scanner skipped slots off / on | Simulator skipped slots off / on |
+|---|---:|---:|---:|---:|
+| 1 | 7,249 / 3,348 | 20,746 / 18,033 | 1,437 / 423 | 1,621 / 492 |
+| 2 | 4,343 / 1,749 | 9,812 / 7,755 | 692 / 26 | 579 / 109 |
+| 3 | 1,618 / 2,125 | 5,439 / 6,282 | 77 / 50 | 39 / 142 |
+
+Each enabled run observed 122 distinct HTTP samples, 123 shared-memory samples, and 122 to 133 MQTT publishes. Apparent age p99 ranged from 2,435 to 7,571 µs for HTTP, 1,687 to 17,401 µs for shared memory, and 1,794 to 6,160 µs for MQTT. The shared host's scheduler varied considerably between runs, including the simulator's missed slots. These pairs do not isolate a timing effect attributable to enabling the feeds. The existing reconnect and stalled-reader integration regression also passed.
+
+A longer pair negotiated 8,000 µs for both 21-second runs. The disabled run wrote 2,624 rows and the enabled run wrote 2,614 rows. Both closed cleanly with zero receive sequence gaps, watchdog timeouts, and CSV overruns. The enabled run reported zero export queue drops and MQTT publisher errors.
+
 ## Live HTTP connection diagnostics
 
 The Windows localhost check queried `GET /v1/connection` during headless `serve` and CSV capture. In the `serve` check, the retry requested 8 ms each way and the fixture returned 10 ms O→T and 12 ms T→O. The response reported both sets of intervals, observed receive spacing, and a 384 ms receive watchdog from the returned input interval. After the retry began, the preceding generation remained available with its 256 ms receive timeout and confirmed Forward_Close. The check also exercised a slow HTTP client while shared-memory samples continued to advance.

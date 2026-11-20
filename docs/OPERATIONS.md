@@ -282,6 +282,18 @@ The command runs until Ctrl+C, Ctrl+Break, or a terminal connection failure. An 
 
 Check HTTP `/v1/status` or the configured consumer while it runs. At shutdown, `serve` prints a TOML report with requested RPIs, per-generation actual intervals and spacing, Forward_Close outcomes, and final export counters. An orderly console interrupt exits with code 130. A timed run exits zero after receiving input on its final generation and confirming the close. Terminal connection and teardown errors exit nonzero.
 
+### Benchmark feeds on localhost
+
+The Windows benchmark makes paired CLI captures against the independent localhost adapter. It alternates which condition runs first and uses the same input-only profile, scheduler, RPI, duration, and CSV settings in both conditions. It creates a new directory and keeps all profiles, captures, adapter receipts, and the combined `comparison.json`.
+
+~~~powershell
+python tools/benchmark_integration.py .\target\release\eipmaster-cli.exe .\.local\feed-comparison-01 --pairs 3 --seconds 5 --rpi-us 1000
+~~~
+
+With feeds enabled, the client reads the latest HTTP and shared-memory samples, then waits 20 ms before repeating. A local MQTT broker receives the latest samples at a requested period of 25 ms. Each feed reports distinct samples, repeated reads, index gaps, and apparent ages calculated from the exported UTC anchor and elapsed time. Age includes consumer observation delay and uses the host wall clock. Latest-sample consumers can skip indexes by design.
+
+The paired differences use enabled minus disabled. They retain scanner and simulator timing, negotiated intervals, packet sequence gaps, missed producer deadlines, CSV overruns, and export counters as separate measurements. A failed run stays in the report with its error and is excluded from paired deltas. The command exits 1 if any requested pair could not be compared. These measurements describe the localhost simulator. Use the separate bench process for physical qualification.
+
 ## Interpret timing and failures
 
 | Observation | Read it with |

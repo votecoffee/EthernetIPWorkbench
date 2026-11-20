@@ -26,8 +26,8 @@ def free_port():
         return sock.getsockname()[1]
 
 
-def get(port, path, method="GET", host=None):
-    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=1)
+def get(port, path, method="GET", host=None, *, timeout=1):
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
     try:
         connection.request(method, path, headers={"Host": host} if host else {})
         response = connection.getresponse()
@@ -103,7 +103,7 @@ def mqtt_packet(sock):
     raise ValueError("Invalid MQTT remaining length")
 
 
-def receive_mqtt(listener, received, errors, disconnect_once=True):
+def receive_mqtt(listener, received, errors, disconnect_once=True, *, observe=None):
     """Minimal independent broker fixture for MQTT 3.1.1 CONNECT and QoS 0."""
     try:
         for attempt in range(2 if disconnect_once else 1):
@@ -125,7 +125,11 @@ def receive_mqtt(listener, received, errors, disconnect_once=True):
                     assert header == 0x30
                     size, = struct.unpack_from(">H", body)
                     assert body[2:2 + size] == b"bench/test/samples"
-                    received.append(json.loads(body[2 + size:]))
+                    sample = json.loads(body[2 + size:])
+                    if observe is None:
+                        received.append(sample)
+                    else:
+                        observe(sample)
                     count += 1
                     # Force the publishing client to reconnect while scanning continues.
                     if disconnect_once and attempt == 0 and count == 3:

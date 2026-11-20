@@ -65,6 +65,8 @@ Use `tools/join_capture.py` with `--report` and `--timing` to check existing CSV
 
 Use `tools/review_gui_qualification.py` with the verified identity and declared link path to review the four saved GUI runs together. Keep each report beside its original CSV parts.
 
+Use `tools/benchmark_integration.py` for paired localhost timing checks with software feeds. Interpret sample age and skipped indexes as consumer observations and use scanner and fixture counters for packet timing and loss.
+
 ## Finish with a reproducible result
 
 Give the exact profile, executable or commit and capture/report paths relevant to the task. State whether results came from offline decoding, a software adapter or a physical device. For code or documentation changes, run the relevant checks and maintain the command and schema documentation. The skill does not grant hardware, output or publishing permission beyond the user's current authorization.
