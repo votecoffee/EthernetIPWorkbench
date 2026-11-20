@@ -61,6 +61,8 @@ For live work, use the session's authorization and an isolated bench. Confirm th
 
 Separate requested RPI, Forward_Open actual intervals, observed socket spacing and disk/export loss. Preserve captures and failure receipts. Do not infer that skipped producer slots are received sequence gaps. Keep .local/ private, and keep desktop interaction subject to an explicit request in the current chat.
 
+Use `tools/join_capture.py` with `--report` and `--timing` to check existing CSV evidence without opening a connection. Saved-row spacing excludes time between generations. Interpret it with the filtering, writer loss, and socket diagnostics in the same report.
+
 ## Finish with a reproducible result
 
 Give the exact profile, executable or commit and capture/report paths relevant to the task. State whether results came from offline decoding, a software adapter or a physical device. For code or documentation changes, run the relevant checks and maintain the command and schema documentation. The skill does not grant hardware, output or publishing permission beyond the user's current authorization.

@@ -17,6 +17,8 @@ The [operations guide](docs/OPERATIONS.md), [development guide](docs/DEVELOPMENT
 
 The offline timing and profile work can proceed while the bench device is unavailable. Physical qualification requires completed captures with the GUI and logger active, clean close, and no watchdog timeout, local buffer overrun, or unexplained packet loss under the recorded bench conditions. [Single-device milestone](https://github.com/votecoffee/EthernetIPWorkbench/milestone/1)
 
+The [offline CSV timing audit](docs/OPERATIONS.md#audit-saved-capture-timing) checks the saved capture against the run report and measures spacing within each recorded connection generation.
+
 ## 0.3 Multiple adapters
 
 - [Run two isolated scanner sessions](https://github.com/votecoffee/EthernetIPWorkbench/issues/5). The GUI keeps each adapter's setup, sockets, identity, staged outputs, and write authorization separate. The [dual-adapter loopback check](VERIFICATION.md#concurrent-adapter-sessions) exercises a receive timeout while the other session continues.

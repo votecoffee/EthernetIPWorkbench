@@ -112,6 +112,21 @@ def check_report_join(root, recovered, parts, captured, disk):
     assert list(rows([joined])) == captured
     assert recovered["csv_parts"] == len(parts)
     assert recovered["capture_start_utc"] == captured[0][0]
+    timed = join(prefix, "--report", report, "--timing")
+    assert timed.returncode == 0, timed.stderr
+    audit = json.loads(timed.stdout)
+    assert audit["report_kind"] == "cli" and audit["csv"]["rows"] == len(captured)
+    assert audit["socket"]["timeouts"] == 1
+    assert audit["socket"]["requested_to_us"] == recovered["requested_to_us"]
+    assert audit["connection_attempts"][0]["state"] == "Timed out"
+    for generation in audit["csv"]["generations"]:
+        times = [int(row[1]) for row in captured if int(row[3]) == generation["generation"]]
+        differences = sorted(b - a for a, b in zip(times, times[1:]))
+        count = len(differences)
+        assert generation["rows"] == len(times) and generation["spacing"]["intervals"] == count
+        assert generation["spacing"]["max_us"] == differences[-1]
+        for percentile in (50, 95, 99):
+            assert generation["spacing"][f"p{percentile}_us"] == differences[(count * percentile - 1) // 100]
 
     moved = root / prefix.name
     for part in parts[:-1]:
@@ -122,9 +137,11 @@ def check_report_join(root, recovered, parts, captured, disk):
     legacy = root / "legacy.toml"
     data = report.read_text(encoding="utf-8")
     legacy.write_text("".join(line for line in data.splitlines(keepends=True)
-                              if not line.startswith(("csv_parts = ", "capture_start_utc = "))),
+                              if not line.startswith(("csv_parts = ", "capture_start_utc = ", "unchanged = "))),
                       encoding="utf-8")
     assert join(prefix, "--report", legacy).returncode == 0
+    timed = join(prefix, "--report", legacy, "--timing")
+    assert timed.returncode == 0 and json.loads(timed.stdout)["csv"]["on_change_suppressed"] == 0
     partial = join(moved, "--report", legacy)
     assert partial.returncode == 1 and "written rows, found" in partial.stderr
 
@@ -135,7 +152,7 @@ def check_report_join(root, recovered, parts, captured, disk):
     with moved_last.open("w", encoding="utf-8", newline="") as file:
         csv.writer(file, lineterminator="\r\n").writerow(header)
     bad_output = root / "truncated.csv"
-    partial = join(moved, bad_output, "--report", report)
+    partial = join(moved, bad_output, "--report", report, "--timing")
     assert partial.returncode == 1 and "written rows, found" in partial.stderr
     assert not bad_output.exists()
     edited = list(rows([parts[-1]]))
@@ -156,9 +173,9 @@ def check_gui_report_join(root):
     prefix = root / "gui-capture"
     started = "2026-01-01T00:00:00.000000Z"
     saved = [
-        [started, "0", "0", "1", "1", "1", "a,\"b\n", "18446744073709551615"],
-        [started, "10", "2", "1", "3", "3", "", "000001"],
-        [started, "20", "3", "2", "1", "1", "new", "2"],
+        [started, "0", "0", "1", "4294967295", "65535", "a,\"b\n", "18446744073709551615"],
+        [started, "10", "2", "1", "2", "2", "", "000001"],
+        [started, "200000", "3", "2", "1", "1", "new", "2"],
     ]
     for number, samples in enumerate([saved[:2], saved[2:]], 1):
         path = prefix.with_name(f"{prefix.name}-{number:06}.csv")
@@ -169,7 +186,12 @@ def check_gui_report_join(root):
     body = (f'mode = "gui"\n[capture]\ncsv_prefix = {json.dumps(str(prefix), ensure_ascii=False)}\n'
             f'started_utc = "{started}"\ncsv_parts = 2\nwritten = 3\nunchanged = 1\n')
     report = root / "gui-run-report.toml"
-    report.write_text(body + "seen = 6\nbuffer_overruns = 2\n", encoding="utf-8")
+    report.write_text(
+        body + "seen = 6\nbuffer_overruns = 2\nafter_capture_deadline = 4\n"
+        "duration_seconds = 1\nduration_reached = true\n[connection]\n"
+        'generation = 2\nstate = "Closed"\nrequested_to_us = 1000\nactual_to_us = 1500\nsequence_gaps = 0\n',
+        encoding="utf-8",
+    )
     joined = root / "gui-joined.csv"
     checked = join(prefix, joined, "--report", report)
     assert checked.returncode == 0, checked.stderr
@@ -178,6 +200,25 @@ def check_gui_report_join(root):
     assert list(rows([joined])) == saved
     old_join = root / "legacy-joined.csv"
     assert join(prefix, old_join).returncode == 0 and list(rows([old_join])) == saved
+    assert join(prefix, "--timing").returncode == 2
+
+    timed = join(prefix, "--report", report, "--timing")
+    assert timed.returncode == 0, timed.stderr
+    stats = json.loads(timed.stdout)
+    assert stats["report_kind"] == "gui" and stats["duration_reached"]
+    assert stats["socket"]["sequence_gaps"] == 0
+    assert (stats["socket"]["requested_to_us"], stats["socket"]["actual_to_us"]) == (1000, 1500)
+    capture = stats["csv"]
+    assert capture["generation_count"] == 2 and capture["after_capture_deadline"] == 4
+    assert capture["sample_index_gaps"] == 1 and capture["overruns_after_last_row"] == 1
+    assert capture["on_change_suppressed"] == 1
+    first, last = capture["generations"]
+    assert first["saved_packet_sequence_gaps"] == 2
+    assert first["spacing"] == {
+        "intervals": 1, "span_us": 10, "p50_us": 10, "p95_us": 10, "p99_us": 10, "max_us": 10,
+        "observed_rows_per_second": 100000.0,
+    }
+    assert last["saved_packet_sequence_gaps"] == 0 and last["spacing"] == {"intervals": 0, "span_us": 0}
 
     wrong = root / "unexplained-gap.toml"
     wrong.write_text(body + "seen = 4\nbuffer_overruns = 0\n", encoding="utf-8")

@@ -225,6 +225,8 @@ python tools/join_capture.py 'captures/capture-<UTC-prefix>' joined.csv --report
 
 Report checking compares the prefix name, written row count, and the saved start time, part count, and first and last field values when available. It counts logged connection generations and reconciles sample-index gaps with recorded buffer overruns. If verification fails, the command discards any partial join it created.
 
+Add `--timing` to a report check to print JSON with p50, p95, p99 and longest saved-row spacing per connection generation. The JSON includes requested RPI, Forward_Open intervals, and socket diagnostics from the run report. Use the GUI's `-report.toml` file in the same way. [Interpret the timing audit](docs/OPERATIONS.md#audit-saved-capture-timing)
+
 Run the simulator using the real GUI and a timed CSV capture. Use a new output directory on each run.
 
 ```powershell

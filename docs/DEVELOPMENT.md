@@ -32,7 +32,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/bin/eipmaster-cli/serve.rs | Headless telemetry service and final receipt |
 | src/bin/eipmaster-cli/qualification.rs | Four-run qualification sequence |
 | src/bin/eipmaster-cli/interrupt.rs | Windows console stop handling |
-| tools/join_capture.py | CSV joining and report verification |
+| tools/join_capture.py | CSV joining, report verification and saved-row timing by connection generation |
 | tools/package_windows.py | Clean-commit Windows build, manifest and license bundle |
 
 ## Data and lifecycle contracts

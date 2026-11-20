@@ -199,6 +199,18 @@ python tools/join_capture.py 'captures/capture-<UTC-prefix>' joined.csv --report
 
 Report checking validates the recorded parts, counts and values. Preserve all parts and the failure receipt if joining fails. Normal capture completion requires a confirmed final Forward_Close and consistent row accounting.
 
+### Audit saved capture timing
+
+Use the capture prefix and either the CLI `capture.toml` or the GUI's `-report.toml`.
+
+~~~powershell
+python tools/join_capture.py 'captures/capture-<UTC-prefix>' --report captures/capture.toml --timing
+~~~
+
+The command verifies the CSV parts before printing JSON. It calculates spacing from adjacent saved `elapsed_us` timestamps within each generation, using nearest-rank percentiles. It reports the sample-index gaps, writer overruns, and saved packet-sequence gaps separately. Saved-row spacing and packet gaps can reflect on-change filtering or writer loss. Use the socket counters for scanner-observed packet loss and `on_change_suppressed` to identify intentional filtering. Spacing across reconnects is excluded.
+
+Requested and negotiated intervals and O→T/T→O socket timing come from the run report. For a GUI report, `socket` describes the final recorded connection. For a CLI report with reconnects, `socket` contains aggregate counters and final-connection timing, and `connection_attempts` preserves the available per-attempt measurements. Earlier every-packet reports without an `unchanged` counter can be checked when their seen, written, and overrun counts reconcile.
+
 ## Connect other software
 
 Use [Connect other software](../README.md#connect-other-software) for complete profile keys and the binary layout. Enable feeds per device in [app.integration] or in the GUI. They start with the scanner session, survive automatic reconnect and end when the session ends. Distinct devices need distinct HTTP ports and shared-memory names.

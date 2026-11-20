@@ -552,3 +552,7 @@ With the adapted fixture and an independent heartbeat producer, two successive t
 ## Physical bench acceptance
 
 Physical-device measurements require a connected bench adapter and verified device settings. First verify the Identity Object and the intended profile, preferably input-only. Confirm output ownership and write permissions before using a profile that owns outputs, asserts Run or sends configuration bytes. Then run the Windows GUI and logger with the requested RPIs and record the Forward_Open actual intervals separately from socket spacing percentiles, longest gap, sequence gaps, timeouts, missed send slots and capture losses. Use a capture at the NIC or switch if wire-level timestamps are required.
+
+## Offline CSV timing audit
+
+The Windows recovery test audited a rotated localhost capture with two connection generations and compared p50, p95, p99, and longest saved-row spacing against independently sorted CSV intervals for each generation. It also checked the timed-out attempt and requested RPI from the run report. A synthetic GUI report exercised counter separation with a wrapping packet sequence, a reconnect gap, intentional filtering, and sample-index gaps. Missing and truncated CSV parts still failed verification. A legacy report without an on-change counter passed when its row counts reconciled.
