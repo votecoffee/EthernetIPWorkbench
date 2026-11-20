@@ -16,6 +16,24 @@ pub struct Direction {
     pub requested_rpi_us: u32,
     pub run_idle_header: bool,
     pub priority: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eds_rpi: Option<EdsRpiCheck>,
+}
+
+#[derive(Serialize)]
+pub struct EdsRpiCheck {
+    pub status: eds::RpiStatus,
+    #[serde(flatten)]
+    pub range: eds::RpiRange,
+}
+
+impl EdsRpiCheck {
+    fn new(range: &eds::RpiRange, requested_us: u32) -> Self {
+        Self {
+            range: range.clone(),
+            status: range.assess(requested_us),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -281,6 +299,9 @@ pub fn inspect(
             requested_rpi_us: settings.input_rpi_us,
             run_idle_header: settings.input_run_idle,
             priority: settings.input_priority,
+            eds_rpi: profile
+                .and_then(|profile| profile.input_rpi_range.as_ref())
+                .map(|range| EdsRpiCheck::new(range, settings.input_rpi_us)),
         },
         output: Direction {
             assembly: settings.output_instance,
@@ -289,6 +310,9 @@ pub fn inspect(
             requested_rpi_us: settings.output_rpi_us,
             run_idle_header: settings.output_run_idle,
             priority: settings.output_priority,
+            eds_rpi: profile
+                .and_then(|profile| profile.output_rpi_range.as_ref())
+                .map(|range| EdsRpiCheck::new(range, settings.output_rpi_us)),
         },
         origins,
     }

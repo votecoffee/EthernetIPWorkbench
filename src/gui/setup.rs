@@ -1,5 +1,20 @@
 use super::*;
 
+fn rpi_range_summary(range: &eds::RpiRange, status: eds::RpiStatus) -> String {
+    let bounds = match (range.min_us, range.max_us) {
+        (Some(min), Some(max)) => format!("{min}–{max} µs"),
+        (Some(min), None) => format!("minimum {min} µs"),
+        (None, Some(max)) => format!("maximum {max} µs"),
+        (None, None) => "no bounds declared".into(),
+    };
+    let notice = match status {
+        eds::RpiStatus::WithinBounds => "",
+        eds::RpiStatus::BelowMinimum => " · Requested interval below minimum",
+        eds::RpiStatus::AboveMaximum => " · Requested interval above maximum",
+    };
+    format!("EDS {} · {bounds}{notice}", range.parameter)
+}
+
 impl Device {
     pub(super) fn profile_controls(&mut self, ui: &mut Ui) {
         ui.label("Load a named setup or save this device's settings.");
@@ -301,6 +316,33 @@ impl Device {
             self.settings.input_size,
             self.settings.input_rpi_us as f64 / 1000.0
         ));
+        if let Some(profile) = self.selected.map(|i| &self.profiles[i]) {
+            for (label, requested_us, range) in [
+                (
+                    "T->O input",
+                    self.settings.input_rpi_us,
+                    &profile.input_rpi_range,
+                ),
+                (
+                    "O->T output",
+                    self.settings.output_rpi_us,
+                    &profile.output_rpi_range,
+                ),
+            ] {
+                if let Some(range) = range {
+                    let status = range.assess(requested_us);
+                    if status != eds::RpiStatus::WithinBounds {
+                        ui.colored_label(
+                            AMBER,
+                            format!(
+                                "{label} RPI · {requested_us} µs requested · {}",
+                                rpi_range_summary(range, status)
+                            ),
+                        );
+                    }
+                }
+            }
+        }
         if let Some(min) = self.settings.input_min_size {
             ui.label(format!(
                 "Variable T->O · {min}–{} payload bytes",
@@ -460,6 +502,14 @@ impl Device {
                 "{label} · Assembly {} · {} bytes · {} µs requested",
                 direction.assembly, bytes, direction.requested_rpi_us
             ));
+            if let Some(check) = &direction.eds_rpi {
+                let summary = rpi_range_summary(&check.range, check.status);
+                if check.status == eds::RpiStatus::WithinBounds {
+                    ui.small(summary);
+                } else {
+                    ui.colored_label(AMBER, summary);
+                }
+            }
         }
         if let Some(us) = report.connection_timeout.requested_receive_watchdog_us {
             ui.small(format!(

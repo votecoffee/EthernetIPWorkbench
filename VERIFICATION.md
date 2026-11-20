@@ -576,3 +576,7 @@ The Windows recovery test audited a rotated localhost capture with two connectio
 The headless Windows GUI backend generated four one-second reports and their rotated CSV parts against the localhost adapter. The offline review passed all four runs, with 125 rows at 8 ms and 942, 990, and 999 rows at 1 ms. Both directions negotiated the requested intervals. Each run confirmed Forward_Close and reported zero receive sequence gaps or CSV buffer overruns. These results cover the saved-report workflow using shortened loopback trials.
 
 Synthetic cases verified that a repeated capture, a different serial, a negotiated interval mismatch, a timeout, and a missing rotated part each produce a per-run failure. The review retains timing for the other verified trials.
+
+## Offline EDS RPI bounds
+
+The CLI imported OpENer Connection2 with a 30 ms default, a 20 ms minimum, and an unspecified maximum in both directions from Param4. Offline preflight reported both 30 ms defaults within bounds and both 1 ms overrides below the minimum. The override remained eligible for connection under the scanner's own validation. The CLI regression also exercised an upper-bound warning, and the headless GUI review checked that a warning identifies the affected direction. [Upstream OpENer sample EDS](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/data/opener_sample_app.eds)

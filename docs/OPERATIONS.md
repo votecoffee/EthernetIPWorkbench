@@ -49,6 +49,8 @@ The saved read uses the device or bridge address and NIC of the enclosing profil
 
 eds lists supported connection profiles and unresolved features. validate can compare a manual/saved profile to one EDS connection. Its origins distinguish EDS values, overrides, assembly-definition sizes and manual values. An assembly-definition size needs comparison with the device's configured payload. Check connection_valid and capture_config_valid. The validate exit code follows connection_valid, so a successful exit alone does not establish that CSV selection is valid.
 
+The `eds` report includes `output_rpi_range` and `input_rpi_range` when the corresponding connection field references a UDINT parameter with usable bounds. The `validate` report puts the comparison under `output.eds_rpi` or `input.eds_rpi`. Each comparison identifies the source parameter and any declared bounds in microseconds. Its status is `within_bounds`, `below_minimum`, or `above_maximum`. These advisory results preserve the requested intervals and the validation exit code. Reimport an EDS saved in an older GUI workspace to refresh its metadata. [Rockwell EDS AOP guidelines, RPI fields](https://literature.rockwellautomation.com/idc/groups/literature/documents/pm/1756-pm002_-en-d.pdf#page=47)
+
 decode-input accepts exactly input_size bytes for fixed-size profiles or a length within the configured bounds for variable-size profiles. Exclude sequence and Run/Idle headers. It lists every mapped field's source bytes, decoded text value and CSV inclusion. The GUI has the same check under Mappings → Preview input payload. With no named input fields, the primary selection appears as value.
 
 ## Configure a device

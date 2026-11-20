@@ -26,6 +26,8 @@ For an Exclusive Owner profile, review **EDS output mapping suggestions** or the
 
 An EDS size with a `member widths` source was calculated from the assembly layout. Confirm it against the device configuration before opening either cyclic direction.
 
+Check the advertised O→T and T→O RPI bounds in **Offline profile check** or the CLI `validate` report's `eds_rpi` tables. Reimport older saved EDS profiles to refresh the bounds. Treat a bound warning as advisory and record Forward_Open actual intervals and observed packet spacing separately during bench qualification.
+
 For nested `AssemN` members, review the final offsets and suffixed names in the mapping suggestions. Use a payload with distinct values in each repeated group when testing the mapping.
 
 For a supported target configuration layout, review the CLI `eds` report's `configuration_layout` and use **Device → Configuration and advanced timing → Stage typed configuration values**. Start from the complete configuration hex buffer and verify the exact staged bytes in connection review.

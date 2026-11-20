@@ -12,6 +12,36 @@ pub type InputLayout = AssemblyLayout;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct RpiRange {
+    pub parameter: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_us: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_us: Option<u32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RpiStatus {
+    WithinBounds,
+    BelowMinimum,
+    AboveMaximum,
+}
+
+impl RpiRange {
+    pub fn assess(&self, requested_us: u32) -> RpiStatus {
+        if self.min_us.is_some_and(|min| requested_us < min) {
+            RpiStatus::BelowMinimum
+        } else if self.max_us.is_some_and(|max| requested_us > max) {
+            RpiStatus::AboveMaximum
+        } else {
+            RpiStatus::WithinBounds
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Profile {
     pub id: String,
     pub name: String,
@@ -26,6 +56,10 @@ pub struct Profile {
     pub output_layout: Option<AssemblyLayout>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub configuration_layout: Option<AssemblyLayout>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_rpi_range: Option<RpiRange>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_rpi_range: Option<RpiRange>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     assembly_definition_sizes: Vec<String>,
 }
@@ -258,6 +292,34 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
 
     let parameter = |text: &str| entries.get(&("params".into(), text.to_ascii_lowercase()));
     let resolve = |text: &str| number(text).or_else(|| number(parameter(text)?.get(11)?));
+    let rpi_range = |reference: &str| {
+        let fields = parameter(reference)?;
+        let key = reference.to_ascii_lowercase();
+        let suffix = key.strip_prefix("param")?;
+        suffix.parse::<u32>().ok()?;
+        if number(fields.get(4)?)? != 0xc8
+            || number(fields.get(5)?)? != 4
+            || entries.contains_key(&("params".into(), format!("enum{suffix}")))
+        {
+            return None;
+        }
+        let bound = |index: usize| match fields.get(index).map(String::as_str).unwrap_or("") {
+            "" => Some(None),
+            text => number(text).filter(|value| *value > 0).map(Some),
+        };
+        let min_us = bound(9)?;
+        let max_us = bound(10)?;
+        if (min_us.is_none() && max_us.is_none())
+            || min_us.zip(max_us).is_some_and(|(min, max)| min > max)
+        {
+            return None;
+        }
+        Some(RpiRange {
+            parameter: reference.to_owned(),
+            min_us,
+            max_us,
+        })
+    };
     let parameter_byte = |name: &str| {
         let fields = parameter(name)?;
         let name = name.to_ascii_lowercase();
@@ -282,6 +344,8 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
                 input_layout: None,
                 output_layout: None,
                 configuration_layout: None,
+                output_rpi_range: rpi_range(get(2)),
+                input_rpi_range: rpi_range(get(5)),
                 assembly_definition_sizes: Vec::new(),
                 settings: Settings {
                     input_instance: 0,
@@ -515,6 +579,52 @@ pub fn parse(text: &str) -> Result<Vec<Profile>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn imports_directional_rpi_bounds_independently_of_defaults() {
+        let sample = include_str!("../samples/loopback.eds")
+            .replace("Param1,,Assem101", "pArAm2,,Assem101")
+            .replace(
+                "[Assembly]",
+                "Param2 = 0,,,0,0xC8,4,\"Input RPI\",\"us\",,0x4e20,,30000;\n[Assembly]",
+            );
+        let profiles = parse(&sample).unwrap();
+        let profile = &profiles[0];
+        assert_eq!(profile.settings.input_rpi_us, 30_000);
+        assert_eq!(profile.settings.output_rpi_us, 1_000);
+
+        let input = profile.input_rpi_range.as_ref().unwrap();
+        assert_eq!(input.parameter, "pArAm2");
+        assert_eq!((input.min_us, input.max_us), (Some(20_000), None));
+        assert_eq!(input.assess(1_000), RpiStatus::BelowMinimum);
+        assert_eq!(input.assess(20_000), RpiStatus::WithinBounds);
+
+        let output = profile.output_rpi_range.as_ref().unwrap();
+        assert_eq!(
+            (output.min_us, output.max_us),
+            (Some(1_000), Some(1_000_000))
+        );
+        assert_eq!(output.assess(1_000_000), RpiStatus::WithinBounds);
+        assert_eq!(output.assess(1_000_001), RpiStatus::AboveMaximum);
+    }
+
+    #[test]
+    fn does_not_infer_rpi_bounds_from_literals_or_unsupported_parameters() {
+        let sample = include_str!("../samples/loopback.eds").replace("Param1,0,,", "1000,0,,");
+        for variant in [
+            sample.replace("1000,1000000,1000", "2000,1000,1000"),
+            sample.replace("1000,1000000,1000", "1000,invalid,1000"),
+            sample.replace("0xC8,4", "0xC7,2"),
+            sample.replace("[Assembly]", "Enum1 = 1000,\"1 ms\";\n[Assembly]"),
+        ] {
+            let profiles = parse(&variant).unwrap();
+            let profile = &profiles[0];
+            assert_eq!(profile.settings.input_rpi_us, 1_000);
+            assert_eq!(profile.settings.output_rpi_us, 1_000);
+            assert_eq!(profile.input_rpi_range, None);
+            assert_eq!(profile.output_rpi_range, None);
+        }
+    }
 
     #[test]
     fn imports_required_variable_output_and_prefers_fixed_when_available() {

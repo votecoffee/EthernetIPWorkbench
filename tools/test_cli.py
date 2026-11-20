@@ -367,6 +367,8 @@ def main():
     assert profile["supported"] and profile["id"] == "Connection1"
     assert profile["fields"]["T->O size"] == "4 bytes (Assem101)"
     assert profile["assembly_definition_sizes"] == ["T->O size"]
+    bounds = {"parameter": "Param1", "min_us": 1_000, "max_us": 1_000_000}
+    assert profile["input_rpi_range"] == profile["output_rpi_range"] == bounds
 
     validate = [exe, "validate", PROFILE]
     checked = subprocess.run([*validate, PROFILE.with_suffix(".eds"), "Connection1"],
@@ -375,6 +377,8 @@ def main():
     preflight = tomllib.loads(checked.stdout)
     assert preflight["connection_valid"] and preflight["capture_config_valid"]
     assert not preflight["requests_output_ownership"] and preflight["configuration_bytes"] == 0
+    for direction in ("input", "output"):
+        assert preflight[direction]["eds_rpi"] == {**bounds, "status": "within_bounds"}
     fields = {item["field"]: item for item in preflight["origins"]}
     assert fields["T->O size"]["state"] == "assembly_definition"
     assert fields["T->O size"]["eds_size_is_layout"]
@@ -382,6 +386,23 @@ def main():
     assert preflight["connection_timeout"] == {
         "multiplier_code": 3, "factor": 32, "requested_receive_watchdog_us": 32_000,
     }
+
+    rpi_eds = root / "rpi-bounds.eds"
+    rpi_eds.write_text(PROFILE.with_suffix(".eds").read_text(encoding="utf-8")
+                       .replace("1000,1000000,1000", "2000,1000000,2000"), encoding="utf-8")
+    rpi_override = root / "rpi-override.toml"
+    rpi_override.write_text(PROFILE.read_text(encoding="utf-8")
+                            .replace("output_rpi_us = 1000", "output_rpi_us = 1000001"), encoding="utf-8")
+    checked = subprocess.run([exe, "validate", rpi_override, rpi_eds, "Connection1"],
+                             capture_output=True, text=True, timeout=5)
+    assert checked.returncode == 0, checked.stderr
+    preflight = tomllib.loads(checked.stdout)
+    assert preflight["connection_valid"]
+    bounds["min_us"] = 2_000
+    assert preflight["input"]["requested_rpi_us"] == 1_000
+    assert preflight["input"]["eds_rpi"] == {**bounds, "status": "below_minimum"}
+    assert preflight["output"]["requested_rpi_us"] == 1_000_001
+    assert preflight["output"]["eds_rpi"] == {**bounds, "status": "above_maximum"}
 
     identity, adapter = with_adapter(root, "identity", [exe, "identity", "127.0.0.1", "127.0.0.1"])
     assert identity.returncode == 0, identity.stderr

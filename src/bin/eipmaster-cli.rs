@@ -166,6 +166,8 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                             input_layout: p.input_layout,
                             output_layout: p.output_layout,
                             configuration_layout: p.configuration_layout,
+                            output_rpi_range: p.output_rpi_range,
+                            input_rpi_range: p.input_rpi_range,
                             fields: p.fields,
                         }
                     })
@@ -401,6 +403,10 @@ struct EdsProfile {
     output_layout: Option<eds::AssemblyLayout>,
     #[serde(skip_serializing_if = "Option::is_none")]
     configuration_layout: Option<eds::AssemblyLayout>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_rpi_range: Option<eds::RpiRange>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input_rpi_range: Option<eds::RpiRange>,
     fields: std::collections::BTreeMap<String, String>,
 }
 

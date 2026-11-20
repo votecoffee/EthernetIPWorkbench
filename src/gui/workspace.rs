@@ -289,6 +289,31 @@ mod tests {
     }
 
     #[test]
+    fn connection_review_shows_only_out_of_range_rpi_requests() {
+        let ctx = egui::Context::default();
+        let mut device = Device::new(1, None);
+        let source = include_str!("../../samples/loopback.eds")
+            .replace("1000,1000000,1000", "2000,1000000,2000");
+        device.profiles = eds::parse(&source).unwrap();
+        device.select_profile(Some(0));
+        device.settings.input_rpi_us = 1_000;
+        device.connect_dialog = true;
+        let size = egui::vec2(1240.0, 860.0);
+        draw(&mut device, &ctx, size);
+        let labels = draw(&mut device, &ctx, size);
+        assert!(labels.iter().any(|(text, _)| {
+            text == "T->O input RPI · 1000 µs requested · EDS Param1 · 2000–1000000 µs · Requested interval below minimum"
+        }));
+        assert!(
+            !labels
+                .iter()
+                .any(|(text, _)| text.starts_with("O->T output RPI"))
+        );
+        assert_eq!(device.settings.input_rpi_us, 1_000);
+        assert!(device.connection.is_none());
+    }
+
+    #[test]
     fn review_shows_the_eds_identity_comparison() {
         let ctx = egui::Context::default();
         let mut device = Device::new(1, None);
