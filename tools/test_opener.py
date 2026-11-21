@@ -404,6 +404,26 @@ def check_tcpip_info(cli, adapter, root):
     print("OpENer TCP/IP Interface address bytes and Physical Link Object path passed.")
 
 
+def check_tcpip_diagnostics(cli, adapter, root):
+    root.mkdir()
+    with run_adapter(adapter, root):
+        result = subprocess.run(
+            [cli, "tcpip-info", ADAPTER, "127.0.0.1", "1", "--diagnostics"],
+            capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    (root / "result.json").write_bytes(result.stdout)
+    assert result.returncode == 0 and not result.stderr, (result.stdout, result.stderr)
+    report = json.loads(result.stdout)
+    assert report["network_diagnostics"] == {
+        "multicast_pending": False, "multicast_ttl": 1,
+        "multicast_configuration": {
+            "allocation_control": 0, "reserved": 0, "address_count": 1, "start_address": "239.192.1.32",
+        },
+        "encapsulation_inactivity_timeout_seconds": 120,
+    }
+    print("OpENer returned TTL 1, multicast allocation starting at 239.192.1.32, and 120 s TCP inactivity.")
+
+
 def check_link_info(cli, adapter, root):
     root.mkdir()
     with run_adapter(adapter, root):
@@ -791,6 +811,7 @@ def main():
         check_object_list(cli, adapter, root / "object-list")
         check_instance_list(cli, adapter, root / "instance-list")
         check_tcpip_info(cli, adapter, root / "tcpip-info")
+        check_tcpip_diagnostics(cli, adapter, root / "tcpip-diagnostics")
         check_link_info(cli, adapter, root / "link-info")
         check_manager_info(cli, adapter, root / "manager-info")
         check_qos_info(cli, adapter, root / "qos-info")

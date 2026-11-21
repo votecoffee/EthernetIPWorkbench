@@ -12,11 +12,17 @@ impl Explorer {
                 "Read the Port Object directory at instance 0 or inspect a port instance.",
                 Self::read_port_info,
             ),
-            Ok(explicit::TCPIP_INTERFACE_CLASS) => (
-                "Read interface info",
-                "Read the selected TCP/IP Interface instance's reported network settings.",
-                Self::read_tcpip_info,
-            ),
+            Ok(explicit::TCPIP_INTERFACE_CLASS) => {
+                ui.checkbox(
+                    &mut self.tcpip_diagnostics,
+                    "Include multicast and session settings",
+                );
+                (
+                    "Read interface info",
+                    "Read the selected TCP/IP Interface instance's reported network settings.",
+                    Self::read_tcpip_info,
+                )
+            }
             Ok(explicit::ETHERNET_LINK_CLASS) => (
                 "Read link info",
                 "Read the selected Ethernet Link instance's status and counters.",
@@ -87,10 +93,15 @@ impl Explorer {
 
     fn read_tcpip_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
         self.tcpip_info = None;
+        let read = if self.tcpip_diagnostics {
+            explicit::read_tcpip_diagnostics
+        } else {
+            explicit::read_tcpip_info
+        };
         match self.inspection_request(adapter, local, &self.instance) {
-            Ok((adapter, local, instance, route)) => self.start(move || {
-                explicit::read_tcpip_info(adapter, local, instance, route).map(Response::TcpIpInfo)
-            }),
+            Ok((adapter, local, instance, route)) => {
+                self.start(move || read(adapter, local, instance, route).map(Response::TcpIpInfo))
+            }
             Err(error) => self.notice = Some(error),
         }
     }
@@ -164,6 +175,12 @@ pub(super) fn show_port(ui: &mut Ui, info: &PortInfo) {
 }
 
 pub(super) fn show_tcpip(ui: &mut Ui, info: &TcpIpInfo) {
+    if info
+        .diagnostics()
+        .is_some_and(|diagnostics| diagnostics.multicast_pending == Some(true))
+    {
+        ui.colored_label(AMBER, "Multicast settings pending");
+    }
     show_inspection(
         ui,
         format!("TCP/IP Interface instance {}", info.instance),

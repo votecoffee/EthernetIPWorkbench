@@ -161,6 +161,8 @@ Run `explore_inspects_a_routed_port_without_changing_saved_requests` with the `p
 
 Run `explore_inspects_a_routed_tcpip_interface_without_changing_saved_requests` with the `tcpip-info-optional` fixture mode to verify the routed interface view, decoded network settings, and optional CIP rejection. The OpENer harness with `--explore` also checks the interface address bytes and Physical Link Object path against the independent stack.
 
+Run `explore_reads_multicast_and_session_diagnostics_over_a_route` with `tcpip-info-diagnostics-optional` to verify the opt-in interface diagnostics, including the pending flag and a rejected timeout attribute. In reusable Rust code, `explicit::read_tcpip_diagnostics` returns the ordinary interface batch with the extra attributes. `TcpIpInfo::diagnostics()` gives the typed view.
+
 Run `explore_reads_ethernet_link_diagnostics_over_a_route` with the `link-info-optional` fixture mode to verify the routed link status and optional counter rejection. The OpENer harness with `--explore` checks the independently reported speed, flags and MAC address.
 
 Run `explore_reads_connection_manager_counters_over_a_route` with the `manager-info-optional` fixture mode to verify a routed counter and optional CIP rejection in Explore. The OpENer harness with `--explore` checks the reply handling when the stack lacks all eight optional counters.

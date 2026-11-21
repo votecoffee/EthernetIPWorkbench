@@ -1,16 +1,31 @@
 //! Read-only inspection of one CIP TCP/IP Interface Object instance.
 
-use super::{Route, SavedReadBatch, batch::read_object_attributes, le32, route::link_object};
+use super::{
+    Route, SavedReadBatch, SavedReadOutcome, batch::read_object_attributes, le32,
+    route::link_object,
+};
+use serde::Serialize;
 use std::net::Ipv4Addr;
 
 pub const TCPIP_INTERFACE_CLASS: u32 = 0xf5;
+const BASIC_ATTRIBUTE_COUNT: usize = 6;
+const STATUS: u32 = 1;
+const MULTICAST_TTL: u32 = 8;
+const MULTICAST_CONFIGURATION: u32 = 9;
+const ENCAPSULATION_INACTIVITY_TIMEOUT: u32 = 13;
 pub(super) const ATTRIBUTES: &[(u32, &str)] = &[
-    (1, "Interface status"),
+    (STATUS, "Interface status"),
     (2, "Configuration capability"),
     (3, "Configuration control"),
     (4, "Physical Link Object path"),
     (5, "Interface configuration"),
     (6, "Host name"),
+    (MULTICAST_TTL, "Multicast TTL"),
+    (MULTICAST_CONFIGURATION, "Multicast address allocation"),
+    (
+        ENCAPSULATION_INACTIVITY_TIMEOUT,
+        "Encapsulation inactivity timeout",
+    ),
 ];
 
 pub struct TcpIpInfo {
@@ -19,10 +34,53 @@ pub struct TcpIpInfo {
     pub batch: SavedReadBatch,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TcpIpDiagnostics {
+    pub multicast_pending: Option<bool>,
+    pub multicast_ttl: Option<u8>,
+    pub multicast_configuration: Option<MulticastConfiguration>,
+    /// A reported zero disables the adapter's TCP encapsulation inactivity timer.
+    pub encapsulation_inactivity_timeout_seconds: Option<u16>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MulticastConfiguration {
+    pub allocation_control: u8,
+    pub reserved: u8,
+    pub address_count: u16,
+    pub start_address: Ipv4Addr,
+}
+
 impl TcpIpInfo {
     /// True after a usable batch. Unsupported target attributes may be absent.
     pub fn is_usable(&self) -> bool {
         self.batch.is_usable_inspection()
+    }
+
+    /// Return the decoded network settings when requested. See the batch for any missing value.
+    pub fn diagnostics(&self) -> Option<TcpIpDiagnostics> {
+        let find = |attribute| {
+            self.batch
+                .results
+                .iter()
+                .find(|entry| entry.request.path.attribute == Some(attribute))
+        };
+        find(MULTICAST_TTL)?;
+        let reply = |attribute| match &find(attribute)?.outcome {
+            SavedReadOutcome::Reply(bytes) => Some(bytes.as_slice()),
+            _ => None,
+        };
+        Some(TcpIpDiagnostics {
+            multicast_pending: reply(STATUS).and_then(|bytes| {
+                let flags = dword(bytes).ok()?;
+                Some(flags & (1 << 4) != 0)
+            }),
+            multicast_ttl: reply(MULTICAST_TTL).and_then(|bytes| multicast_ttl(bytes).ok()),
+            multicast_configuration: reply(MULTICAST_CONFIGURATION)
+                .and_then(|bytes| multicast_configuration(bytes).ok()),
+            encapsulation_inactivity_timeout_seconds: reply(ENCAPSULATION_INACTIVITY_TIMEOUT)
+                .and_then(|bytes| inactivity_timeout(bytes).ok()),
+        })
     }
 }
 
@@ -33,6 +91,32 @@ pub fn read_tcpip_info(
     instance: u32,
     route: Option<Route>,
 ) -> Result<TcpIpInfo, String> {
+    read_info(
+        adapter,
+        local,
+        instance,
+        route,
+        &ATTRIBUTES[..BASIC_ATTRIBUTE_COUNT],
+    )
+}
+
+/// Include multicast settings and encapsulation inactivity timeout in the interface inspection.
+pub fn read_tcpip_diagnostics(
+    adapter: Ipv4Addr,
+    local: Ipv4Addr,
+    instance: u32,
+    route: Option<Route>,
+) -> Result<TcpIpInfo, String> {
+    read_info(adapter, local, instance, route, ATTRIBUTES)
+}
+
+fn read_info(
+    adapter: Ipv4Addr,
+    local: Ipv4Addr,
+    instance: u32,
+    route: Option<Route>,
+    attributes: &[(u32, &str)],
+) -> Result<TcpIpInfo, String> {
     if instance == 0 {
         return Err("TCP/IP Interface inspection requires a nonzero instance".into());
     }
@@ -42,7 +126,7 @@ pub fn read_tcpip_info(
         TCPIP_INTERFACE_CLASS,
         instance,
         route.as_ref(),
-        ATTRIBUTES,
+        attributes,
     )?;
     Ok(TcpIpInfo {
         instance,
@@ -57,16 +141,62 @@ pub(super) fn decode(attribute: u32, bytes: &[u8]) -> Option<Result<String, Stri
         4 => link_object(bytes),
         5 => decode_configuration(bytes),
         6 => cip_string(bytes, "Host name"),
+        MULTICAST_TTL => multicast_ttl(bytes).map(|ttl| format!("{ttl}")),
+        MULTICAST_CONFIGURATION => multicast_configuration(bytes).map(|configuration| {
+            let allocation = match configuration.allocation_control {
+                0 => "Default allocation".into(),
+                1 => "Configured allocation".into(),
+                code => format!("Allocation control {code}"),
+            };
+            format!(
+                "{allocation} · Address count {} · Start {}",
+                configuration.address_count, configuration.start_address
+            )
+        }),
+        ENCAPSULATION_INACTIVITY_TIMEOUT => {
+            inactivity_timeout(bytes).map(|seconds| match seconds {
+                0 => "0 s (disabled)".into(),
+                _ => format!("{seconds} s"),
+            })
+        }
         _ => return None,
     })
 }
 
+fn dword(bytes: &[u8]) -> Result<u32, String> {
+    Ok(u32::from_le_bytes(bytes.try_into().map_err(
+        |_| "TCP/IP Interface flags require a four-byte DWORD",
+    )?))
+}
+
+fn multicast_ttl(bytes: &[u8]) -> Result<u8, String> {
+    let &[ttl] = bytes else {
+        return Err("Multicast TTL requires one byte".into());
+    };
+    Ok(ttl)
+}
+
+fn multicast_configuration(bytes: &[u8]) -> Result<MulticastConfiguration, String> {
+    let &[allocation_control, reserved, count_lo, count_hi, a, b, c, d] = bytes else {
+        return Err("Multicast address allocation requires eight bytes".into());
+    };
+    Ok(MulticastConfiguration {
+        allocation_control,
+        reserved,
+        address_count: u16::from_le_bytes([count_lo, count_hi]),
+        start_address: Ipv4Addr::from(u32::from_le_bytes([a, b, c, d])),
+    })
+}
+
+fn inactivity_timeout(bytes: &[u8]) -> Result<u16, String> {
+    let &[lo, hi] = bytes else {
+        return Err("Encapsulation inactivity timeout requires two bytes".into());
+    };
+    Ok(u16::from_le_bytes([lo, hi]))
+}
+
 fn decode_flags(attribute: u32, bytes: &[u8]) -> Result<String, String> {
-    let flags = u32::from_le_bytes(
-        bytes
-            .try_into()
-            .map_err(|_| "TCP/IP Interface flags require a four-byte DWORD")?,
-    );
+    let flags = dword(bytes)?;
     if attribute != 3 {
         return Ok(format!("0x{flags:08X}"));
     }

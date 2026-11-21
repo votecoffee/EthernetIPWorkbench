@@ -144,6 +144,17 @@ In **Explore → Network objects**, choose **TCP/IP Interface · Status**. Enter
 
 The inspection sends six Get_Attribute_Single requests in one registered session. The report shows interface status and configuration capability masks, the configured startup method, the Physical Link Object path, IPv4 address, mask, gateway, primary and secondary DNS servers, domain name, and hostname. Use the reported startup method alongside the live address fields. Each attribute retains its raw reply and any decode error or CIP rejection. [Schneider Electric TCP/IP Interface attributes](https://productinfo.se.com/tesys_tera_master/tesys-tera-motor-management-system-ethernet-communication-guide/EN/DOCA0258_Tera_Ethernet_guide_DD00602307.XML.xml/$/Tera_TCP_IPObject_Ethernet_DD00809230.XML)
 
+#### Inspect multicast and session settings
+
+Enable **Include multicast and session settings** before selecting **Read interface info**. The same registered session adds Get_Attribute_Single reads for attributes 8, 9, and 13. The CLI supplies the decoded values under `network_diagnostics` and preserves the raw bytes, CIP status, or decode error under each result. A missing or malformed attribute has a `null` decoded value. [Rockwell TCP/IP Interface attributes](https://literature.rockwellautomation.com/idc/groups/literature/documents/um/193-um014_-en-p.pdf#page=106) · [Belden TCP/IP Interface attributes](https://www.belden.com/-/media/project/belden/catalog-assets/assets/2026/02/07/20/30/pdf1001143.pdf?rev=59f39d8442364a889d1f05610991e474)
+
+~~~powershell
+.\target\release\eipmaster-cli.exe tcpip-info 127.0.0.2 127.0.0.1 1 --diagnostics
+.\target\release\eipmaster-cli.exe tcpip-info 192.0.2.10 192.0.2.11 1 --diagnostics --route 1/3
+~~~
+
+The multicast pending flag comes from interface status bit 4. The allocation reply includes the control code, number of addresses, and starting address. For a cyclic capture, use the group returned by Forward_Open and recorded under `cyclic_io`. The reported encapsulation inactivity timeout applies to idle TCP sessions. Zero disables that timer. Review the separate receive watchdog in the cyclic capture report for Class 1 I/O timeouts. [Belden TCP inactivity timeout](https://www.belden.com/-/media/project/belden/catalog-assets/assets/2026/02/07/20/30/pdf1001143.pdf?rev=59f39d8442364a889d1f05610991e474) · [Pinned OpENer multicast encoding](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/ciptcpipinterface.c#L336)
+
 ### Inspect Ethernet Link diagnostics
 
 In **Explore → Network objects**, choose **Ethernet Link · Speed**, enter the Ethernet Link Object instance, and select **Read link info**. Use the device documentation or the Physical Link Object path from TCP/IP Interface inspection to identify the instance. The path `20 F6 24 01` points to Ethernet Link instance 1. Leave **CIP route** blank for a direct read or enter the documented route to the target.

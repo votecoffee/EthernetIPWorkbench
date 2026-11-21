@@ -62,7 +62,10 @@ pub use profile_assemblies::{AssemblySizeCheck, ProfileAssemblyCheck, check_prof
 pub use qos_info::{QOS_CLASS, QosInfo, read_qos_info};
 pub use report::read_reply_document;
 pub use route::{Route, RoutedReadError};
-pub use tcpip_info::{TCPIP_INTERFACE_CLASS, TcpIpInfo, read_tcpip_info};
+pub use tcpip_info::{
+    MulticastConfiguration, TCPIP_INTERFACE_CLASS, TcpIpDiagnostics, TcpIpInfo,
+    read_tcpip_diagnostics, read_tcpip_info,
+};
 pub use write::{
     AttributeWrite, CurrentValueCheck, ReadbackOutcome, WriteCurrentCheck, WriteInspection,
     WriteOptions, WriteOutcome, WriteReport,

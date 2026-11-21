@@ -91,6 +91,8 @@ Choose a **Port Object** preset in Explore, then select **Read port info**. Inst
 
 Choose **Network objects → TCP/IP Interface · Status**, then select **Read interface info** to see the reported IP address, mask, gateway, DNS servers, startup method, hostname, and Physical Link Object path. The CLI `tcpip-info` command exports these fields and their raw replies. [TCP/IP Interface inspection](docs/OPERATIONS.md#inspect-a-tcpip-interface)
 
+Enable **Include multicast and session settings**, or pass `tcpip-info --diagnostics`, for the reported multicast TTL, address allocation, pending flag, and TCP encapsulation inactivity timeout. [Multicast and session settings](docs/OPERATIONS.md#inspect-multicast-and-session-settings)
+
 Choose **Network objects → Ethernet Link · Speed**, then select **Read link info** for the selected port's reported speed, link state, duplex, MAC address, and available counters. The CLI `link-info` command exports the same results. [Ethernet Link diagnostics](docs/OPERATIONS.md#inspect-ethernet-link-diagnostics)
 
 Choose **Network objects → Quality of Service · Explicit DSCP**, then select **Read QoS settings** for the selected target's configured DSCP values and 802.1Q tag setting where supported. The CLI `qos-info` command exports the same results. [QoS inspection](docs/OPERATIONS.md#inspect-quality-of-service-settings)

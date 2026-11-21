@@ -194,12 +194,16 @@ impl super::PortInfo {
 
 impl super::TcpIpInfo {
     pub fn report_json(&self) -> Result<String, String> {
-        instance_json(
+        let mut document = instance_document(
             &self.batch,
             super::TCPIP_INTERFACE_CLASS,
             self.instance,
             self.route.as_ref(),
-        )
+        )?;
+        if let Some(diagnostics) = self.diagnostics() {
+            document["network_diagnostics"] = json!(diagnostics);
+        }
+        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
     }
 }
 

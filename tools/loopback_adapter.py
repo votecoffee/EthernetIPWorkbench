@@ -305,16 +305,31 @@ def tcpip_info_reply(cip, mode, report):
     route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
     assert len(message) == 8 and message[:7] == bytes.fromhex("0E 03 20 F5 24 01 30")
     attribute = message[7]
-    assert 1 <= attribute <= 6 and route in (b"", b"\x01\x03")
+    diagnostics = mode.startswith("tcpip-info-diagnostics")
+    allowed = (1, 2, 3, 4, 5, 6, 8, 9, 13) if diagnostics else range(1, 7)
+    assert attribute in allowed and route in (b"", b"\x01\x03")
     report.setdefault("tcpip_attributes", []).append(attribute)
     report["route_hex"] = route.hex()
     if mode == "tcpip-info-optional" and attribute == 6:
         return bytes.fromhex("8E 00 14 01 02 03")
+    if mode == "tcpip-info-diagnostics-optional" and attribute == 13:
+        return bytes.fromhex("8E 00 14 01 02 03")
     addresses = "0A 02 00 C0 00 FF FF FF 01 02 00 C0 35 64 33 C6 07 71 00 CB"
     domain = "08 00 6C 61 62" if mode == "tcpip-info-malformed" else "03 00 6C 61 62 00"
-    values = ("01 00 00 00", "15 00 00 00", "12 00 00 00", "02 00 20 F6 24 01",
-              addresses + " " + domain, "05 00 62 65 6E 63 68")
-    return bytes.fromhex("8E 00 00 00 " + values[attribute - 1])
+    values = {
+        1: "11 00 00 00" if diagnostics else "01 00 00 00",
+        2: "15 00 00 00",
+        3: "12 00 00 00",
+        4: "02 00 20 F6 24 01",
+        5: addresses + " " + domain,
+        6: "05 00 62 65 6E 63 68",
+        8: "03",
+        9: "01 00 20 00 12 09 C1 EF",
+        13: "0A 00",
+    }
+    if mode == "tcpip-info-diagnostics-malformed":
+        values.update({8: "03 00", 9: "01 00 20 00 12 09 C1", 13: "00 00"})
+    return bytes.fromhex("8E 00 00 00 " + values[attribute])
 
 
 def link_info_reply(cip, mode, report):
@@ -963,6 +978,7 @@ def main():
         "explicit", "saved-reads", "multiple-service", "large-keyed", "routed", "variable-input", "large-variable-input",
         "attribute-list", "attribute-list-mixed", "attribute-list-malformed", "attribute-list-unsupported",
         "class-info", "class-info-malformed", "class-info-empty", "port-info", "port-info-optional", "port-info-malformed",
+        "tcpip-info-diagnostics", "tcpip-info-diagnostics-optional", "tcpip-info-diagnostics-malformed",
         "tcpip-info", "tcpip-info-optional", "tcpip-info-malformed",
         "link-info", "link-info-optional", "link-info-malformed",
         "manager-info", "manager-info-optional", "manager-info-malformed",

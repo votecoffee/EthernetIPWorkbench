@@ -1354,6 +1354,49 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode tcpip-info-diagnostics-optional on localhost"]
+    fn explore_reads_multicast_and_session_diagnostics_over_a_route() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[("Serial through bridge", 6, Some("1/3"))]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "Network objects");
+        click(&mut device, &ctx, size, "TCP/IP Interface · Status");
+        click(
+            &mut device,
+            &ctx,
+            size,
+            "Include multicast and session settings",
+        );
+        click(&mut device, &ctx, size, "Read interface info");
+        wait_for_explore(&mut device);
+        click(
+            &mut device,
+            &ctx,
+            size,
+            "Multicast address allocation · Reply",
+        );
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Route 1/3",
+            "Multicast settings pending",
+            "Multicast TTL · Reply",
+            "Configured allocation · Address count 32 · Start 239.193.9.18",
+            "Encapsulation inactivity timeout · CIP rejection",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        assert_eq!(device.snapshot(), saved);
+        assert!(device.connection.is_none());
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode port-info-optional on localhost"]
     fn explore_inspects_a_routed_port_without_changing_saved_requests() {
         let ctx = egui::Context::default();

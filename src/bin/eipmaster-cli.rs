@@ -52,7 +52,7 @@ Usage:
   eipmaster-cli read-attribute-list <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <id:reply-bytes>... [--route <port/link/...>]
   eipmaster-cli list-instances <adapter-or-bridge-ipv4> <local-ipv4> <class> [<after-instance>] [--route <port/link/...>]
   eipmaster-cli port-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
-  eipmaster-cli tcpip-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
+  eipmaster-cli tcpip-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--diagnostics] [--route <port/link/...>]
   eipmaster-cli link-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli manager-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli qos-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
@@ -236,8 +236,18 @@ fn run(args: &[OsString]) -> Result<bool, String> {
             Ok(report.is_usable())
         }
         [command, adapter, local, instance, options @ ..] if command == "tcpip-info" => {
-            let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;
-            let report = explicit::read_tcpip_info(
+            let (diagnostics, endpoint_options) = match options {
+                [option, rest @ ..] if option == "--diagnostics" => (true, rest),
+                [rest @ .., option] if option == "--diagnostics" => (true, rest),
+                _ => (false, options),
+            };
+            let (adapter, local, route) = explicit_endpoint(adapter, local, endpoint_options)?;
+            let read = if diagnostics {
+                explicit::read_tcpip_diagnostics
+            } else {
+                explicit::read_tcpip_info
+            };
+            let report = read(
                 adapter,
                 local,
                 explicit::parse_id(&instance.to_string_lossy())?,

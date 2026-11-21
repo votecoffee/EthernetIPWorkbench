@@ -299,6 +299,7 @@ def check_tcpip_info(exe, root):
         report = json.loads(result.stdout)
         (root / f"tcpip-info-{case}.json").write_text(result.stdout, encoding="utf-8")
         assert (report["class"], report["instance"], report.get("route")) == (0xF5, 1, route)
+        assert "network_diagnostics" not in report
         assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
         assert peer["tcpip_attributes"] == list(range(1, 7))
         assert peer["route_hex"] == ("0103" if route else "")
@@ -326,6 +327,48 @@ def check_tcpip_info(exe, root):
     result = subprocess.run([exe, "tcpip-info", LOCAL, LOCAL, "0"], capture_output=True, timeout=5)
     assert result.returncode != 0 and b"nonzero instance" in result.stderr
     print("TCP/IP Interface inspection passed direct, routed optional, and malformed replies.")
+
+
+def check_tcpip_diagnostics(exe, root):
+    for case, mode, options, code in (
+        ("direct", "tcpip-info-diagnostics", ["--diagnostics"], 0),
+        ("routed-optional", "tcpip-info-diagnostics-optional", ["--route", "1/3", "--diagnostics"], 0),
+        ("malformed", "tcpip-info-diagnostics-malformed", ["--diagnostics"], 1),
+    ):
+        command = [exe, "tcpip-info", LOCAL, LOCAL, "1", *options]
+        result, peer = with_adapter(root, f"tcpip-diagnostics-{case}", command, mode)
+        assert result.returncode == code and not result.stderr, (result.stdout, result.stderr)
+        (root / f"tcpip-diagnostics-{case}.json").write_text(result.stdout, encoding="utf-8")
+        report = json.loads(result.stdout)
+        assert (report["class"], report["instance"]) == (0xF5, 1)
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert peer["tcpip_attributes"] == [1, 2, 3, 4, 5, 6, 8, 9, 13]
+        assert [row["path"]["attribute"] for row in report["results"]] == peer["tcpip_attributes"]
+        summary = report["network_diagnostics"]
+        assert summary["multicast_pending"] is True
+        ttl, multicast, timeout = report["results"][6:]
+        if case == "malformed":
+            assert summary["multicast_ttl"] is None and summary["multicast_configuration"] is None
+            assert (ttl["data_hex"], ttl["decode_error"]) == ("03 00", "Multicast TTL requires one byte")
+            assert multicast["data_hex"] == "01 00 20 00 12 09 C1"
+            assert multicast["decode_error"] == "Multicast address allocation requires eight bytes"
+            assert summary["encapsulation_inactivity_timeout_seconds"] == 0
+            assert timeout["decoded"] == "0 s (disabled)"
+        else:
+            assert summary["multicast_ttl"] == 3
+            assert summary["multicast_configuration"] == {
+                "allocation_control": 1, "reserved": 0, "address_count": 32, "start_address": "239.193.9.18",
+            }
+            if case == "routed-optional":
+                assert report["route"] == "1/3" and peer["route_hex"] == "0103"
+                assert summary["encapsulation_inactivity_timeout_seconds"] is None
+                assert (timeout["reply_from"], timeout["general_status"], timeout["extended_status"]) == (
+                    "target", 0x14, [0x0302],
+                )
+            else:
+                assert peer["route_hex"] == ""
+                assert summary["encapsulation_inactivity_timeout_seconds"] == 10 and timeout["decoded"] == "10 s"
+    print("TCP/IP multicast and TCP inactivity diagnostics passed direct, routed, and malformed checks.")
 
 
 def check_link_info(exe, root):
@@ -917,6 +960,7 @@ def main():
     check_attribute_list(exe, root)
     check_port_info(exe, root)
     check_tcpip_info(exe, root)
+    check_tcpip_diagnostics(exe, root)
     check_link_info(exe, root)
     check_manager_info(exe, root)
     check_qos_info(exe, root)
