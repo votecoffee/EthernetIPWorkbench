@@ -60,15 +60,20 @@ impl Explorer {
         local: Option<Ipv4Addr>,
         id: &str,
     ) -> Result<(Ipv4Addr, Ipv4Addr, u32, Option<Route>), String> {
+        let id = explicit::parse_id(id)?;
+        let (adapter, local, route) = self.inspection_target(adapter, local)?;
+        Ok((adapter, local, id, route))
+    }
+
+    pub(super) fn inspection_target(
+        &self,
+        adapter: &str,
+        local: Option<Ipv4Addr>,
+    ) -> Result<(Ipv4Addr, Ipv4Addr, Option<Route>), String> {
         const NEED_ADDRESSES: &str = "Set adapter and local NIC IPv4 addresses in Device";
         let adapter = adapter.parse().map_err(|_| NEED_ADDRESSES)?;
         let local = local.ok_or(NEED_ADDRESSES)?;
-        Ok((
-            adapter,
-            local,
-            explicit::parse_id(id)?,
-            self.parsed_route()?,
-        ))
+        Ok((adapter, local, self.parsed_route()?))
     }
 
     pub(super) fn read_class_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {

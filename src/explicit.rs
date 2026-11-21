@@ -23,6 +23,7 @@ mod attributes;
 mod batch;
 mod class_info;
 mod connected;
+mod connection_data;
 mod instances;
 mod link_info;
 mod manager_info;
@@ -51,6 +52,10 @@ pub use class_info::{ClassInfo, read_class_info};
 pub use connected::{
     Class3Size, ConnectedPacketBatch, ConnectedReadBatch, run_saved_reads_connected,
     run_saved_reads_connected_packet,
+};
+pub use connection_data::{
+    ConnectionData, ConnectionDataQuery, ConnectionDataReport, ConnectionDirection,
+    ConnectionTriad, read_connection_data,
 };
 pub use instances::{INSTANCE_PAGE_SIZE, InstanceIds, InstancePage, find_instances_page};
 pub use link_info::{ETHERNET_LINK_CLASS, LinkInfo, read_link_info};
@@ -402,6 +407,25 @@ impl Session {
             .map_err(RoutedReadError::Exchange)?;
         let data = cip_data(&reply).map_err(RoutedReadError::Exchange)?;
         route::decode_routed_reply(data, decode)
+    }
+
+    fn read_service(
+        &mut self,
+        request: Vec<u8>,
+        route: Option<&Route>,
+    ) -> std::result::Result<Vec<u8>, RoutedReadError> {
+        let service = request[0];
+        let decode = |data: &[u8]| reply_body(data, service).map(<[u8]>::to_vec);
+        if let Some(route) = route {
+            self.routed(&request, route, decode)
+        } else {
+            self.unconnected(request, None)
+                .and_then(|reply| decode(cip_data(&reply)?))
+                .map_err(|error| match error {
+                    error @ EipError::Cip { .. } => RoutedReadError::Target(error),
+                    error => RoutedReadError::Exchange(error),
+                })
+        }
     }
 
     fn cip_path(

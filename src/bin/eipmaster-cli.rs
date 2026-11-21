@@ -55,6 +55,7 @@ Usage:
   eipmaster-cli tcpip-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--diagnostics] [--route <port/link/...>]
   eipmaster-cli link-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli manager-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
+  eipmaster-cli connection-data <adapter-or-bridge-ipv4> <local-ipv4> <number|connection-serial:vendor:originator-serial> [--route <port/link/...>]
   eipmaster-cli qos-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli assembly-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli check-assemblies <settings.toml>
@@ -266,6 +267,13 @@ fn run(args: &[OsString]) -> Result<bool, String> {
             )?;
             println!("{}", report.report_json()?);
             Ok(report.is_usable())
+        }
+        [command, adapter, local, query, options @ ..] if command == "connection-data" => {
+            let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;
+            let query = query.to_string_lossy().parse()?;
+            let report = explicit::read_connection_data(adapter, local, query, route)?;
+            println!("{}", report.report_json()?);
+            Ok(matches!(report.decoded(), Ok(Some(_))))
         }
         [command, adapter, local, instance, options @ ..] if command == "manager-info" => {
             let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;

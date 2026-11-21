@@ -1,9 +1,6 @@
 //! Bounded browsing of CIP instance IDs with Find_Next_Object_Instance.
 
-use super::{
-    EipError, ReadPath, Reader, Route, RoutedReadError, cip_data, encode_read_path, le16,
-    reply_body,
-};
+use super::{EipError, ReadPath, Reader, Route, RoutedReadError, encode_read_path, le16};
 use std::net::Ipv4Addr;
 
 const SERVICE: u8 = 0x11;
@@ -62,18 +59,7 @@ pub fn find_instances_page(
         .0
         .as_mut()
         .ok_or_else(|| EipError::Closed.to_string())?;
-    let decode = |data: &[u8]| reply_body(data, SERVICE).map(<[u8]>::to_vec);
-    let reply = if let Some(route) = &route {
-        session.routed(&request, route, decode)
-    } else {
-        session
-            .unconnected(request, None)
-            .and_then(|reply| decode(cip_data(&reply)?))
-            .map_err(|error| match error {
-                error @ EipError::Cip { .. } => RoutedReadError::Target(error),
-                error => RoutedReadError::Exchange(error),
-            })
-    };
+    let reply = session.read_service(request, route.as_ref());
     Ok(InstancePage {
         adapter_or_bridge: adapter,
         local_ip: local,

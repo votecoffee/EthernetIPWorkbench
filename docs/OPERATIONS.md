@@ -190,6 +190,19 @@ One registered explicit session reads attributes 1–8 with Get_Attribute_Single
 
 Each result retains its raw reply, decoding error, or CIP status. The CLI accepts a usable partial report when at least one counter decodes and the target marks the others unsupported. If every counter is unsupported, the CLI retains all rejections in JSON and returns exit code 1.
 
+### Inspect one active connection
+
+In **Explore**, choose **Connection Manager** and open **Connection data**. Use the target's connection number for Get_Connection_Data (`0x56`). To use Search_Connection_Data (`0x57`), enter the Forward_Open triad as `connection-serial:originator-vendor:originator-serial`. Use decimal or `0x` hexadecimal for each identifier. A supporting device assigns its own connection number. Get it from the target's diagnostics or from a successful triad lookup. The query uses Connection Manager instance 1 and the optional **CIP route**. [IEC Type 2 service definitions](https://webstore.iec.ch/en/publication/4695) · [Pinned OpENer Connection Manager implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipconnectionmanager.c#L762)
+
+~~~powershell
+.\target\release\eipmaster-cli.exe connection-data 192.0.2.10 192.0.2.11 4660
+.\target\release\eipmaster-cli.exe connection-data 192.0.2.10 192.0.2.11 0xABCD:1:0x12345678 --route 1/3
+~~~
+
+Each request reads one record over a registered explicit session. The result includes the state code, the recorded triad, and the reported port, connection IDs, interval fields, and timeout multiplier codes. The RPI and API fields are decoded in the protocol's microsecond units. For timing analysis, use the Forward_Open values and observed packet spacing from the capture report. [IEC Type 2 protocol specification](https://webstore.iec.ch/en/publication/4695)
+
+The CLI exits 0 for a decoded record matching the requested number or triad. It exits 1 for a CIP rejection, transport failure, mismatched record, or malformed reply. The JSON retains raw bytes for decode errors and identifies target and bridge rejections separately.
+
 ### Inspect an assembly
 
 In **Explore → Common attributes**, choose **Assembly · Data** to start from the profile's input assembly instance. Change the instance to inspect another documented assembly, then select **Read assembly info**. Leave **CIP route** blank for a direct read or enter a known route.

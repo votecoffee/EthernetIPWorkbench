@@ -99,6 +99,8 @@ Choose **Network objects → Quality of Service · Explicit DSCP**, then select 
 
 Choose **Connection Manager** in Explore, then select **Read connection counters** to inspect the target's cumulative open, close, rejection, and timeout totals. The CLI `manager-info` command exports the same results. [Connection Manager counters](docs/OPERATIONS.md#inspect-connection-manager-counters)
 
+Open **Connection data** under the same preset to inspect one active connection on a supporting target. Enter its connection number or the three identifiers from Forward_Open. The CLI `connection-data` command returns the same record as JSON. [Connection data](docs/OPERATIONS.md#inspect-one-active-connection)
+
 Choose **Common attributes → Assembly · Data**, then select **Read assembly info** to inspect the selected instance's declared size and the actual explicit data bytes. The CLI `assembly-info` command reports both lengths and any difference. [Assembly inspection](docs/OPERATIONS.md#inspect-an-assembly)
 
 Select **Check profile assembly sizes** in Explore, or run `check-assemblies <settings.toml>`, to compare the adapter's reported sizes with the profile's application payload lengths before connecting. [Profile assembly size check](docs/OPERATIONS.md#check-profile-assembly-sizes)

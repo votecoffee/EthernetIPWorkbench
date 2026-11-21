@@ -353,6 +353,31 @@ def link_info_reply(cip, mode, report):
     return bytes.fromhex("8E 00 00 00") + data
 
 
+def connection_data_reply(cip, mode, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    assert route in (b"", b"\x01\x03", b"\x01\x07")
+    assert message in (
+        bytes.fromhex("56 02 20 06 24 01 34 12"),
+        bytes.fromhex("57 02 20 06 24 01 CD AB 01 00 78 56 34 12"),
+    )
+    report.setdefault("connection_data_requests", []).append(message.hex())
+    report["route_hex"] = route.hex()
+    if route == b"\x01\x07":
+        return bytes.fromhex("D2 00 01 01 11 03")
+    reply = bytes((message[0] | 0x80, 0))
+    if mode == "connection-data-unsupported":
+        return reply + bytes.fromhex("08 00")
+    if mode == "connection-data-not-found":
+        return reply + bytes.fromhex("05 00")
+    serial = 0xABCC if mode == "connection-data-mismatch" else 0xABCD
+    data = struct.pack("<6HI", 0x1234, 3, 37, 19, serial, 1, 0x12345678)
+    data += struct.pack("<IIB3xII", 0x343A5678, 0xAB90EFEF, 3, 8000, 8100)
+    data += struct.pack("<IIB3xII", 0xEE101010, 0x90919293, 4, 1000, 2000)
+    if mode == "connection-data-malformed":
+        data = data[:-1]
+    return reply + b"\0\0" + data
+
+
 def manager_info_reply(cip, mode, report):
     route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
     assert len(message) == 8 and message[:7] == bytes.fromhex("0E 03 20 06 24 01 30")
@@ -589,6 +614,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
         "tcpip-info": tcpip_info_reply,
         "link-info": link_info_reply,
         "manager-info": manager_info_reply,
+        "connection-data": connection_data_reply,
         "qos-info": qos_info_reply,
         "assembly-info": assembly_info_reply,
         "profile-assemblies": profile_assemblies_reply,
@@ -982,6 +1008,8 @@ def main():
         "tcpip-info", "tcpip-info-optional", "tcpip-info-malformed",
         "link-info", "link-info-optional", "link-info-malformed",
         "manager-info", "manager-info-optional", "manager-info-malformed",
+        "connection-data", "connection-data-malformed", "connection-data-mismatch",
+        "connection-data-unsupported", "connection-data-not-found",
         "qos-info", "qos-info-optional", "qos-info-malformed",
         "assembly-info", "assembly-info-size-unsupported", "assembly-info-data-unsupported",
         "assembly-info-malformed", "assembly-info-empty",

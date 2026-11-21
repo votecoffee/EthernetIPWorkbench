@@ -8,6 +8,34 @@ use crate::scanner::CloseOutcome;
 use serde_json::{Value, json};
 use std::net::Ipv4Addr;
 
+impl super::ConnectionDataReport {
+    pub fn report_json(&self) -> Result<String, String> {
+        let path = super::connection_data::PATH;
+        let mut document = read_reply_document(
+            self.adapter_or_bridge,
+            path,
+            self.route.as_ref(),
+            None,
+            self.reply.as_deref(),
+        )
+        .unwrap_or_else(|error| json!({"path": path, "error": error}));
+        match self.decoded() {
+            Ok(Some(connection)) => document["decoded"] = json!(connection),
+            Ok(None) => {}
+            Err(error) => document["decode_error"] = json!(error),
+        }
+        if matches!(self.reply, Ok(_) | Err(RoutedReadError::Target(_))) {
+            document["reply_from"] = json!("target");
+        }
+        document["adapter_or_bridge"] = json!(self.adapter_or_bridge);
+        document["local_ip"] = json!(self.local_ip);
+        document["route"] = json!(self.route);
+        document["query"] = json!(self.query);
+        document["service"] = json!(self.query.service_name());
+        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
+    }
+}
+
 impl AttributeListReport {
     pub fn report_json(&self) -> Result<String, String> {
         let mut document = match &self.reply {

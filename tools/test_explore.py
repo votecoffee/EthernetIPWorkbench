@@ -415,6 +415,71 @@ def check_link_info(exe, root):
     print("Ethernet Link diagnostics passed direct, routed optional, and malformed replies.")
 
 
+def check_connection_data(exe, root):
+    for case, mode, route, triad, status in (
+        ("number", "connection-data", None, False, None),
+        ("routed-triad", "connection-data", "1/3", True, None),
+        ("mismatch", "connection-data-mismatch", None, True, None),
+        ("malformed", "connection-data-malformed", "1/3", False, None),
+        ("unsupported", "connection-data-unsupported", None, False, 0x08),
+        ("not-found", "connection-data-not-found", "1/3", True, 0x05),
+        ("router-rejection", "connection-data", "1/7", False, 0x01),
+    ):
+        selector = "0xABCD:1:0x12345678" if triad else "0x1234"
+        command = [exe, "connection-data", LOCAL, LOCAL, selector]
+        if route:
+            command.extend(("--route", route))
+        result, peer = with_adapter(root, f"connection-data-{case}", command, mode)
+        valid = case in ("number", "routed-triad")
+        assert result.returncode == (0 if valid else 1) and not result.stderr, (result.stdout, result.stderr)
+        (root / f"connection-data-{case}.json").write_text(result.stdout, encoding="utf-8")
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert peer["route_hex"] == {"1/3": "0103", "1/7": "0107", None: ""}[route]
+        assert peer["connection_data_requests"] == [
+            "570220062401cdab010078563412" if triad else "5602200624013412",
+        ]
+        report = json.loads(result.stdout)
+        assert report["path"] == {"class": 6, "instance": 1, "attribute": None}
+        assert report["route"] == route
+        assert report["reply_from"] == ("router" if case == "router-rejection" else "target")
+        expected_triad = {"connection_serial": 0xABCD, "originator_vendor": 1, "originator_serial": 0x12345678}
+        assert report["query"] == ({"by": "triad", **expected_triad} if triad else {"by": "number", "number": 0x1234})
+        assert report["service"] == ("Search_Connection_Data" if triad else "Get_Connection_Data")
+        if valid:
+            record = report["decoded"]
+            assert (record["number"], record["state_code"]) == (0x1234, 3)
+            assert (record["originator_port"], record["target_port"]) == (37, 19)
+            assert record["triad"] == expected_triad
+            for key, originator, target, multiplier, rpi, api in (
+                ("o_to_t", 0x343A5678, 0xAB90EFEF, 3, 8000, 8100),
+                ("t_to_o", 0xEE101010, 0x90919293, 4, 1000, 2000),
+            ):
+                assert record[key] == {
+                    "originator_connection_id": originator, "target_connection_id": target,
+                    "timeout_multiplier_code": multiplier, "reported_rpi_us": rpi, "reported_api_us": api,
+                }
+        elif status is not None:
+            assert report["general_status"] == status and "decoded" not in report
+            assert report["extended_status"] == ([0x0311] if route == "1/7" else [])
+        else:
+            assert report["decoded"] is None
+            assert report["decode_error"] == {
+                "malformed": "Connection data requires 56 bytes, got 55",
+                "mismatch": "Returned connection identifiers differ from the requested connection",
+            }[case]
+            assert len(bytes.fromhex(report["data_hex"])) == (55 if case == "malformed" else 56)
+    for selector, error in (
+        ("65536", b"Connection number must fit in 16 bits"),
+        ("0x10000:1:1", b"Connection serial must fit in 16 bits"),
+        ("1:2", b"Enter connection number or"),
+    ):
+        invalid = subprocess.run(
+            [exe, "connection-data", LOCAL, LOCAL, selector], capture_output=True, timeout=5, creationflags=NO_WINDOW,
+        )
+        assert invalid.returncode == 1 and error in invalid.stderr, invalid.stderr
+    print("Connection data passed number and triad lookup, route, rejection, correlation, and malformed reply checks.")
+
+
 def check_manager_info(exe, root):
     for case, mode, route, exit_code in (
         ("direct", "manager-info", None, 0),
@@ -963,6 +1028,7 @@ def main():
     check_tcpip_diagnostics(exe, root)
     check_link_info(exe, root)
     check_manager_info(exe, root)
+    check_connection_data(exe, root)
     check_qos_info(exe, root)
     check_assembly_info(exe, root)
     check_profile_assemblies(exe, root)

@@ -27,6 +27,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/explicit/link_info.rs | Read-only Ethernet Link Object status and counters |
 | src/explicit/qos_info.rs | Read-only QoS Object tagging and DSCP settings |
 | src/explicit/manager_info.rs | Read-only Connection Manager Object counters |
+| src/explicit/connection_data.rs and src/gui/explore/connection_data.rs | Single Connection Manager record lookup by number or Forward_Open triad |
 | src/explicit/assembly_info.rs | Read-only Assembly Object declared size and explicit data |
 | src/explicit/profile_assemblies.rs | Compare device-reported assembly sizes to profile payload lengths |
 | src/explicit/write.rs, src/gui/explore/write.rs and src/bin/eipmaster-cli/writes.rs | Identity-checked Set_Attribute_Single, GUI review and CLI preview/apply |
@@ -166,6 +167,8 @@ Run `explore_reads_multicast_and_session_diagnostics_over_a_route` with `tcpip-i
 Run `explore_reads_ethernet_link_diagnostics_over_a_route` with the `link-info-optional` fixture mode to verify the routed link status and optional counter rejection. The OpENer harness with `--explore` checks the independently reported speed, flags and MAC address.
 
 Run `explore_reads_connection_manager_counters_over_a_route` with the `manager-info-optional` fixture mode to verify a routed counter and optional CIP rejection in Explore. The OpENer harness with `--explore` checks the reply handling when the stack lacks all eight optional counters.
+
+Run `explore_finds_connection_data_by_triad_over_a_route` with `connection-data` to verify the Explore lookup. The CLI fixture checks the exact requests for both selectors. The OpENer harness with `--explore` opens an input-only connection and reads its record using both selectors before closing.
 
 Run `explore_reads_qos_settings_over_a_route` with the `qos-info-optional` fixture mode to verify QoS settings and rejections in Explore's Network objects workflow. The OpENer harness with `--explore` checks the configured values for its five readable attributes.
 

@@ -1354,6 +1354,49 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode connection-data on localhost"]
+    fn explore_finds_connection_data_by_triad_over_a_route() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[("Serial through bridge", 6, Some("1/3"))]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "Connection Manager");
+        click(&mut device, &ctx, size, "Connection data");
+        click(
+            &mut device,
+            &ctx,
+            size,
+            "Number or serial:vendor:originator-serial",
+        );
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+            events: vec![egui::Event::Text("0xABCD:1:0x12345678".into())],
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| device.show(ctx, &[]));
+        click(&mut device, &ctx, size, "Read connection data");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Route 1/3",
+            "Connection 4660 · State 0x0003",
+            "O→T · Reported RPI 8000 µs · API 8100 µs · Timeout multiplier code 3",
+            "T→O · Reported RPI 1000 µs · API 2000 µs · Timeout multiplier code 4",
+            "Connection reply bytes",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        assert_eq!(device.snapshot(), saved);
+        assert!(device.connection.is_none());
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode tcpip-info-diagnostics-optional on localhost"]
     fn explore_reads_multicast_and_session_diagnostics_over_a_route() {
         let ctx = egui::Context::default();

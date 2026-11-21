@@ -674,7 +674,10 @@ def controlling_heartbeat(route=b""):
         worker = threading.Thread(target=send, daemon=True)
         worker.start()
         try:
-            yield {"ot": ot, "to": to, "group": f"{socket.inet_ntoa(group_addr)}:{group_port}"}
+            yield {
+                "ot": ot, "to": to, "group": f"{socket.inet_ntoa(group_addr)}:{group_port}",
+                "triad": {"connection_serial": serial, "originator_vendor": vendor, "originator_serial": originator},
+            }
         finally:
             stop.set()
             worker.join(timeout=2)
@@ -751,6 +754,38 @@ def check_listen_only(cli, adapter, root, eds, identity, seconds):
           "A second listener read the same producer after the first closed.")
 
 
+def check_connection_data(cli, adapter, root):
+    root.mkdir()
+    command = [cli, "connection-data", ADAPTER, "127.0.0.1"]
+    with run_adapter(adapter, root):
+        with controlling_heartbeat() as connection:
+            triad = connection["triad"]
+            selector = ":".join(str(triad[field]) for field in (
+                "connection_serial", "originator_vendor", "originator_serial",
+            ))
+            search = subprocess.run([*command, selector], capture_output=True, timeout=10,
+                                    creationflags=subprocess.CREATE_NO_WINDOW)
+            (root / "search.json").write_bytes(search.stdout)
+            assert search.returncode == 0 and not search.stderr, (search.stdout, search.stderr)
+            record = json.loads(search.stdout)["decoded"]
+            assert record["triad"] == triad
+            for key, expected_id in (("o_to_t", connection["ot"]), ("t_to_o", connection["to"])):
+                assert record[key]["originator_connection_id"] == record[key]["target_connection_id"] == expected_id
+                assert record[key]["reported_rpi_us"] == 30000
+                assert record[key]["timeout_multiplier_code"] == 3
+            lookup = subprocess.run([*command, str(record["number"])], capture_output=True, timeout=10,
+                                    creationflags=subprocess.CREATE_NO_WINDOW)
+            (root / "lookup.json").write_bytes(lookup.stdout)
+            assert lookup.returncode == 0 and not lookup.stderr, (lookup.stdout, lookup.stderr)
+            by_number = json.loads(lookup.stdout)["decoded"]
+            assert (by_number["number"], by_number["triad"]) == (record["number"], triad)
+        missing = subprocess.run([*command, selector], capture_output=True, timeout=10,
+                                 creationflags=subprocess.CREATE_NO_WINDOW)
+        (root / "after-close.json").write_bytes(missing.stdout)
+        assert missing.returncode == 1 and json.loads(missing.stdout)["general_status"] == 0x05
+    print("OpENer found an active input-only connection by triad and number, then rejected the closed connection.")
+
+
 def check_owner(adapter, test_exe, root):
     root.mkdir()
     with run_adapter(adapter, root) as adapter_log:
@@ -814,6 +849,7 @@ def main():
         check_tcpip_diagnostics(cli, adapter, root / "tcpip-diagnostics")
         check_link_info(cli, adapter, root / "link-info")
         check_manager_info(cli, adapter, root / "manager-info")
+        check_connection_data(cli, adapter, root / "connection-data")
         check_qos_info(cli, adapter, root / "qos-info")
         check_assembly_info(cli, adapter, root / "assembly-info")
         check_profile_assemblies(cli, adapter, root / "check-assemblies")

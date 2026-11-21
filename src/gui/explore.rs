@@ -3,9 +3,9 @@ use assembly_scanner::{
     discovery::{self, DiscoveryTransport, ServicesTransport},
     explicit::{
         self, AssemblyInfo, AttributeListReport, AttributeWrite, Class3Size, ClassInfo,
-        InstancePage, LinkInfo, ManagerInfo, ObjectList, PortInfo, ProfileAssemblyCheck, QosInfo,
-        ReadPath, Reader, Route, SavedRead, SavedReadMode, SavedReadReport, TcpIpInfo,
-        WriteCurrentCheck, WriteInspection, WriteOutcome, WriteReport,
+        ConnectionDataReport, InstancePage, LinkInfo, ManagerInfo, ObjectList, PortInfo,
+        ProfileAssemblyCheck, QosInfo, ReadPath, Reader, Route, SavedRead, SavedReadMode,
+        SavedReadReport, TcpIpInfo, WriteCurrentCheck, WriteInspection, WriteOutcome, WriteReport,
     },
 };
 use std::sync::Arc;
@@ -14,6 +14,7 @@ mod attribute_list;
 mod attributes;
 mod batch;
 mod class_info;
+mod connection_data;
 mod instances;
 mod object_list;
 mod receipt;
@@ -35,6 +36,7 @@ enum Response {
     Services(discovery::ServicesReport),
     Read(ReadReply),
     AttributeList(AttributeListReport),
+    ConnectionData(ConnectionDataReport),
     ClassInfo(ClassInfo),
     InstancePage(InstancePage),
     ObjectList(ObjectList),
@@ -79,6 +81,8 @@ pub(super) struct Explorer {
     read_result: Option<ReadReply>,
     attribute_list_spec: String,
     attribute_list: Option<AttributeListReport>,
+    connection_data_query: String,
+    connection_data: Option<ConnectionDataReport>,
     class_info: Option<ClassInfo>,
     instance_page: Option<InstancePage>,
     object_list: Option<ObjectList>,
@@ -120,6 +124,8 @@ impl Default for Explorer {
             read_result: None,
             attribute_list_spec: String::new(),
             attribute_list: None,
+            connection_data_query: String::new(),
+            connection_data: None,
             class_info: None,
             instance_page: None,
             object_list: None,
@@ -172,6 +178,7 @@ impl Explorer {
             Ok(Ok(Response::Services(report))) => self.services = Some(report),
             Ok(Ok(Response::Read(reply))) => self.read_result = Some(reply),
             Ok(Ok(Response::AttributeList(report))) => self.attribute_list = Some(report),
+            Ok(Ok(Response::ConnectionData(report))) => self.connection_data = Some(report),
             Ok(Ok(Response::ClassInfo(info))) => self.class_info = Some(info),
             Ok(Ok(Response::InstancePage(page))) => self.instance_page = Some(page),
             Ok(Ok(Response::ObjectList(list))) => self.object_list = Some(list),
@@ -632,6 +639,9 @@ impl Device {
             }
         });
         explorer.show_attribute_list(ui, &self.device, local.as_ref().ok().copied());
+        if explicit::parse_id(&explorer.class) == Ok(explicit::CONNECTION_MANAGER_CLASS) {
+            explorer.show_connection_data(ui, &self.device, local.as_ref().ok().copied());
+        }
         if let Some(info) = &explorer.class_info {
             class_info::show(ui, info);
         }
