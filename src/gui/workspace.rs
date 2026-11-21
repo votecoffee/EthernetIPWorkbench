@@ -895,6 +895,41 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode object-list on localhost"]
+    fn explore_selects_a_class_from_a_routed_object_list() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[("Serial through bridge", 6, Some("1/3"))]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "List objects");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Advertised CIP objects",
+            "Route 1/3",
+            "0x0004 · Assembly",
+            "0x1234 · Class",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "0x1234 · Class");
+        let labels = draw(&mut device, &ctx, size);
+        for expected in ["0x1234", "Class revision", "1/3"] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        assert_eq!(device.snapshot(), saved);
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode list-identity-stream --address 127.0.0.2"]
     fn explore_discovers_an_adapter_over_tcp() {
         let ctx = egui::Context::default();

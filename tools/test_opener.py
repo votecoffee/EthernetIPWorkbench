@@ -318,6 +318,20 @@ def check_multicast(cli, adapter, root, identity, seconds):
     print(f"OpENer selected multicast group {group}:{port}.")
 
 
+def check_object_list(cli, adapter, root):
+    root.mkdir()
+    with run_adapter(adapter, root):
+        result = subprocess.run([cli, "list-objects", ADAPTER, "127.0.0.1"],
+                                capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+    (root / "result.json").write_bytes(result.stdout)
+    assert result.returncode == 1 and not result.stderr, (result.stdout, result.stderr)
+    report = json.loads(result.stdout)
+    assert (report["class"], report["instance"], report["class_ids"]) == (2, 1, None)
+    reply, = report["results"]
+    assert reply["status"] == "cip_rejected" and reply["general_status"] == 0x14
+    print("OpENer reported the optional Message Router Object List as unsupported.")
+
+
 def check_class_info(cli, adapter, root):
     root.mkdir()
     with run_adapter(adapter, root):
@@ -738,6 +752,7 @@ def main():
         check_list_services(cli, adapter, root / "list-services")
         check_explore(cli, adapter, root / "extended", identity, args.seconds)
         check_class_info(cli, adapter, root / "class-info")
+        check_object_list(cli, adapter, root / "object-list")
         check_tcpip_info(cli, adapter, root / "tcpip-info")
         check_link_info(cli, adapter, root / "link-info")
         check_manager_info(cli, adapter, root / "manager-info")

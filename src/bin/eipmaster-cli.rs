@@ -48,6 +48,7 @@ Usage:
   eipmaster-cli list-services <adapter-or-bridge-ipv4> <local-ipv4> [--tcp]
   eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
   eipmaster-cli class-info <adapter-or-bridge-ipv4> <local-ipv4> <class> [--route <port/link/...>]
+  eipmaster-cli list-objects <adapter-or-bridge-ipv4> <local-ipv4> [--route <port/link/...>]
   eipmaster-cli port-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli tcpip-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli link-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
@@ -174,6 +175,12 @@ fn run(args: &[OsString]) -> Result<bool, String> {
             )?;
             println!("{}", report.report_json()?);
             Ok(report.is_usable())
+        }
+        [command, adapter, local, options @ ..] if command == "list-objects" => {
+            let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;
+            let report = explicit::read_object_list(adapter, local, route)?;
+            println!("{}", report.report_json()?);
+            Ok(report.class_ids.is_some())
         }
         [command, adapter, local, instance, options @ ..] if command == "port-info" => {
             let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;

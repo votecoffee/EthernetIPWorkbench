@@ -585,6 +585,45 @@ def check_list_services(exe, root):
     print("ListServices passed UDP and fragmented TCP replies, context checks, and malformed or rejected replies.")
 
 
+def check_object_list(exe, root):
+    for case, mode, route, expected, error in (
+        ("direct", "object-list", None, [0x1234, 4, 0xF6, 6], None),
+        ("routed", "object-list", "1/3", [0x1234, 4, 0xF6, 6], None),
+        ("empty", "object-list-empty", None, [], None),
+        ("unsupported", "object-list-unsupported", None, None, None),
+        ("router-rejected", "object-list", "1/7", None, None),
+        ("malformed", "object-list-malformed", None, None, "Object List declares 4 IDs"),
+        ("invalid-id", "object-list-zero", None, None, "Object List contains class ID zero"),
+    ):
+        command = [exe, "list-objects", LOCAL, LOCAL]
+        if route:
+            command.extend(("--route", route))
+        result, peer = with_adapter(root, f"object-list-{case}", command, mode)
+        assert result.returncode == (0 if expected is not None else 1) and not result.stderr
+        report = json.loads(result.stdout)
+        (root / f"object-list-{case}.json").write_text(result.stdout, encoding="utf-8")
+        assert (report["class"], report["instance"], report.get("route"), report["class_ids"]) == (
+            2, 1, route, expected,
+        )
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert peer["object_list_requests"] == ["0e03200224013001"]
+        assert peer["route_hex"] == {None: "", "1/3": "0103", "1/7": "0107"}[route]
+        row, = report["results"]
+        assert row["path"] == {"class": 2, "instance": 1, "attribute": 1}
+        if expected is not None:
+            assert row["decoded"] == "[" + ", ".join(f"0x{id:04X}" for id in expected) + "]"
+        if error:
+            assert error in row["decode_error"]
+            assert row["data_hex"] == ("04 00 34 12 04 00" if case == "malformed" else "02 00 34 12 00 00")
+        if case == "unsupported":
+            assert (row.get("reply_from", "target"), row["general_status"], row["extended_status"]) == (
+                "target", 0x14, [0x0302],
+            )
+        if case == "router-rejected":
+            assert (row["reply_from"], row["general_status"], row["extended_status"]) == ("router", 1, [0x0311])
+    print("Object List passed direct, routed, empty, unsupported, and malformed replies.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
@@ -787,6 +826,7 @@ def main():
     check_assembly_info(exe, root)
     check_profile_assemblies(exe, root)
     check_list_services(exe, root)
+    check_object_list(exe, root)
 
     saved = root / "saved.toml"
     source = PROFILE.read_text(encoding="utf-8")

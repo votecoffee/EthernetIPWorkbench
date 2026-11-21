@@ -24,6 +24,7 @@ mod connected;
 mod link_info;
 mod manager_info;
 mod multiple;
+mod object_list;
 mod port_info;
 mod profile_assemblies;
 mod qos_info;
@@ -46,6 +47,7 @@ pub use connected::{
 pub use link_info::{ETHERNET_LINK_CLASS, LinkInfo, read_link_info};
 pub use manager_info::{CONNECTION_MANAGER_CLASS, ManagerInfo, read_manager_info};
 pub use multiple::run_saved_reads_packet;
+pub use object_list::{ObjectList, read_object_list};
 pub use port_info::{PORT_OBJECT_CLASS, PortInfo, read_port_info};
 pub use profile_assemblies::{AssemblySizeCheck, ProfileAssemblyCheck, check_profile_assemblies};
 pub use qos_info::{QOS_CLASS, QosInfo, read_qos_info};
@@ -116,6 +118,11 @@ impl ReadPath {
                     return class_info::decode(attribute, bytes).map(Some);
                 }
                 let decoded = match (self.class, self.instance) {
+                    (object_list::MESSAGE_ROUTER_CLASS, object_list::MESSAGE_ROUTER_INSTANCE)
+                        if attribute == object_list::OBJECT_LIST_ATTRIBUTE =>
+                    {
+                        Some(object_list::decode(bytes).map(|ids| class_info::format_ids(&ids)))
+                    }
                     (PORT_OBJECT_CLASS, instance) => port_info::decode(instance, attribute, bytes),
                     (TCPIP_INTERFACE_CLASS, 1..) => tcpip_info::decode(attribute, bytes),
                     (ETHERNET_LINK_CLASS, 1..) => link_info::decode(attribute, bytes),

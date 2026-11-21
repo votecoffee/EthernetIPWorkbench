@@ -2,15 +2,17 @@ use super::*;
 use assembly_scanner::{
     discovery::{self, DiscoveryTransport, ServicesTransport},
     explicit::{
-        self, AssemblyInfo, AttributeWrite, Class3Size, ClassInfo, LinkInfo, ManagerInfo, PortInfo,
-        ProfileAssemblyCheck, QosInfo, ReadPath, Reader, Route, SavedRead, SavedReadMode,
-        SavedReadReport, TcpIpInfo, WriteCurrentCheck, WriteInspection, WriteOutcome, WriteReport,
+        self, AssemblyInfo, AttributeWrite, Class3Size, ClassInfo, LinkInfo, ManagerInfo,
+        ObjectList, PortInfo, ProfileAssemblyCheck, QosInfo, ReadPath, Reader, Route, SavedRead,
+        SavedReadMode, SavedReadReport, TcpIpInfo, WriteCurrentCheck, WriteInspection,
+        WriteOutcome, WriteReport,
     },
 };
 use std::sync::Arc;
 
 mod batch;
 mod class_info;
+mod object_list;
 mod receipt;
 mod services;
 mod write;
@@ -39,6 +41,7 @@ enum Response {
     Services(discovery::ServicesReport),
     Read(ReadReply),
     ClassInfo(ClassInfo),
+    ObjectList(ObjectList),
     PortInfo(PortInfo),
     TcpIpInfo(TcpIpInfo),
     LinkInfo(LinkInfo),
@@ -79,6 +82,7 @@ pub(super) struct Explorer {
     selection: Option<Selection>,
     read_result: Option<ReadReply>,
     class_info: Option<ClassInfo>,
+    object_list: Option<ObjectList>,
     port_info: Option<PortInfo>,
     tcpip_info: Option<TcpIpInfo>,
     link_info: Option<LinkInfo>,
@@ -115,6 +119,7 @@ impl Default for Explorer {
             selection: None,
             read_result: None,
             class_info: None,
+            object_list: None,
             port_info: None,
             tcpip_info: None,
             link_info: None,
@@ -163,6 +168,7 @@ impl Explorer {
             Ok(Ok(Response::Services(report))) => self.services = Some(report),
             Ok(Ok(Response::Read(reply))) => self.read_result = Some(reply),
             Ok(Ok(Response::ClassInfo(info))) => self.class_info = Some(info),
+            Ok(Ok(Response::ObjectList(list))) => self.object_list = Some(list),
             Ok(Ok(Response::PortInfo(info))) => self.port_info = Some(info),
             Ok(Ok(Response::TcpIpInfo(info))) => self.tcpip_info = Some(info),
             Ok(Ok(Response::LinkInfo(info))) => self.link_info = Some(info),
@@ -458,17 +464,17 @@ impl Device {
                 .clicked()
             {
                 explorer.profile_assemblies = None;
-                match profile_addresses {
+                match &profile_addresses {
                     Ok((adapter, nic)) => {
                         let mut settings = self.settings.clone();
-                        settings.device_ip = adapter;
-                        settings.local_ip = nic;
+                        settings.device_ip = *adapter;
+                        settings.local_ip = *nic;
                         explorer.start(move || {
                             explicit::check_profile_assemblies(&settings)
                                 .map(Response::ProfileAssemblies)
                         });
                     }
-                    Err(error) => explorer.notice = Some(error),
+                    Err(error) => explorer.notice = Some(error.clone()),
                 }
             }
         });
@@ -479,6 +485,21 @@ impl Device {
                     .desired_width(220.0)
                     .hint_text("1/3 for backplane slot 3"),
             );
+            if ui
+                .add_enabled(!explorer.busy(), egui::Button::new("List objects"))
+                .on_hover_text(
+                    "Read the Message Router's advertised class IDs using this CIP route.",
+                )
+                .clicked()
+            {
+                explorer.object_list = None;
+                match (profile_addresses, explorer.parsed_route()) {
+                    (Ok((adapter, nic)), Ok(route)) => explorer.start(move || {
+                        explicit::read_object_list(adapter, nic, route).map(Response::ObjectList)
+                    }),
+                    (Err(error), _) | (_, Err(error)) => explorer.notice = Some(error),
+                }
+            }
         });
         ui.horizontal_wrapped(|ui| {
             for (label, field) in [
@@ -593,6 +614,11 @@ impl Device {
         });
         if let Some(info) = &explorer.class_info {
             class_info::show(ui, info);
+        }
+        if let Some(list) = &explorer.object_list
+            && let Some(class) = object_list::show(ui, list)
+        {
+            explorer.load_preset("Class revision", u32::from(class), 0, 1);
         }
         if let Some(info) = &explorer.port_info {
             class_info::show_port(ui, info);

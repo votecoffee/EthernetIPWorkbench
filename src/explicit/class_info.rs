@@ -57,21 +57,7 @@ pub fn read_class_info(
 
 pub(super) fn decode(attribute: u32, bytes: &[u8]) -> Result<String, String> {
     if matches!(attribute, 4 | 5) {
-        let Some(prefix) = bytes.get(..2) else {
-            return Err("Class attribute ID list is missing its UINT count".into());
-        };
-        let count = usize::from(le16(prefix, 0));
-        if bytes.len() != 2 + count * 2 {
-            return Err(format!(
-                "Class attribute ID list declares {count} IDs, with {} bytes after its count",
-                bytes.len() - 2
-            ));
-        }
-        let identifiers = bytes[2..]
-            .chunks_exact(2)
-            .map(|word| format!("0x{:04X}", le16(word, 0)))
-            .collect::<Vec<_>>();
-        return Ok(format!("[{}]", identifiers.join(", ")));
+        return decode_ids(bytes, "Class attribute ID list").map(|ids| format_ids(&ids));
     }
     if bytes.len() != 2 {
         return Err(format!(
@@ -80,4 +66,26 @@ pub(super) fn decode(attribute: u32, bytes: &[u8]) -> Result<String, String> {
         ));
     }
     Ok(le16(bytes, 0).to_string())
+}
+
+pub(super) fn decode_ids(bytes: &[u8], name: &str) -> Result<Vec<u16>, String> {
+    let (count, values) = bytes
+        .split_first_chunk()
+        .ok_or_else(|| format!("{name} is missing its UINT count"))?;
+    let count = usize::from(u16::from_le_bytes(*count));
+    if values.len() != count * 2 {
+        return Err(format!(
+            "{name} declares {count} IDs, with {} bytes after its count",
+            values.len()
+        ));
+    }
+    Ok(values.chunks_exact(2).map(|word| le16(word, 0)).collect())
+}
+
+pub(super) fn format_ids(ids: &[u16]) -> String {
+    let identifiers = ids
+        .iter()
+        .map(|id| format!("0x{id:04X}"))
+        .collect::<Vec<_>>();
+    format!("[{}]", identifiers.join(", "))
 }

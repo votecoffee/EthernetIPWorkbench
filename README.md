@@ -79,6 +79,8 @@ For a documented field within a reply, enable **Decode reply field** and enter i
 
 Select **Read class info** beside the class field to inspect its revision, instance limits, and optional attributes and services advertised by the device. Expand a result for raw bytes or CIP status. The CLI `class-info` command provides the same inspection as JSON. [Class inspection](docs/OPERATIONS.md#inspect-a-cip-class)
 
+Select **List objects** to browse the classes advertised by a device's optional Message Router Object List. Selecting a class fills the read form for class inspection. The CLI `list-objects` command returns the same class IDs and raw reply. [Object List inspection](docs/OPERATIONS.md#browse-the-cip-object-list)
+
 Choose a **Port Object** preset in Explore, then select **Read port info**. Instance 0 shows the port directory. A specific instance shows the reported port number, node address, and routing capabilities. The CLI `port-info` command exports the same fields. [Port Object inspection](docs/OPERATIONS.md#inspect-a-cip-port)
 
 Choose **Network objects → TCP/IP Interface · Status**, then select **Read interface info** to see the reported IP address, mask, gateway, DNS servers, startup method, hostname, and Physical Link Object path. The CLI `tcpip-info` command exports these fields and their raw replies. [TCP/IP Interface inspection](docs/OPERATIONS.md#inspect-a-tcpip-interface)

@@ -383,6 +383,25 @@ def profile_assemblies_reply(cip, mode, report):
     return bytes.fromhex("8E 00 00 00") + struct.pack("<H", sizes[instance])
 
 
+def object_list_reply(cip, mode, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    assert message == bytes.fromhex("0E 03 20 02 24 01 30 01")
+    assert route in (b"", b"\x01\x03", b"\x01\x07")
+    report.setdefault("object_list_requests", []).append(message.hex())
+    report["route_hex"] = route.hex()
+    if route == b"\x01\x07":
+        return bytes.fromhex("D2 00 01 01 11 03")
+    if mode == "object-list-unsupported":
+        return bytes.fromhex("8E 00 14 01 02 03")
+    values = {
+        "object-list": "04 00 34 12 04 00 F6 00 06 00",
+        "object-list-empty": "00 00",
+        "object-list-malformed": "04 00 34 12 04 00",
+        "object-list-zero": "02 00 34 12 00 00",
+    }
+    return bytes.fromhex("8E 00 00 00 " + values[mode])
+
+
 def explicit_write_reply(cip, mode, attrs, report):
     route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
     assert route in (b"", b"\x01\x03")
@@ -510,6 +529,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
         "qos-info": qos_info_reply,
         "assembly-info": assembly_info_reply,
         "profile-assemblies": profile_assemblies_reply,
+        "object-list": object_list_reply,
     }
     object_reader = next((reader for name, reader in object_readers.items() if mode.startswith(name)), None)
     report_explicit = (
@@ -900,6 +920,8 @@ def main():
         "assembly-info", "assembly-info-size-unsupported", "assembly-info-data-unsupported",
         "assembly-info-malformed", "assembly-info-empty",
         "profile-assemblies", "profile-assemblies-malformed",
+        "object-list", "object-list-empty", "object-list-malformed", "object-list-zero",
+        "object-list-unsupported",
         "list-services", "list-services-tcp", "list-services-malformed",
         "list-services-rejected", "list-services-header",
         "list-services-stream", "list-services-stream-context", "list-services-stream-truncated",

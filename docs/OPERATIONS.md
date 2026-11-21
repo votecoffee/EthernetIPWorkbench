@@ -66,6 +66,17 @@ In **Explore**, select **List services** beside the adapter or bridge address fr
 
 The Communications item reports the protocol version, capability flags, CIP over TCP, and Class 0/1 cyclic I/O over UDP. The full flags and raw item bytes are kept, including unrecognized items. An encapsulation status is reported separately from a malformed reply. The advertised capabilities describe the endpoint. Confirm a particular cyclic profile with Forward_Open and capture on the intended path. [Pinned OpENer ListServices implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/enet_encap/encap.c)
 
+### Browse the CIP Object List
+
+In **Explore**, enter the target's known **CIP route** if needed, then select **List objects**. It reads the Message Router's optional Object List at class `0x02`, instance `1`, attribute `1`. The list displays the class IDs in device order. Select a row to fill the class revision address, then use **Read class info** to inspect the class. [Keyence NU-EP1 Message Router Object](https://support.rockwellautomation.com/ci/okcsFattach/get/1091470_5)
+
+~~~powershell
+.\target\release\eipmaster-cli.exe list-objects 192.0.2.10 192.0.2.11
+.\target\release\eipmaster-cli.exe list-objects 192.0.2.10 192.0.2.11 --route 1/3
+~~~
+
+The CLI returns `class_ids` as numeric IDs. Expand **Object List** in Explore for raw bytes, a decode error, or the target or router CIP status. A valid empty list returns `[]`. A rejected or unreadable list returns `null` and exit code 1.
+
 ### Inspect a CIP class
 
 In **Explore**, enter a class ID or select a common attribute to fill in its class. Set **CIP route** when reading through a bridge, then select **Read class info**. The inspection queries class instance zero with seven Get_Attribute_Single requests on one TCP session. The results show the revision, maximum instance ID, instance count, optional instance attributes and services, and maximum attribute IDs. Maximum IDs describe bounds. Use the device manual for the implemented instance and attribute addresses. [Common class attribute formats](https://assets.danfoss.com/documents/366937/BC361183001812en-000201.pdf) · [EtherNet/IP class attribute example](https://product-help.schneider-electric.com/Machine%20Expert/V1.1/en/tm3bcprg/tm3bcprg/TM3_Ethernet_Bus_Coupler/TM3_Ethernet_Bus_Coupler-6.htm)

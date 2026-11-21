@@ -210,6 +210,19 @@ impl super::ProfileAssemblyCheck {
     }
 }
 
+impl super::ObjectList {
+    pub fn report_json(&self) -> Result<String, String> {
+        let mut document = instance_document(
+            &self.batch,
+            super::object_list::MESSAGE_ROUTER_CLASS,
+            super::object_list::MESSAGE_ROUTER_INSTANCE,
+            self.route.as_ref(),
+        )?;
+        document["class_ids"] = json!(self.class_ids);
+        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
+    }
+}
+
 fn instance_json(
     batch: &SavedReadBatch,
     class: u32,
