@@ -24,6 +24,28 @@ pub enum SavedReadOutcome {
     NotAttempted,
 }
 
+impl SavedReadBatch {
+    pub(super) fn is_usable_inspection(&self) -> bool {
+        let mut decoded = false;
+        for entry in &self.results {
+            match &entry.outcome {
+                SavedReadOutcome::Reply(bytes) => {
+                    if !matches!(entry.request.path.decode_reply(bytes, None), Ok(Some(_))) {
+                        return false;
+                    }
+                    decoded = true;
+                }
+                SavedReadOutcome::Rejected(RoutedReadError::Target(EipError::Cip {
+                    status: 0x08 | 0x14,
+                    ..
+                })) => {}
+                _ => return false,
+            }
+        }
+        decoded
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SavedReadMode {
     #[default]

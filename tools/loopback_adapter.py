@@ -255,6 +255,29 @@ def class_info_reply(cip, mode, report):
     return bytes.fromhex("8E 00 00 00 " + values[attribute - 1])
 
 
+def port_info_reply(cip, mode, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    assert len(message) == 8 and message[:5] == bytes.fromhex("0E 03 20 F4 24")
+    instance, attr_tag, attribute = message[5:]
+    assert instance in (0, 1) and attr_tag == 0x30
+    assert route in (b"", b"\x01\x03", b"\x01\x07")
+    report.setdefault("port_reads", []).append([instance, attribute])
+    report["route_hex"] = route.hex()
+    if route == b"\x01\x07":
+        return bytes.fromhex("D2 00 01 01 11 03")
+    if mode == "port-info-optional" and attribute == 10:
+        return bytes.fromhex("8E 00 14 01 02 03")
+    directory = {2: "02 00", 3: "02 00", 8: "01 00",
+                 9: "00 00 00 00 04 00 2C 01 01 00 01 00"}
+    details = {1: "04 00", 2: "2C 01", 3: "02 00 20 F5 24 01",
+               4: "06 55 70 6C 69 6E 6B", 7: "1F 03 2C 01 00 80 FE 00",
+               10: "17 00 00 80"}
+    if mode == "port-info-malformed":
+        details[7] = "1F 03 2C 01 00 80 FE"
+    values = directory if instance == 0 else details
+    return bytes.fromhex("8E 00 00 00 " + values[attribute])
+
+
 def explicit_write_reply(cip, mode, attrs, report):
     route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
     assert route in (b"", b"\x01\x03")
@@ -373,7 +396,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     connected_write = connected and "write" in mode
     connected_size = 4002 if connected_large else 511 if mode == "class3-sized" else 504
     explicit_write = mode.startswith("explicit-write")
-    report_explicit = connected or explicit_write or mode in ("saved-reads", "multiple-service") or mode.startswith("class-info")
+    object_info = mode.startswith(("class-info", "port-info"))
+    report_explicit = connected or explicit_write or mode in ("saved-reads", "multiple-service") or object_info
     multicast_mode = mode.removeprefix("routed-io-")
     multicast = multicast_mode.startswith("multicast")
     valid_multicast = multicast_mode in ("multicast", "multicast-large")
@@ -464,9 +488,10 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                     response = rr_reply(result)
                     tcp.sendall(struct.pack("<HHII8sI", cmd, len(response), SESSION, 0, ctx, 0) + response)
                     continue
-                if mode.startswith("class-info"):
+                if object_info:
                     assert set(items) == {0, 0xB2} and not items[0]
-                    response = rr_reply(class_info_reply(cip, mode, report))
+                    reply = class_info_reply if mode.startswith("class-info") else port_info_reply
+                    response = rr_reply(reply(cip, mode, report))
                     tcp.sendall(struct.pack("<HHII8sI", cmd, len(response), SESSION, 0, ctx, 0) + response)
                     continue
                 if mode in ("saved-reads", "multiple-service"):
@@ -674,7 +699,7 @@ def main():
         "identity-then-owner", "routed-owner", "routed-large-owner",
         "routed-owner-replacement", "routed-owner-unexpected-peer",
         "explicit", "saved-reads", "multiple-service", "large-keyed", "routed", "variable-input", "large-variable-input",
-        "class-info", "class-info-malformed",
+        "class-info", "class-info-malformed", "port-info", "port-info-optional", "port-info-malformed",
         "explicit-write", "explicit-write-review", "explicit-write-gui", "explicit-write-rejected",
         "explicit-write-no-reply", "explicit-write-router-timeout",
         "explicit-write-readback", "explicit-write-readback-mismatch", "explicit-write-readback-rejected",

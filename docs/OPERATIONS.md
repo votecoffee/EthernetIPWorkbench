@@ -59,6 +59,19 @@ In **Explore**, enter a class ID or select a common attribute to fill in its cla
 
 The routed command takes the first bridge's address. The JSON keeps each reply's raw bytes, decoded value or decode error, and CIP status. The inspection returns exit code 0 when at least one field decodes and the only rejections are target statuses `0x08` or `0x14` for unsupported services or attributes. A router rejection, exchange failure, undecodable reply, or lack of a decoded value returns exit code 1.
 
+### Inspect a CIP port
+
+In **Explore → Port Object**, choose **Directory** or **Port instance**. Enter the instance you want and select **Read port info**. Both the GUI and CLI use one registered session with bounded Get_Attribute_Single requests. Leave **CIP route** blank to inspect the directly addressed device, or enter an existing route to inspect the device at its end.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe port-info 127.0.0.1 127.0.0.1 0
+.\target\release\eipmaster-cli.exe port-info 192.0.2.10 192.0.2.11 1 --route 1/3
+~~~
+
+Instance 0 reads the maximum instance ID, instance count, entry-port instance and ordered port type and number pairs. A nonzero instance reads its type, number, Link Object path, name, node address, and routing capability bits where supported. **Entry port instance** identifies the Port Object instance. Use the **Port number** reported by that instance when interpreting the device's CIP topology. The node address describes this device's own address on the port. [Toshiba Port Object attributes](https://toshiba.com/tic/wp-content/uploads/AS3_Embedded_Ethernet_Function_Manual.pdf) · [Schneider Electric Port Object formats and routing bits](https://productinfo.se.com/pm5500/595e2aa946e0fb0001f715da/PM5500%20user%20manual/English/PM5500SeriesUserManualv02_0000044889.ditamap/$/R_Communications_EthernetIP_MessagingExplicitExchanges_PM5500_0000178841)
+
+The report preserves raw replies and shows individual decode errors and CIP status. As with `class-info`, successful fields can accompany unsupported target attributes. Review the device's documented topology when choosing a new route.
+
 ### Review and send an attribute write
 
 Use the documented writable class, instance and attribute. In **Explore**, enter the address and optional CIP route, and select **Stage attribute write**. Enter space-separated hex or select **Enter typed value**, choose a format, and inspect the encoded bytes. Select **Verify target identity**, then review the device's name and identity, the NIC, address, route and exact bytes before selecting **Send reviewed write**. Changing the value or its encoding clears the prior review. The send checks the full identity on the same registered session that carries the write. [Set_Attribute_Single reference](https://product-help.schneider-electric.com/Machine%20Expert/V2.2/en/EtherNetIP_Services/EtherNetIP_Services/modules/set-attribute-si.html)

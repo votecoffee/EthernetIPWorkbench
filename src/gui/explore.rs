@@ -2,7 +2,7 @@ use super::*;
 use assembly_scanner::{
     discovery,
     explicit::{
-        self, AttributeWrite, Class3Size, ClassInfo, ReadPath, Reader, Route, SavedRead,
+        self, AttributeWrite, Class3Size, ClassInfo, PortInfo, ReadPath, Reader, Route, SavedRead,
         SavedReadMode, SavedReadReport, WriteCurrentCheck, WriteInspection, WriteOutcome,
         WriteReport,
     },
@@ -30,6 +30,7 @@ enum Response {
     Discovery(Ipv4Addr, discovery::Report),
     Read(ReadReply),
     ClassInfo(ClassInfo),
+    PortInfo(PortInfo),
     Batch(SavedReadReport),
     SavedReport(PathBuf),
     OpenedWriteDraft(Box<write::Draft>),
@@ -60,6 +61,7 @@ pub(super) struct Explorer {
     selection: Option<Selection>,
     read_result: Option<ReadReply>,
     class_info: Option<ClassInfo>,
+    port_info: Option<PortInfo>,
     batch_mode: SavedReadMode,
     saved_batch: Option<Arc<SavedReadReport>>,
     saved_report: Option<PathBuf>,
@@ -86,6 +88,7 @@ impl Default for Explorer {
             selection: None,
             read_result: None,
             class_info: None,
+            port_info: None,
             batch_mode: SavedReadMode::default(),
             saved_batch: None,
             saved_report: None,
@@ -126,6 +129,7 @@ impl Explorer {
             Ok(Ok(Response::Discovery(nic, report))) => self.discovered = Some((nic, report)),
             Ok(Ok(Response::Read(reply))) => self.read_result = Some(reply),
             Ok(Ok(Response::ClassInfo(info))) => self.class_info = Some(info),
+            Ok(Ok(Response::PortInfo(info))) => self.port_info = Some(info),
             Ok(Ok(Response::Batch(batch))) => self.saved_batch = Some(Arc::new(batch)),
             Ok(Ok(Response::SavedReport(path))) => self.saved_report = Some(path),
             Ok(Ok(Response::OpenedWriteDraft(draft))) => self.write_draft = Some(*draft),
@@ -287,30 +291,49 @@ impl Device {
         ui.separator();
         ui.heading("CIP object and attribute reads");
         ui.label(format!("Adapter or bridge · {}", self.device));
-        egui::ComboBox::from_id_salt("cip-presets")
-            .selected_text("Common attributes")
-            .show_ui(ui, |ui| {
-                for (label, class, attribute) in PRESETS {
-                    if ui.selectable_label(false, label).clicked() {
+        ui.horizontal_wrapped(|ui| {
+            egui::ComboBox::from_id_salt("cip-presets")
+                .selected_text("Common attributes")
+                .show_ui(ui, |ui| {
+                    for (label, class, attribute) in PRESETS {
+                        if ui.selectable_label(false, label).clicked() {
+                            explorer.load(ReadPath {
+                                class,
+                                instance: 1,
+                                attribute: Some(attribute),
+                            });
+                            explorer.name = label.into();
+                            explorer.selection = None;
+                        }
+                    }
+                    if ui.selectable_label(false, "Assembly · Data").clicked() {
                         explorer.load(ReadPath {
-                            class,
-                            instance: 1,
-                            attribute: Some(attribute),
+                            class: 4,
+                            instance: u32::from(self.settings.input_instance),
+                            attribute: Some(3),
                         });
-                        explorer.name = label.into();
+                        explorer.name = "Input assembly data".into();
                         explorer.selection = None;
                     }
-                }
-                if ui.selectable_label(false, "Assembly · Data").clicked() {
-                    explorer.load(ReadPath {
-                        class: 4,
-                        instance: u32::from(self.settings.input_instance),
-                        attribute: Some(3),
-                    });
-                    explorer.name = "Input assembly data".into();
-                    explorer.selection = None;
-                }
-            });
+                });
+            egui::ComboBox::from_id_salt("port-object-presets")
+                .selected_text("Port Object")
+                .show_ui(ui, |ui| {
+                    for (label, instance, attribute) in
+                        [("Directory", 0, 8), ("Port instance", 1, 2)]
+                    {
+                        if ui.selectable_label(false, label).clicked() {
+                            explorer.load(ReadPath {
+                                class: explicit::PORT_OBJECT_CLASS,
+                                instance,
+                                attribute: Some(attribute),
+                            });
+                            explorer.name = format!("Port Object {label}");
+                            explorer.selection = None;
+                        }
+                    }
+                });
+        });
         ui.horizontal_wrapped(|ui| {
             ui.label("CIP route (optional)");
             ui.add(
@@ -334,6 +357,16 @@ impl Device {
                 .clicked()
             {
                 explorer.read_class_info(&self.device, local.as_ref().ok().copied());
+            }
+            if explicit::parse_id(&explorer.class) == Ok(explicit::PORT_OBJECT_CLASS)
+                && ui
+                    .add_enabled(!explorer.busy(), egui::Button::new("Read port info"))
+                    .on_hover_text(
+                        "Read the Port Object directory at instance 0 or inspect a port instance.",
+                    )
+                    .clicked()
+            {
+                explorer.read_port_info(&self.device, local.as_ref().ok().copied());
             }
         });
         let mut typed = explorer.selection.is_some();
@@ -431,6 +464,9 @@ impl Device {
         });
         if let Some(info) = &explorer.class_info {
             class_info::show(ui, info);
+        }
+        if let Some(info) = &explorer.port_info {
+            class_info::show_port(ui, info);
         }
         ui.collapsing("Saved reads", |ui| {
             if batch::controls(

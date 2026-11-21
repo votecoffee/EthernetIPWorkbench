@@ -16,6 +16,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/settings_file.rs | Named profiles, workspace migration, preferences and file replacement |
 | src/explicit.rs and src/discovery.rs | Registered TCP exchange, identity, CIP reads, typed reply interpretation and UDP ListIdentity |
 | src/explicit/class_info.rs and src/gui/explore/class_info.rs | Common class attribute inspection, decoding and the Explore details view |
+| src/explicit/port_info.rs | Read-only CIP Port Object directory and instance inspection |
 | src/explicit/write.rs, src/gui/explore/write.rs and src/bin/eipmaster-cli/writes.rs | Identity-checked Set_Attribute_Single, GUI review and CLI preview/apply |
 | src/explicit/write_draft.rs | Versioned TOML write drafts and transport dispatch shared by Explore and the CLI |
 | src/explicit/write_receipt.rs | Offline loading and read-only follow-up for completed write receipts |
@@ -120,7 +121,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 |---|---|
 | Profiles, mapping, CLI and capture | python tools/test_cli.py target/release/eipmaster-cli.exe .local/cli-check-01 |
 | Explicit write preview, typed encoding, identity pin, current-value check, readback, Class 3 close, draft portability and receipt follow-up | python tools/test_explicit_write.py target/release/eipmaster-cli.exe .local/write-check-01 |
-| EDS assembly-member sizes and mapping suggestions, discovery, class inspection, direct and routed reads, saved requests, target identity, keyed and routed cyclic I/O, extended CIP ports and hexadecimal links | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
+| EDS assembly-member sizes and mapping suggestions, discovery, class and Port Object inspection, direct and routed reads, saved requests, target identity, keyed and routed cyclic I/O, extended CIP ports and hexadecimal links | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
 | Variable-size T→O, EDS provenance, CSV and all three exports | python tools/test_variable_input.py target/release/eipmaster-cli.exe .local/variable-check-01 |
 | Direct and routed multicast T→O, returned endpoints and failed setup cleanup | python tools/test_multicast.py target/release/eipmaster-cli.exe .local/multicast-check-01 |
 | Default unicast UDP 2222, standard and routed Large Forward_Open, and port conflicts | python tools/test_default_unicast.py target/release/eipmaster-cli.exe .local/default-unicast-check-01 |
@@ -144,6 +145,7 @@ Use `--default-unicast --seconds 3` to verify OpENer's implicit 2222 input desti
 Build the headless GUI tests with `cargo test --locked --offline --release --bin assembly-scanner --no-run`. Pass the printed test executable path to `python tools/test_routed_owner.py <test-exe> .local/routed-owner-check-01`. This exercises standard and keyed Large Forward_Open, staged outputs, configuration in the open path, the replacement-serial check, and cleanup after an unexpected UDP destination. Use the same test executable with `tools/test_opener.py --owner-test <test-exe> --seconds 3` (in addition to its three positional arguments) for direct Exclusive Owner against the independent OpENer stack. The upstream sample application mirrors the 32-byte output assembly into the input assembly. [OpENer sample application](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/ports/WIN32/sample_application/sampleapplication.c)
 
 Run the ignored test `explore_reads_class_details_without_changing_the_saved_requests` with the localhost fixture in `class-info` mode to verify routed class inspection from Explore.
+Run `explore_inspects_a_routed_port_without_changing_saved_requests` with the `port-info-optional` fixture mode to verify the routed Port Object view, decoded node address and optional CIP rejection.
 
 Run the ignored tests `explore_requires_fresh_review_after_editing_a_staged_write` and `explore_previews_typed_bytes_and_clears_review_on_format_change` with separate localhost fixtures in `explicit-write-gui` mode. They verify review invalidation, the encoded preview, and the matched readback.
 

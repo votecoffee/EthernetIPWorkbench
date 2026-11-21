@@ -128,6 +128,18 @@ impl ClassInfo {
     }
 }
 
+impl super::PortInfo {
+    pub fn report_json(&self) -> Result<String, String> {
+        let mut document = self.batch.report_document()?;
+        document["class"] = json!(super::PORT_OBJECT_CLASS);
+        document["instance"] = json!(self.instance);
+        if let Some(route) = &self.route {
+            document["route"] = json!(route);
+        }
+        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
+    }
+}
+
 impl ConnectedPacketBatch {
     /// Format the results, any whole-packet failure, and the Class 3 close outcome.
     pub fn report_json(&self) -> Result<String, String> {

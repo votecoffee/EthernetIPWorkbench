@@ -21,6 +21,7 @@ mod batch;
 mod class_info;
 mod connected;
 mod multiple;
+mod port_info;
 mod report;
 mod route;
 mod write;
@@ -36,6 +37,7 @@ pub use connected::{
     run_saved_reads_connected_packet,
 };
 pub use multiple::run_saved_reads_packet;
+pub use port_info::{PORT_OBJECT_CLASS, PortInfo, read_port_info};
 pub use report::read_reply_document;
 pub use route::{Route, RoutedReadError};
 pub use write::{
@@ -102,6 +104,12 @@ impl ReadPath {
                 && let Some(attribute @ 1..=7) = self.attribute
             {
                 return class_info::decode(attribute, bytes).map(Some);
+            }
+            if self.class == PORT_OBJECT_CLASS
+                && let Some(attribute) = self.attribute
+                && let Some(decoded) = port_info::decode(self.instance, attribute, bytes)
+            {
+                return decoded.map(Some);
             }
             return Ok(self.describe(bytes));
         };

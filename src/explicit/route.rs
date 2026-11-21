@@ -137,6 +137,42 @@ impl fmt::Display for Route {
 }
 
 impl Route {
+    pub(super) fn from_port_segment(bytes: &[u8]) -> Result<Self, &'static str> {
+        let (&header, mut rest) = bytes.split_first().ok_or("Port segment is empty")?;
+        if header & 0xe0 != 0 {
+            return Err("Expected a CIP port segment");
+        }
+        let mut length = 1;
+        if header & 0x10 != 0 {
+            let (&size, link) = rest
+                .split_first()
+                .ok_or("Port segment is missing its link length")?;
+            length = usize::from(size);
+            rest = link;
+        }
+        let mut port = u16::from(header & 0x0f);
+        if port == 0x0f {
+            let (number, link) = rest
+                .split_first_chunk()
+                .ok_or("Extended port number is truncated")?;
+            port = u16::from_le_bytes(*number);
+            rest = link;
+        }
+        if port == 0 || length == 0 {
+            return Err("Port segment requires a nonzero port and link length");
+        }
+        let padding = (bytes.len() - rest.len() + length) % 2;
+        if rest.len() != length + padding || (padding != 0 && rest[length] != 0) {
+            return Err("Port segment length or padding does not match its link size");
+        }
+        let link = if length == 1 {
+            Link::Node(rest[0])
+        } else {
+            Link::Extended(rest[..length].to_vec())
+        };
+        Ok(Self(vec![Hop { port, link }]))
+    }
+
     pub(crate) fn port_segments(&self) -> Vec<u8> {
         let mut path = Vec::new();
         for hop in &self.0 {

@@ -1,7 +1,4 @@
-use super::{
-    EipError, ReadPath, Route, RoutedReadError, SavedRead, SavedReadBatch, SavedReadOutcome, le16,
-    run_saved_reads,
-};
+use super::{ReadPath, Route, SavedRead, SavedReadBatch, le16, run_saved_reads};
 use std::net::Ipv4Addr;
 
 const ATTRIBUTES: [&str; 7] = [
@@ -24,23 +21,7 @@ impl ClassInfo {
     /// A usable inspection decoded at least one value and reached the end of the batch.
     /// Targets may reject unsupported common class attributes.
     pub fn is_usable(&self) -> bool {
-        let mut decoded = false;
-        for entry in &self.batch.results {
-            match &entry.outcome {
-                SavedReadOutcome::Reply(bytes) => {
-                    if !matches!(entry.request.path.decode_reply(bytes, None), Ok(Some(_))) {
-                        return false;
-                    }
-                    decoded = true;
-                }
-                SavedReadOutcome::Rejected(RoutedReadError::Target(EipError::Cip {
-                    status: 0x08 | 0x14,
-                    ..
-                })) => {}
-                _ => return false,
-            }
-        }
-        decoded
+        self.batch.is_usable_inspection()
     }
 }
 

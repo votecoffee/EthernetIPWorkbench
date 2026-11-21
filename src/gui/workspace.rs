@@ -895,6 +895,44 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode port-info-optional on localhost"]
+    fn explore_inspects_a_routed_port_without_changing_saved_requests() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[("Serial through bridge", 6, Some("1/3"))]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "Port Object");
+        click(&mut device, &ctx, size, "Port instance");
+        click(&mut device, &ctx, size, "Read port info");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Port Object instance 1",
+            "Route 1/3",
+            "Port number · Reply",
+            "Routing capabilities · CIP rejection",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Port and node address · Reply");
+        let labels = draw(&mut device, &ctx, size);
+        for expected in ["300/hex:0080FE", "0000  1F 03 2C 01 00 80 FE 00"] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        assert_eq!(device.snapshot(), saved);
+        assert!(device.connection.is_none());
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode saved-reads on localhost"]
     fn runs_and_displays_saved_reads_from_explore_headlessly() {
         let ctx = egui::Context::default();

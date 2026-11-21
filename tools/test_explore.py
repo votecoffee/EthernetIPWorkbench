@@ -191,6 +191,56 @@ def check_class_info(exe, root):
     assert result.returncode == 1 and "CIP class and attribute IDs must be nonzero" in result.stderr
 
 
+def check_port_info(exe, root):
+    for case, instance, mode, route, exit_code in (
+        ("directory", 0, "port-info", None, 0),
+        ("routed", 1, "port-info", "1/3", 0),
+        ("optional", 1, "port-info-optional", None, 0),
+        ("malformed", 1, "port-info-malformed", None, 1),
+        ("router-rejected", 0, "port-info", "1/7", 1),
+    ):
+        command = [exe, "port-info", LOCAL, LOCAL, str(instance)]
+        if route:
+            command.extend(("--route", route))
+        result, peer = with_adapter(root, f"port-info-{case}", command, mode)
+        assert result.returncode == exit_code and not result.stderr, (result.stdout, result.stderr)
+        report = json.loads(result.stdout)
+        (root / f"port-info-{case}.json").write_text(result.stdout, encoding="utf-8")
+        assert (report["class"], report["instance"], report.get("route")) == (0xF4, instance, route)
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        ids = [2, 3, 8, 9] if instance == 0 else [1, 2, 3, 4, 7, 10]
+        assert peer["port_reads"] == [[instance, idx] for idx in ids]
+        assert [row["path"] for row in report["results"]] == [
+            {"class": 0xF4, "instance": instance, "attribute": idx} for idx in ids
+        ]
+        replies = dict(zip(ids, report["results"]))
+        if case == "router-rejected":
+            assert peer["route_hex"] == "0107"
+            assert all(row["reply_from"] == "router" and row["extended_status"] == [0x0311]
+                       for row in replies.values())
+            continue
+        if instance == 0:
+            assert replies[8]["decoded"] == "1"
+            assert replies[9]["decoded"] == "[type 0 / port 0, type 4 / port 300, type 1 / port 1]"
+            continue
+        assert [replies[idx]["decoded"] for idx in (1, 2, 3, 4)] == ["4", "300", "20 F5 24 01", "Uplink"]
+        if case == "malformed":
+            assert replies[7]["data_hex"] == "1F 03 2C 01 00 80 FE"
+            assert "padding" in replies[7]["decode_error"] and replies[7]["decoded"] is None
+        else:
+            assert replies[7]["decoded"] == "300/hex:0080FE"
+        if case == "optional":
+            assert replies[10]["general_status"] == 0x14 and replies[10]["extended_status"] == [0x0302]
+        else:
+            assert replies[10]["decoded"] == (
+                "0x80000017 [Incoming unconnected, Outgoing unconnected, Incoming Class 0/1, Incoming Class 2/3]"
+            )
+        if route:
+            assert peer["route_hex"] == "0103"
+            assert all(row["reply_from"] == "target" for row in replies.values())
+    print("Port Object directory, routed port details, and partial or malformed replies passed.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
@@ -384,6 +434,7 @@ def main():
     failure = json.loads(rejected.stdout)
     assert failure["general_status"] == 0x14 and failure["extended_status"] == [0x0302]
     check_class_info(exe, root)
+    check_port_info(exe, root)
 
     saved = root / "saved.toml"
     source = PROFILE.read_text(encoding="utf-8")
