@@ -107,6 +107,19 @@ Selecting a choice fills the attribute and request name. Use **Read** to query t
 
 The CLI `class-info` JSON exposes the class revision and other replies alongside numeric `optional_instance_attributes` and `optional_services` arrays. An empty array records a valid list with no entries. A `null` value records an unavailable or malformed list. The individual result shows the raw bytes, error or CIP status. [Danfoss common class attribute example](https://assets.danfoss.com/documents/366937/BC361183001812en-000201.pdf)
 
+### Read a CIP attribute list
+
+In **Explore**, set the class, instance, and optional route. Open **Attribute list read** and enter one space-separated `id:reply-bytes` pair per attribute. For Identity class 1, instance 1, use `1:2 4:2 6:4` for vendor ID, revision, and serial number, then select **Read attribute list**.
+
+```powershell
+.\target\release\eipmaster-cli.exe read-attribute-list 127.0.0.1 127.0.0.1 1 1 1:2 4:2 6:4
+.\target\release\eipmaster-cli.exe read-attribute-list 192.0.2.10 192.0.2.11 1 1 1:2 4:2 6:4 --route 1/3
+```
+
+The target must support Get_Attribute_List on the selected object. Use documented fixed reply lengths. The request carries the attribute IDs, and the client uses the supplied widths to separate the returned values. Each entry reports its own status and raw value when available. The full reply body is available for diagnosing malformed lists or incorrect widths. [Rockwell CIP attribute list examples](https://literature.rockwellautomation.com/idc/groups/literature/documents/pm/1756-pm020_-en-p.pdf) · [Pinned OpENer Get_Attribute_List implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipcommon.c#L1114)
+
+The CLI prints JSON and exits 0 when all requested attributes succeed and the list decodes. A mixed reply returns exit code 1 and includes the successful values alongside each rejection. Review `general_status`, `extended_status`, and `reply_from` for a whole-service failure, or `decode_error` for a malformed list.
+
 ### Inspect a CIP port
 
 In **Explore → Port Object**, choose **Directory** or **Port instance**. Enter the instance you want and select **Read port info**. Both the GUI and CLI use one registered session with bounded Get_Attribute_Single requests. Leave **CIP route** blank to inspect the directly addressed device, or enter an existing route to inspect the device at its end.

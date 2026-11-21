@@ -237,6 +237,27 @@ def identity_attribute_reply(request, attrs):
     return bytes.fromhex("8E 00 00 00") + attrs[attribute]
 
 
+def attribute_list_reply(cip, mode, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    report.setdefault("attribute_list_requests", []).append(message.hex())
+    report["attribute_list_route"] = route.hex()
+    assert message == bytes.fromhex("03 02 20 01 24 01 03 00 01 00 00 01 06 00")
+    assert route in (b"", b"\x01\x03", b"\x01\x07")
+    if route == b"\x01\x07":
+        return bytes.fromhex("D2 00 01 01 11 03")
+    if mode == "attribute-list-unsupported":
+        return bytes.fromhex("83 00 08 00")
+    missing = mode == "attribute-list-mixed"
+    rows = struct.pack("<HHBBH", 3, 1, 0, 0, 123)
+    rows += struct.pack("<HBB", 0x100, 0x14 if missing else 0, 0)
+    if not missing:
+        rows += b"\xC5"
+    rows += struct.pack("<HBBI", 6, 0, 0, 0x12345678)
+    if mode == "attribute-list-malformed":
+        rows += b"\xFF"
+    return bytes((0x83, 0, 0x0A if missing else 0, 0)) + rows
+
+
 def class_info_reply(cip, mode, report):
     route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
     assert len(message) == 8 and message[:7] == bytes.fromhex("0E 03 20 01 24 00 30")
@@ -547,6 +568,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     connected_size = 4002 if connected_large else 511 if mode == "class3-sized" else 504
     explicit_write = mode.startswith("explicit-write")
     object_readers = {
+        "attribute-list": attribute_list_reply,
         "class-info": class_info_reply,
         "port-info": port_info_reply,
         "tcpip-info": tcpip_info_reply,
@@ -939,6 +961,7 @@ def main():
         "identity-then-owner", "routed-owner", "routed-large-owner",
         "routed-owner-replacement", "routed-owner-unexpected-peer",
         "explicit", "saved-reads", "multiple-service", "large-keyed", "routed", "variable-input", "large-variable-input",
+        "attribute-list", "attribute-list-mixed", "attribute-list-malformed", "attribute-list-unsupported",
         "class-info", "class-info-malformed", "class-info-empty", "port-info", "port-info-optional", "port-info-malformed",
         "tcpip-info", "tcpip-info-optional", "tcpip-info-malformed",
         "link-info", "link-info-optional", "link-info-malformed",

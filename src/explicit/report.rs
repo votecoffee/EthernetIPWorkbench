@@ -1,12 +1,63 @@
 use super::{
-    Class3Size, ClassInfo, ConnectedPacketBatch, ConnectedReadBatch, EipError, ReadPath, Route,
-    RoutedReadError, SavedReadBatch, SavedReadOutcome, SavedReadReport, WriteDraft,
-    WriteInspection,
+    AttributeListReport, Class3Size, ClassInfo, ConnectedPacketBatch, ConnectedReadBatch, EipError,
+    ReadPath, Route, RoutedReadError, SavedReadBatch, SavedReadOutcome, SavedReadReport,
+    WriteDraft, WriteInspection,
 };
 use crate::model::{Selection, hex};
 use crate::scanner::CloseOutcome;
 use serde_json::{Value, json};
 use std::net::Ipv4Addr;
+
+impl AttributeListReport {
+    pub fn report_json(&self) -> Result<String, String> {
+        let mut document = match &self.reply {
+            Ok(reply) => {
+                let mut report = json!({
+                    "reply_from": "target",
+                    "general_status": reply.general_status,
+                    "extended_status": reply.extended_status,
+                    "data_hex": hex(&reply.body),
+                });
+                match &reply.entries {
+                    Ok(Some(entries)) => {
+                        report["results"] = json!(entries.iter().map(|entry| {
+                            let path = ReadPath {
+                                attribute: Some(entry.attribute.into()),
+                                ..self.path
+                            };
+                            json!({
+                                "attribute": entry.attribute,
+                                "status": entry.status,
+                                "data_hex": entry.data.as_deref().map(hex),
+                                "decoded": entry.data.as_deref()
+                                    .and_then(|data| path.decode_reply(data, None).ok().flatten()),
+                            })
+                        }).collect::<Vec<_>>());
+                    }
+                    Ok(None) => {}
+                    Err(error) => report["decode_error"] = json!(error),
+                }
+                report
+            }
+            Err(error) => read_reply_document(
+                self.adapter_or_bridge,
+                self.path,
+                self.route.as_ref(),
+                None,
+                Err(error),
+            )
+            .unwrap_or_else(|error| json!({"error": error})),
+        };
+        document["service"] = json!("Get_Attribute_List");
+        document["adapter_or_bridge"] = json!(self.adapter_or_bridge);
+        document["local_ip"] = json!(self.local_ip);
+        document["path"] = json!(self.path);
+        document["route"] = json!(self.route);
+        document["requested_attributes"] = json!(self.fields);
+        document["complete"] = json!(self.is_complete());
+        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
+    }
+}
 
 impl WriteDraft {
     /// Describe the exact wire bytes and transport shared by write previews and receipts.

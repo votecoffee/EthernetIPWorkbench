@@ -18,6 +18,7 @@ use std::{
     time::Duration,
 };
 mod assembly_info;
+mod attribute_list;
 mod attributes;
 mod batch;
 mod class_info;
@@ -37,6 +38,10 @@ mod write;
 mod write_draft;
 mod write_receipt;
 pub use assembly_info::{ASSEMBLY_CLASS, AssemblyInfo, read_assembly_info};
+pub use attribute_list::{
+    AttributeListEntry, AttributeListReply, AttributeListReport, AttributeWidth,
+    parse_attribute_widths, read_attribute_list,
+};
 pub use attributes::known_attributes;
 pub use batch::{
     SavedReadBatch, SavedReadMode, SavedReadOutcome, SavedReadReport, SavedReadResult,

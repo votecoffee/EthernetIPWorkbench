@@ -19,6 +19,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/discovery/services.rs and src/gui/explore/services.rs | Unicast UDP and TCP ListServices and the advertised capabilities view |
 | src/explicit/class_info.rs and src/gui/explore/class_info.rs | Common class attribute inspection, decoding and the Explore details view |
 | src/explicit/attributes.rs and src/gui/explore/attributes.rs | Common attribute names and same-target advertised choices in Explore |
+| src/explicit/attribute_list.rs and src/gui/explore/attribute_list.rs | Direct and routed Get_Attribute_List, fixed-width reply decoding, and Explore results |
 | src/explicit/object_list.rs and src/gui/explore/object_list.rs | Message Router Object List and class selection in Explore |
 | src/explicit/instances.rs and src/gui/explore/instances.rs | Bounded CIP instance paging and instance selection |
 | src/explicit/port_info.rs | Read-only CIP Port Object directory and instance inspection |

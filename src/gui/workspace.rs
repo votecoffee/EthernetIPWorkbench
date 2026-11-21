@@ -934,6 +934,45 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode attribute-list-mixed on localhost"]
+    fn explore_reads_a_routed_attribute_list_with_a_mixed_reply() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[("Serial through bridge", 6, Some("1/3"))]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "Attribute list read");
+        click(&mut device, &ctx, size, "1:2 2:2 4:2");
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+            events: vec![egui::Event::Text("1:2 0x100:1 6:4".into())],
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| device.show(ctx, &[]));
+        click(&mut device, &ctx, size, "Read attribute list");
+        assert!(device.explorer.busy());
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Route 1/3",
+            "Attribute list status 0x0A",
+            "Attribute 0x1 · Reply",
+            "Attribute 0x100 · Status 0x14",
+            "Attribute 0x6 · Reply",
+            "Attribute list reply bytes",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        assert_eq!(device.snapshot(), saved);
+        assert!(device.connection.is_none());
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode instance-list-gui on localhost"]
     fn explore_pages_through_a_routed_instance_list() {
         let ctx = egui::Context::default();

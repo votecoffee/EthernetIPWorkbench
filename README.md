@@ -79,6 +79,8 @@ For a documented field within a reply, enable **Decode reply field** and enter i
 
 Select **Read class info** beside the class field to inspect its revision, instance limits, and optional attributes and services advertised by the device. Expand a result for raw bytes or CIP status. The CLI `class-info` command provides the same inspection as JSON. [Class inspection](docs/OPERATIONS.md#inspect-a-cip-class)
 
+Open **Attribute list read** to request several documented fixed-width attributes from the selected CIP instance in one exchange. Enter each attribute ID with its reply length in bytes. The GUI and `read-attribute-list` CLI report each returned value or rejection. [Attribute list reads](docs/OPERATIONS.md#read-a-cip-attribute-list)
+
 Choose **Browse attributes** to fill the attribute field from common choices or optional instance attributes advertised by the target. Then choose **Read** or save the address as a request. [Attribute browsing](docs/OPERATIONS.md#browse-cip-attributes)
 
 Select **List objects** to browse the classes advertised by a device's optional Message Router Object List. Selecting a class fills the read form for class inspection. The CLI `list-objects` command returns the same class IDs and raw reply. [Object List inspection](docs/OPERATIONS.md#browse-the-cip-object-list)
@@ -121,6 +123,7 @@ Reopen a saved current-value check in Explore or with `write-receipt <file.json>
 .\target\release\eipmaster-cli.exe discover 127.0.0.1 127.0.0.1
 .\target\release\eipmaster-cli.exe read 127.0.0.1 127.0.0.1 0x01 1 6
 .\target\release\eipmaster-cli.exe class-info 127.0.0.1 127.0.0.1 0x01
+.\target\release\eipmaster-cli.exe read-attribute-list 127.0.0.1 127.0.0.1 1 1 1:2 4:2 6:4
 .\target\release\eipmaster-cli.exe read 192.0.2.10 192.0.2.11 0x01 1 6 --route 1/3
 .\target\release\eipmaster-cli.exe read-saved .local\device.toml "Serial number"
 .\target\release\eipmaster-cli.exe read-saved-all .local\device.toml

@@ -672,6 +672,54 @@ def check_instance_list(exe, root):
     print("Instance browsing passed sparse, routed, terminal, unsupported, and malformed replies.")
 
 
+def check_attribute_list(exe, root):
+    command = [exe, "read-attribute-list", LOCAL, LOCAL, "0x01", "1"]
+    for case, mode, route, status in (
+        ("attribute-list", "attribute-list", None, 0),
+        ("attribute-list-routed", "attribute-list-mixed", "1/3", 0x0A),
+        ("attribute-list-malformed", "attribute-list-malformed", None, 0),
+        ("attribute-list-unsupported", "attribute-list-unsupported", None, 0x08),
+        ("attribute-list-router-error", "attribute-list", "1/7", 1),
+    ):
+        args = [*command, "1:2", "0x100:1", "6:4", *(("--route", route) if route else ())]
+        result, peer = with_adapter(root, case, args, mode)
+        (root / f"{case}.json").write_text(result.stdout, encoding="utf-8")
+        assert result.returncode == (case != "attribute-list") and not result.stderr
+        assert peer["attribute_list_requests"] == ["0302200124010300010000010600"]
+        assert peer["attribute_list_route"] == {"1/3": "0103", "1/7": "0107", None: ""}[route]
+        assert peer["registrations"] == 1 and peer["unregistered"]
+        report = json.loads(result.stdout)
+        assert report["service"] == "Get_Attribute_List" and report["general_status"] == status
+        assert report["complete"] == (case == "attribute-list")
+        assert report["path"] == {"class": 1, "instance": 1, "attribute": None}
+        assert report["requested_attributes"] == [
+            {"attribute": 1, "bytes": 2}, {"attribute": 0x100, "bytes": 1}, {"attribute": 6, "bytes": 4},
+        ]
+        if case in ("attribute-list", "attribute-list-routed"):
+            first, middle, last = report["results"]
+            assert (first["data_hex"], first["decoded"]) == ("7B 00", "123")
+            assert (last["data_hex"], last["decoded"]) == ("78 56 34 12", "0x12345678")
+            assert [entry["attribute"] for entry in report["results"]] == [1, 0x100, 6]
+            assert (middle["status"], middle["data_hex"]) == ((0x14, None) if route else (0, "C5"))
+        else:
+            assert "results" not in report
+        if case == "attribute-list-malformed":
+            assert report["data_hex"].endswith("FF")
+            assert report["decode_error"] == "1 unexpected bytes after the attribute list"
+        if case == "attribute-list-router-error":
+            assert (report["reply_from"], report["extended_status"]) == ("router", [0x0311])
+        else:
+            assert report["reply_from"] == "target"
+    for specs, error in (
+        ([], b"Enter from 1 to 64 attributes"),
+        (["1:2", "0x01:2"], b"Attribute IDs must be nonzero and unique"),
+        (["1:65535"], b"Declared reply exceeds"),
+    ):
+        invalid = subprocess.run([*command, *specs], capture_output=True, timeout=5, creationflags=NO_WINDOW)
+        assert invalid.returncode == 1 and error in invalid.stderr
+    print("Get_Attribute_List passed direct, routed mixed-status, malformed, unsupported, and router rejection checks.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
@@ -866,6 +914,7 @@ def main():
     failure = json.loads(rejected.stdout)
     assert failure["general_status"] == 0x14 and failure["extended_status"] == [0x0302]
     check_class_info(exe, root)
+    check_attribute_list(exe, root)
     check_port_info(exe, root)
     check_tcpip_info(exe, root)
     check_link_info(exe, root)

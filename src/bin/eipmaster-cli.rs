@@ -49,6 +49,7 @@ Usage:
   eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
   eipmaster-cli class-info <adapter-or-bridge-ipv4> <local-ipv4> <class> [--route <port/link/...>]
   eipmaster-cli list-objects <adapter-or-bridge-ipv4> <local-ipv4> [--route <port/link/...>]
+  eipmaster-cli read-attribute-list <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <id:reply-bytes>... [--route <port/link/...>]
   eipmaster-cli list-instances <adapter-or-bridge-ipv4> <local-ipv4> <class> [<after-instance>] [--route <port/link/...>]
   eipmaster-cli port-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli tcpip-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
@@ -165,6 +166,31 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                 },
             };
             reads::single(adapter, local, path, route.as_ref(), None)
+        }
+        [command, adapter, local, class, instance, arguments @ ..]
+            if command == "read-attribute-list" =>
+        {
+            let route_start = arguments
+                .iter()
+                .position(|part| part == "--route")
+                .unwrap_or(arguments.len());
+            let (fields, endpoint_options) = arguments.split_at(route_start);
+            let (adapter, local, route) = explicit_endpoint(adapter, local, endpoint_options)?;
+            let fields = fields
+                .iter()
+                .map(|field| field.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let report = explicit::read_attribute_list(
+                adapter,
+                local,
+                explicit::parse_id(&class.to_string_lossy())?,
+                explicit::parse_id(&instance.to_string_lossy())?,
+                explicit::parse_attribute_widths(&fields)?,
+                route,
+            )?;
+            println!("{}", report.report_json()?);
+            Ok(report.is_complete())
         }
         [command, adapter, local, class, options @ ..] if command == "class-info" => {
             let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;

@@ -332,6 +332,23 @@ def check_object_list(cli, adapter, root):
     print("OpENer reported the optional Message Router Object List as unsupported.")
 
 
+def check_attribute_list(cli, adapter, root):
+    root.mkdir()
+    with run_adapter(adapter, root):
+        result = subprocess.run(
+            [cli, "read-attribute-list", ADAPTER, "127.0.0.1", "1", "1", "1:2", "4:2", "6:4"],
+            capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    (root / "result.json").write_bytes(result.stdout)
+    assert result.returncode == 0 and not result.stderr, (result.stdout, result.stderr)
+    report = json.loads(result.stdout)
+    assert report["general_status"] == 0 and report["complete"]
+    assert [(entry["attribute"], entry["status"], entry["data_hex"]) for entry in report["results"]] == [
+        (1, 0, "01 00"), (4, 0, "02 03"), (6, 0, "15 CD 5B 07"),
+    ]
+    print("OpENer returned three fixed-width Identity Object attributes in one list reply.")
+
+
 def check_instance_list(cli, adapter, root):
     root.mkdir()
     with run_adapter(adapter, root):
@@ -770,6 +787,7 @@ def main():
         check_list_services(cli, adapter, root / "list-services")
         check_explore(cli, adapter, root / "extended", identity, args.seconds)
         check_class_info(cli, adapter, root / "class-info")
+        check_attribute_list(cli, adapter, root / "attribute-list")
         check_object_list(cli, adapter, root / "object-list")
         check_instance_list(cli, adapter, root / "instance-list")
         check_tcpip_info(cli, adapter, root / "tcpip-info")

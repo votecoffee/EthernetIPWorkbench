@@ -2,14 +2,15 @@ use super::*;
 use assembly_scanner::{
     discovery::{self, DiscoveryTransport, ServicesTransport},
     explicit::{
-        self, AssemblyInfo, AttributeWrite, Class3Size, ClassInfo, InstancePage, LinkInfo,
-        ManagerInfo, ObjectList, PortInfo, ProfileAssemblyCheck, QosInfo, ReadPath, Reader, Route,
-        SavedRead, SavedReadMode, SavedReadReport, TcpIpInfo, WriteCurrentCheck, WriteInspection,
-        WriteOutcome, WriteReport,
+        self, AssemblyInfo, AttributeListReport, AttributeWrite, Class3Size, ClassInfo,
+        InstancePage, LinkInfo, ManagerInfo, ObjectList, PortInfo, ProfileAssemblyCheck, QosInfo,
+        ReadPath, Reader, Route, SavedRead, SavedReadMode, SavedReadReport, TcpIpInfo,
+        WriteCurrentCheck, WriteInspection, WriteOutcome, WriteReport,
     },
 };
 use std::sync::Arc;
 
+mod attribute_list;
 mod attributes;
 mod batch;
 mod class_info;
@@ -33,6 +34,7 @@ enum Response {
     Discovery(Ipv4Addr, discovery::Report),
     Services(discovery::ServicesReport),
     Read(ReadReply),
+    AttributeList(AttributeListReport),
     ClassInfo(ClassInfo),
     InstancePage(InstancePage),
     ObjectList(ObjectList),
@@ -75,6 +77,8 @@ pub(super) struct Explorer {
     name: String,
     selection: Option<Selection>,
     read_result: Option<ReadReply>,
+    attribute_list_spec: String,
+    attribute_list: Option<AttributeListReport>,
     class_info: Option<ClassInfo>,
     instance_page: Option<InstancePage>,
     object_list: Option<ObjectList>,
@@ -113,6 +117,8 @@ impl Default for Explorer {
             name: String::new(),
             selection: None,
             read_result: None,
+            attribute_list_spec: String::new(),
+            attribute_list: None,
             class_info: None,
             instance_page: None,
             object_list: None,
@@ -163,6 +169,7 @@ impl Explorer {
             Ok(Ok(Response::Discovery(nic, report))) => self.discovered = Some((nic, report)),
             Ok(Ok(Response::Services(report))) => self.services = Some(report),
             Ok(Ok(Response::Read(reply))) => self.read_result = Some(reply),
+            Ok(Ok(Response::AttributeList(report))) => self.attribute_list = Some(report),
             Ok(Ok(Response::ClassInfo(info))) => self.class_info = Some(info),
             Ok(Ok(Response::InstancePage(page))) => self.instance_page = Some(page),
             Ok(Ok(Response::ObjectList(list))) => self.object_list = Some(list),
@@ -622,6 +629,7 @@ impl Device {
                 }
             }
         });
+        explorer.show_attribute_list(ui, &self.device, local.as_ref().ok().copied());
         if let Some(info) = &explorer.class_info {
             class_info::show(ui, info);
         }

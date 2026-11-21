@@ -834,3 +834,9 @@ Pinned Windows OpENer rejected the optional Assembly service with CIP status `0x
 The Windows localhost tests verified numeric optional instance-attribute and service arrays from class replies. Valid empty, unsupported, routed rejection, and malformed lists retained their individual outcomes. The headless Explore test selected the advertised attribute `0x0100` through route `1/3`, displayed a common attribute with its advertised marker, and confirmed that direct reads offered the common attribute without the routed device's advertised IDs. Selection filled the read form and preserved the saved requests.
 
 Pinned Windows OpENer confirmed the Assembly class metadata result and the separate optional-list outcomes. The selection workflow was verified using the synthetic routed fixture. Physical-device verification remains open. [Danfoss common class attribute example](https://assets.danfoss.com/documents/366937/BC361183001812en-000201.pdf)
+
+## CIP attribute list reads
+
+The Windows loopback fixture checked that one registered session sent one Get_Attribute_List request with the three requested IDs in order. Direct reads returned all three values. Through route `1/3`, the fixture returned general status `0x0A` and attribute status `0x14` between two successful values. The CLI and the headless Explore panel displayed all three outcomes. The CLI also preserved raw bytes for a malformed reply and distinguished a target service rejection from a bridge rejection.
+
+Pinned Windows OpENer returned the Identity Object's vendor ID, revision, and serial number in a single successful list reply. Physical target and bridge verification remain open. [Pinned OpENer Get_Attribute_List implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipcommon.c#L1114)
