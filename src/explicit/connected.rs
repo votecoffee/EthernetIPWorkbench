@@ -1,8 +1,8 @@
 use super::multiple::{decode_packet, request_packet};
 use super::{
-    Command, EipError, Envelope, Item, Result, Route, RoutedReadError, SavedRead, SavedReadBatch,
-    SavedReadMode, SavedReadResult, Session, batch::run_ordered, cpf, is_unicast, item_type, le16,
-    le32, protocol, read_message, reply_body, validate_saved_reads,
+    Command, EipError, Envelope, Item, MAX_CIP_PATH_BYTES, Result, Route, RoutedReadError,
+    SavedRead, SavedReadBatch, SavedReadMode, SavedReadResult, Session, batch::run_ordered, cpf,
+    is_unicast, item_type, le16, le32, protocol, read_message, reply_body, validate_saved_reads,
 };
 use crate::scanner::{CloseOutcome, encode_large_open, forward_close};
 use ethernetip_connections::forward_open::{
@@ -223,8 +223,8 @@ pub(super) fn with_connection<T>(
             .into());
     }
 
-    let mut session = Session::open(adapter, local).map_err(|error| error.to_string())?;
     let open = open_request(route, size).map_err(|error| error.to_string())?;
+    let mut session = Session::open(adapter, local).map_err(|error| error.to_string())?;
     let (service, request, name) = if size.uses_large_forward_open() {
         (0x5b, encode_large_open(&open), "Large Forward_Open")
     } else {
@@ -265,7 +265,19 @@ pub(super) fn with_connection<T>(
     Ok((result, forward_close))
 }
 
+pub(super) fn connection_path(route: Option<&Route>) -> std::result::Result<Vec<u8>, String> {
+    let mut path = route.map(Route::port_segments).unwrap_or_default();
+    path.extend(MESSAGE_ROUTER);
+    if path.len() > MAX_CIP_PATH_BYTES {
+        return Err(
+            "Class 3 connection path exceeds 255 words including the Message Router".into(),
+        );
+    }
+    Ok(path)
+}
+
 fn open_request(route: Option<&Route>, size: Class3Size) -> Result<ForwardOpenRequest> {
+    let connection_path = connection_path(route).map_err(protocol)?;
     let mut ids = [0; 10];
     getrandom::fill(&mut ids).map_err(|error| protocol(error.to_string()))?;
     let params = NetworkConnectionParameters {
@@ -275,8 +287,6 @@ fn open_request(route: Option<&Route>, size: Class3Size) -> Result<ForwardOpenRe
         variable_size: true,
         size: size.bytes(),
     };
-    let mut connection_path = route.map(Route::port_segments).unwrap_or_default();
-    connection_path.extend(MESSAGE_ROUTER);
     Ok(ForwardOpenRequest {
         priority_tick: 0x0a,
         timeout_ticks: 0x0a,
@@ -375,6 +385,18 @@ fn connected_payload(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn class3_path_reserves_words_for_the_message_router() {
+        let route: Route = format!("1/hex:{}/1/hex:{}", "ab".repeat(255), "cd".repeat(246))
+            .parse()
+            .unwrap();
+        let path = connection_path(Some(&route)).unwrap();
+        assert_eq!(path.len(), MAX_CIP_PATH_BYTES);
+        assert!(path.ends_with(&MESSAGE_ROUTER));
+        let larger: Route = format!("{route}/1/9").parse().unwrap();
+        assert!(connection_path(Some(&larger)).is_err());
+    }
 
     #[test]
     fn class3_reply_requires_both_the_connection_and_sequence() {

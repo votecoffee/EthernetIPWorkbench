@@ -1,6 +1,6 @@
 //! CIP port paths and Unconnected Send read replies.
 
-use super::{EipError, is_unicast, protocol};
+use super::{EipError, MAX_CIP_PATH_BYTES, is_unicast, protocol};
 use serde::{Deserialize, Serialize};
 use std::{fmt, net::Ipv4Addr, str::FromStr};
 
@@ -8,7 +8,8 @@ pub(super) const UNCONNECTED_SEND: u8 = 0x52;
 const MAX_HOPS: usize = 8;
 
 /// A validated list of port/link pairs, for example `1/3` for backplane slot 3.
-/// Each port is numbered 1–65535. A link is a byte or a unicast IPv4 address.
+/// Each port is numbered 1–65535. Links accept a decimal byte, a unicast IPv4
+/// address, or 2–255 exact link bytes as contiguous hex after the hex: prefix.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct Route(Vec<Hop>);
@@ -22,7 +23,60 @@ struct Hop {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Link {
     Node(u8),
-    Ipv4(Ipv4Addr),
+    Extended(Vec<u8>),
+}
+
+impl FromStr for Link {
+    type Err = &'static str;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        if let Some(raw) = text.strip_prefix("hex:") {
+            let length = raw.len() / 2;
+            if !(2..=u8::MAX as usize).contains(&length)
+                || raw.len() % 2 != 0
+                || !raw.bytes().all(|byte| byte.is_ascii_hexdigit())
+            {
+                return Err(
+                    "A hex CIP link requires 2 to 255 bytes as contiguous pairs of hex digits",
+                );
+            }
+            let bytes = (0..raw.len())
+                .step_by(2)
+                .map(|index| {
+                    u8::from_str_radix(&raw[index..index + 2], 16).expect("ASCII hex pair")
+                })
+                .collect();
+            return Ok(Self::Extended(bytes));
+        }
+        if let Ok(node) = text.parse::<u8>() {
+            return Ok(Self::Node(node));
+        }
+        text.parse::<Ipv4Addr>()
+            .ok()
+            .filter(|ip| is_unicast(*ip))
+            .map(|ip| Self::Extended(ip.to_string().into_bytes()))
+            .ok_or("CIP links need a node number from 0 to 255, a unicast IPv4 address, or hex link bytes")
+    }
+}
+
+impl fmt::Display for Link {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Node(node) => write!(f, "{node}"),
+            Self::Extended(bytes) => {
+                if let Ok(text) = std::str::from_utf8(bytes)
+                    && text.parse::<Ipv4Addr>().is_ok_and(is_unicast)
+                {
+                    return f.write_str(text);
+                }
+                f.write_str("hex:")?;
+                for byte in bytes {
+                    write!(f, "{byte:02X}")?;
+                }
+                Ok(())
+            }
+        }
+    }
 }
 
 impl FromStr for Route {
@@ -44,17 +98,15 @@ impl FromStr for Route {
             let link = parts
                 .next()
                 .ok_or("A CIP route needs a link after each port")?
-                .trim();
-            let link =
-                if let Ok(node) = link.parse::<u8>() {
-                    Link::Node(node)
-                } else {
-                    Link::Ipv4(link.parse::<Ipv4Addr>().ok().filter(|ip| is_unicast(*ip))
-                    .ok_or("CIP links need a node number from 0 to 255 or a unicast IPv4 address")?)
-                };
+                .trim()
+                .parse()?;
             hops.push(Hop { port, link });
         }
-        Ok(Self(hops))
+        let route = Self(hops);
+        if route.port_segments().len() > MAX_CIP_PATH_BYTES {
+            return Err("Encoded CIP route exceeds 255 words".into());
+        }
+        Ok(route)
     }
 }
 
@@ -78,10 +130,7 @@ impl fmt::Display for Route {
             if index != 0 {
                 f.write_str("/")?;
             }
-            match hop.link {
-                Link::Node(node) => write!(f, "{}/{node}", hop.port)?,
-                Link::Ipv4(ip) => write!(f, "{}/{ip}", hop.port)?,
-            }
+            write!(f, "{}/{}", hop.port, hop.link)?;
         }
         Ok(())
     }
@@ -91,11 +140,9 @@ impl Route {
     pub(crate) fn port_segments(&self) -> Vec<u8> {
         let mut path = Vec::new();
         for hop in &self.0 {
-            match hop.link {
-                Link::Node(node) => append_port_segment(&mut path, hop.port, &[node]),
-                Link::Ipv4(ip) => {
-                    append_port_segment(&mut path, hop.port, ip.to_string().as_bytes())
-                }
+            match &hop.link {
+                Link::Node(node) => append_port_segment(&mut path, hop.port, &[*node]),
+                Link::Extended(bytes) => append_port_segment(&mut path, hop.port, bytes),
             }
         }
         path
@@ -156,6 +203,35 @@ mod tests {
             assert_eq!(route.to_string(), text);
             assert_eq!(route.port_segments(), wire);
         }
+    }
+
+    #[test]
+    fn hex_link_bytes_preserve_padding_and_route_identity() {
+        let route: Route = "300/hex:0080fe/1/9".parse().unwrap();
+        assert_eq!(route.to_string(), "300/hex:0080FE/1/9");
+        assert_eq!(
+            route.port_segments(),
+            b"\x1f\x03\x2c\x01\x00\x80\xfe\x00\x01\x09"
+        );
+        assert_eq!(route.to_string().parse::<Route>().unwrap(), route);
+        assert_eq!(
+            "2/hex:3139322e302e322e313030".parse::<Route>().unwrap(),
+            "2/192.0.2.100".parse::<Route>().unwrap(),
+        );
+    }
+
+    #[test]
+    fn raw_links_and_padded_route_fit_their_wire_lengths() {
+        let route = format!("1/hex:{}/1/hex:{}", "ab".repeat(255), "cd".repeat(250));
+        let parsed: Route = route.parse().unwrap();
+        assert_eq!(parsed.port_segments().len(), MAX_CIP_PATH_BYTES);
+        assert_eq!(parsed.wrap(&[])[10], 255);
+        assert!(format!("{route}/1/1").parse::<Route>().is_err());
+        assert!(
+            format!("1/hex:{}", "ab".repeat(256))
+                .parse::<Route>()
+                .is_err()
+        );
     }
 }
 

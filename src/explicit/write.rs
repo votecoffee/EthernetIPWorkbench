@@ -1,7 +1,8 @@
 use super::{
     Class3Size, EipError, Identity, IdentityPin, ReadPath, Route, RoutedReadError, Session,
-    cip_data, connected::with_connection, identity, identity_from, is_unicast, read_message,
-    reply_body,
+    cip_data,
+    connected::{connection_path, with_connection},
+    identity, identity_from, is_unicast, read_message, reply_body,
 };
 use crate::{model::hex, scanner::CloseOutcome};
 use serde::{Deserialize, Serialize};
@@ -315,6 +316,7 @@ impl AttributeWrite {
 
     fn connected_message(&self, size: Class3Size) -> Result<Vec<u8>, String> {
         let request = self.message()?;
+        connection_path(self.route.as_ref())?;
         size.check_request(request.len(), "write")?;
         Ok(request)
     }

@@ -1,4 +1,4 @@
-use crate::explicit::Route;
+use crate::explicit::{MAX_CIP_PATH_BYTES, Route};
 use serde::{Deserialize, Serialize};
 use std::{net::Ipv4Addr, ops::RangeInclusive};
 
@@ -391,7 +391,7 @@ impl Settings {
             } else {
                 2 + (self.config_size as usize).next_multiple_of(2)
             };
-        if path_bytes > 510 {
+        if path_bytes > MAX_CIP_PATH_BYTES {
             return Err("Encoded connection path exceeds 255 words".into());
         }
         self.output()?;

@@ -13,8 +13,9 @@ from loopback_adapter import sockaddr
 from test_cli import NO_WINDOW, PROFILE, with_adapter
 
 LOCAL = "127.0.0.1"
-EXTENDED_PORT_ROUTE = "1/2/300/192.0.2.100/15/7"
-EXTENDED_PORT_PATH = "01021f0b2c013139322e302e322e313030000f0f0007"
+EXTENDED_PORT_ROUTE = "1/2/300/192.0.2.100/4660/hex:0080FE/15/7"
+EXTENDED_PORT_PATH = "01021f0b2c013139322e302e322e313030001f0334120080fe000f0f0007"
+MAX_WORD_ROUTE = "1/hex:" + "ab" * 255 + "/1/hex:" + "cd" * 250
 
 
 def check_routed_input(exe, root, source):
@@ -88,6 +89,7 @@ def check_routed_input(exe, root, source):
             assert "open_path_hex" not in peer and not peer["forward_close"]
 
     for name, invalid in (
+        ("oversize-class1-path", standard.read_text(encoding="utf-8").replace("1/3", MAX_WORD_ROUTE)),
         ("invalid-route", standard.read_text(encoding="utf-8").replace("1/3", "1/")),
         ("routed-multicast-owner-listen-only", "listen_only = true\ninput_multicast = true\n"
          + standard.read_text(encoding="utf-8").replace("input_only = true", "input_only = false")),
@@ -99,7 +101,10 @@ def check_routed_input(exe, root, source):
         profile.write_text(invalid, encoding="utf-8")
         result = subprocess.run([exe, "validate", profile], capture_output=True, text=True, timeout=4,
                                 creationflags=NO_WINDOW)
-        assert result.returncode == 1 and not tomllib.loads(result.stdout)["connection_valid"]
+        checked = tomllib.loads(result.stdout)
+        assert result.returncode == 1 and not checked["connection_valid"]
+        if name == "oversize-class1-path":
+            assert "Encoded connection path exceeds 255 words" in checked["connection_errors"]
 
 
 def discover(exe):
@@ -414,11 +419,15 @@ def main():
         assert error["extended_status"] == [extended]
     malformed, _ = with_adapter(root, "route-no-target", [*route_cmd, "6", "--route", "1/5"], "routed")
     assert malformed.returncode == 1 and "omitted the target service" in malformed.stderr
-    for route in ("1", "1/999", "1/3/", "0/1", "65536/1", "2/239.0.0.1", "1/1/" * 8 + "1/1"):
+    for route in (
+        "1", "1/999", "1/3/", "0/1", "65536/1", "2/239.0.0.1", "1/1/" * 8 + "1/1",
+        "2/hex:", "2/hex:01", "2/hex:00A", "2/hex:00é1", "2/hex:" + "FF" * 256,
+        MAX_WORD_ROUTE + "/1/1",
+    ):
         result = subprocess.run([*route_cmd, "6", "--route", route], capture_output=True,
                                 text=True, timeout=4, creationflags=NO_WINDOW)
         assert result.returncode == 1 and any(
-            text in result.stderr for text in ("CIP route", "CIP links", "CIP port")
+            text in result.stderr for text in ("CIP route", "CIP link", "CIP port")
         ), (route, result.stdout, result.stderr)
 
     routed_profile = root / "routed.toml"
@@ -561,6 +570,14 @@ def main():
         saved_request(name, attribute, 'route = "1/3"\n') for name, attribute in
         (("Product name", 7), ("Unsupported attribute", 127), ("Serial number", 6))
     ), encoding="utf-8")
+    limits = root / "oversize-connected-path.toml"
+    limits.write_text(routed_sequential.read_text(encoding="utf-8").replace("1/3", MAX_WORD_ROUTE),
+                      encoding="utf-8")
+    oversized = subprocess.run([exe, "read-saved-all", limits, "--connected"],
+                               capture_output=True, text=True, timeout=4, creationflags=NO_WINDOW)
+    assert oversized.returncode == 1 and (
+        "Class 3 connection path exceeds 255 words including the Message Router" in oversized.stderr
+    ), oversized
     routed_extended = root / "class3-routed-extended.toml"
     routed_extended.write_text(routed_sequential.read_text(encoding="utf-8").replace("1/3", EXTENDED_PORT_ROUTE),
                                encoding="utf-8")

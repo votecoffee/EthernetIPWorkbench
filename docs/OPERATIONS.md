@@ -26,6 +26,8 @@ Select a known attribute in the CIP browser or enter a documented class, instanc
 
 For a routed read, set the first bridge's IPv4 address in Device and enter its path in **CIP route (optional)**. A path is a sequence of up to eight port/link pairs. Enter a decimal port ID from 1 to 65535 and a link address as a byte (0–255) or a unicast IPv4 address. For example, `1/2/300/192.0.2.100/15/7` uses a backplane hop, an IPv4 link on extended port 300, and node 7 on extended port 15. Use the port IDs and link addresses documented for your topology. The bridge must support CIP Unconnected Send. For a direct read, leave the route blank. The CLI takes the same syntax as `--route <port/link/...>` after the attribute. A routed report uses `reply_from = "router"` for a bridge rejection and `reply_from = "target"` for the destination reply, including a rejected attribute.
 
+Use `hex:` followed by 2–255 bytes as contiguous hex pairs for a vendor-documented multibyte link. For example, `4660/hex:0080FE` sends three link bytes in that order. Enter the address bytes alone. The scanner adds the link length and any required padding. Reports display hex links in uppercase and show a link as dotted IPv4 when its bytes are the ASCII spelling of a unicast IPv4 address. The same syntax applies to saved read routes and `io_route`. The encoded route is limited to 255 words. Class 1 and Class 3 also count the target segments in the connection path.
+
 ~~~toml
 [[app.cip_reads]]
 name = "Serial number"

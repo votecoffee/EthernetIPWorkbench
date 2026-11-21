@@ -24,7 +24,8 @@ ROUTED_KEYED_MODES = ("routed-io-large", "routed-io-large-owner", "routed-io-mul
                       "routed-io-large-default-unicast", "routed-io-large-extended-port")
 LARGE_INPUT_MODES = ("large-keyed", "routed-io-large", "routed-io-multicast-large",
                      "routed-io-large-default-unicast", "routed-io-large-extended-port")
-EXTENDED_ROUTE = b"\x01\x02\x1f\x0b\x2c\x01192.0.2.100\x00\x0f\x0f\x00\x07"
+EXTENDED_ROUTE = (b"\x01\x02\x1f\x0b\x2c\x01192.0.2.100\x00"
+                  b"\x1f\x03\x34\x12\x00\x80\xfe\x00\x0f\x0f\x00\x07")
 MULTICAST_GROUP = "239.255.92.44"
 
 
