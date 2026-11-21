@@ -2,8 +2,8 @@ use super::*;
 use assembly_scanner::{
     discovery,
     explicit::{
-        self, AttributeWrite, Class3Size, ClassInfo, PortInfo, ReadPath, Reader, Route, SavedRead,
-        SavedReadMode, SavedReadReport, TcpIpInfo, WriteCurrentCheck, WriteInspection,
+        self, AttributeWrite, Class3Size, ClassInfo, LinkInfo, PortInfo, ReadPath, Reader, Route,
+        SavedRead, SavedReadMode, SavedReadReport, TcpIpInfo, WriteCurrentCheck, WriteInspection,
         WriteOutcome, WriteReport,
     },
 };
@@ -32,6 +32,7 @@ enum Response {
     ClassInfo(ClassInfo),
     PortInfo(PortInfo),
     TcpIpInfo(TcpIpInfo),
+    LinkInfo(LinkInfo),
     Batch(SavedReadReport),
     SavedReport(PathBuf),
     OpenedWriteDraft(Box<write::Draft>),
@@ -64,6 +65,7 @@ pub(super) struct Explorer {
     class_info: Option<ClassInfo>,
     port_info: Option<PortInfo>,
     tcpip_info: Option<TcpIpInfo>,
+    link_info: Option<LinkInfo>,
     batch_mode: SavedReadMode,
     saved_batch: Option<Arc<SavedReadReport>>,
     saved_report: Option<PathBuf>,
@@ -92,6 +94,7 @@ impl Default for Explorer {
             class_info: None,
             port_info: None,
             tcpip_info: None,
+            link_info: None,
             batch_mode: SavedReadMode::default(),
             saved_batch: None,
             saved_report: None,
@@ -134,6 +137,7 @@ impl Explorer {
             Ok(Ok(Response::ClassInfo(info))) => self.class_info = Some(info),
             Ok(Ok(Response::PortInfo(info))) => self.port_info = Some(info),
             Ok(Ok(Response::TcpIpInfo(info))) => self.tcpip_info = Some(info),
+            Ok(Ok(Response::LinkInfo(info))) => self.link_info = Some(info),
             Ok(Ok(Response::Batch(batch))) => self.saved_batch = Some(Arc::new(batch)),
             Ok(Ok(Response::SavedReport(path))) => self.saved_report = Some(path),
             Ok(Ok(Response::OpenedWriteDraft(draft))) => self.write_draft = Some(*draft),
@@ -383,6 +387,16 @@ impl Device {
             {
                 explorer.read_tcpip_info(&self.device, local.as_ref().ok().copied());
             }
+            if class == Ok(explicit::ETHERNET_LINK_CLASS)
+                && ui
+                    .add_enabled(!explorer.busy(), egui::Button::new("Read link info"))
+                    .on_hover_text(
+                        "Read the selected Ethernet Link instance's status and counters.",
+                    )
+                    .clicked()
+            {
+                explorer.read_link_info(&self.device, local.as_ref().ok().copied());
+            }
         });
         let mut typed = explorer.selection.is_some();
         if ui.checkbox(&mut typed, "Decode reply field").changed() {
@@ -485,6 +499,9 @@ impl Device {
         }
         if let Some(info) = &explorer.tcpip_info {
             class_info::show_tcpip(ui, info);
+        }
+        if let Some(info) = &explorer.link_info {
+            class_info::show_link(ui, info);
         }
         ui.collapsing("Saved reads", |ui| {
             if batch::controls(

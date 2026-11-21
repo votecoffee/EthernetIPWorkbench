@@ -150,6 +150,17 @@ impl super::TcpIpInfo {
     }
 }
 
+impl super::LinkInfo {
+    pub fn report_json(&self) -> Result<String, String> {
+        instance_json(
+            &self.batch,
+            super::ETHERNET_LINK_CLASS,
+            self.instance,
+            self.route.as_ref(),
+        )
+    }
+}
+
 fn instance_json(
     batch: &SavedReadBatch,
     class: u32,

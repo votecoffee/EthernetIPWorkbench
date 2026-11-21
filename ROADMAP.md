@@ -71,6 +71,7 @@ The C# examples demonstrate HTTP and shared-memory latest values, retained HTTP 
 - CIP routes in Explore, the CLI and the Rust API support byte, IPv4 and hexadecimal links with decimal port IDs up to 65535. Windows loopback covers extended port identifiers and hexadecimal links in Unconnected Send, Class 3, and Class 1. Verify the documented routes through a physical bridge.
 - Explore and `port-info` read the CIP Port Object directory and selected instances. Verify the reported port numbers, local node addresses and routing capabilities on supported bench devices.
 - Explore and `tcpip-info` read TCP/IP Interface settings on direct or routed targets. Compare reported startup mode, network addresses, hostname, and Physical Link Object path with the bench device's settings.
+- Explore and `link-info` read Ethernet Link speed, flags, MAC address and 32-bit counters on direct or routed targets. On physical devices, compare the selected port and error counters against the device diagnostics.
 - Variable-size T→O supports standard and Large Forward_Open, offline decoding, CSV and all three export feeds. Verify it on a physical adapter that produces variable-size assemblies.
 - Multicast T→O uses the adapter's group, port and connection ID with unicast O→T. Verify group membership and capture through a physical bench switch.
 - Listen-only profiles use the documented heartbeat assembly and read an existing multicast producer without taking output ownership. Verify against a physical adapter with a controlling multicast connection.

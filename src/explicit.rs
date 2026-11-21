@@ -20,6 +20,7 @@ use std::{
 mod batch;
 mod class_info;
 mod connected;
+mod link_info;
 mod multiple;
 mod port_info;
 mod report;
@@ -37,6 +38,7 @@ pub use connected::{
     Class3Size, ConnectedPacketBatch, ConnectedReadBatch, run_saved_reads_connected,
     run_saved_reads_connected_packet,
 };
+pub use link_info::{ETHERNET_LINK_CLASS, LinkInfo, read_link_info};
 pub use multiple::run_saved_reads_packet;
 pub use port_info::{PORT_OBJECT_CLASS, PortInfo, read_port_info};
 pub use report::read_reply_document;
@@ -117,6 +119,13 @@ impl ReadPath {
                 && self.instance != 0
                 && let Some(attribute) = self.attribute
                 && let Some(decoded) = tcpip_info::decode(attribute, bytes)
+            {
+                return decoded.map(Some);
+            }
+            if self.class == ETHERNET_LINK_CLASS
+                && self.instance != 0
+                && let Some(attribute) = self.attribute
+                && let Some(decoded) = link_info::decode(attribute, bytes)
             {
                 return decoded.map(Some);
             }

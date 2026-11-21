@@ -83,6 +83,17 @@ In **Explore → Common attributes**, choose **TCP/IP Interface · Status**. Ent
 
 The inspection sends six Get_Attribute_Single requests in one registered session. The report shows interface status and configuration capability masks, the configured startup method, the Physical Link Object path, IPv4 address, mask, gateway, primary and secondary DNS servers, domain name, and hostname. Use the reported startup method alongside the live address fields. Each attribute retains its raw reply and any decode error or CIP rejection. [Schneider Electric TCP/IP Interface attributes](https://productinfo.se.com/tesys_tera_master/tesys-tera-motor-management-system-ethernet-communication-guide/EN/DOCA0258_Tera_Ethernet_guide_DD00602307.XML.xml/$/Tera_TCP_IPObject_Ethernet_DD00809230.XML)
 
+### Inspect Ethernet Link diagnostics
+
+In **Explore → Common attributes**, choose **Ethernet Link · Speed**, enter the Ethernet Link Object instance, and select **Read link info**. Use the device documentation or the Physical Link Object path from TCP/IP Interface inspection to identify the instance. The path `20 F6 24 01` points to Ethernet Link instance 1. Leave **CIP route** blank for a direct read or enter the documented route to the target.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe link-info 192.0.2.10 192.0.2.11 1
+.\target\release\eipmaster-cli.exe link-info 192.0.2.10 192.0.2.11 2 --route 1/3
+~~~
+
+The inspection reads five attributes on one registered session using Get_Attribute_Single. It reports speed, the full flags word with link state, active duplex and negotiation status code, and the MAC address. Supported ports also show cumulative 32-bit interface and media counters, including discards, FCS errors, and collisions. Their values can wrap. Each result retains the raw reply or CIP rejection. Inspecting these attributes leaves the device counters intact. [Schneider Electric EtherNet/IP device objects](https://product-help.schneider-electric.com/Machine%20Expert/V1.2/en/lmcprg/lmcprg/Ethernet_Configuration/Ethernet_Configuration-17.htm) · [Pinned OpENer Ethernet Link counter layout](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipethernetlink.h)
+
 ### Review and send an attribute write
 
 Use the documented writable class, instance and attribute. In **Explore**, enter the address and optional CIP route, and select **Stage attribute write**. Enter space-separated hex or select **Enter typed value**, choose a format, and inspect the encoded bytes. Select **Verify target identity**, then review the device's name and identity, the NIC, address, route and exact bytes before selecting **Send reviewed write**. Changing the value or its encoding clears the prior review. The send checks the full identity on the same registered session that carries the write. [Set_Attribute_Single reference](https://product-help.schneider-electric.com/Machine%20Expert/V2.2/en/EtherNetIP_Services/EtherNetIP_Services/modules/set-attribute-si.html)

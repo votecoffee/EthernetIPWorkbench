@@ -284,6 +284,50 @@ def check_tcpip_info(exe, root):
     print("TCP/IP Interface inspection passed direct, routed optional, and malformed replies.")
 
 
+def check_link_info(exe, root):
+    for name, mode, instance, route, exit_code in (
+        ("direct", "link-info", 1, None, 0),
+        ("routed-optional", "link-info-optional", 2, "1/3", 0),
+        ("malformed", "link-info-malformed", 1, None, 1),
+    ):
+        command = [exe, "link-info", LOCAL, LOCAL, str(instance)]
+        if route:
+            command.extend(("--route", route))
+        result, peer = with_adapter(root, f"link-info-{name}", command, mode)
+        assert result.returncode == exit_code and not result.stderr, (result.stdout, result.stderr)
+        report = json.loads(result.stdout)
+        (root / f"link-info-{name}.json").write_text(result.stdout, encoding="utf-8")
+        assert (report["class"], report["instance"], report.get("route")) == (0xF6, instance, route)
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert peer["link_reads"] == [[instance, attr] for attr in range(1, 6)]
+        assert peer["route_hex"] == ("0103" if route else "")
+        speed, flags, mac, interface, media = report["results"]
+        assert mac["decoded"] == "02:AB:CD:10:20:30"
+        if route:
+            assert speed["decoded"] == "0 Mb/s"
+            assert flags["decoded"] == "0x00000002 [Link down, negotiation status 0]"
+            assert (media["reply_from"], media["general_status"], media["extended_status"]) == (
+                "target", 0x14, [0x0302],
+            )
+        else:
+            assert speed["decoded"] == "1000 Mb/s"
+            assert flags["decoded"] == (
+                "0x80000077 [Link up, full duplex, negotiation status 5, "
+                "link changes require reset, local hardware fault]"
+            )
+            assert "FCS errors 21, Single collisions 22" in media["decoded"]
+            assert media["decoded"].endswith("MAC receive errors 31")
+        if name == "malformed":
+            assert len(bytes.fromhex(interface["data_hex"])) == 43 and interface["decoded"] is None
+            assert "requires 44 bytes" in interface["decode_error"]
+        else:
+            assert interface["decoded"].startswith("Input octets 4294967295, Input unicast packets 1")
+            assert interface["decoded"].endswith("Output errors 2147483650")
+    result = subprocess.run([exe, "link-info", LOCAL, LOCAL, "0"], capture_output=True, timeout=5)
+    assert result.returncode != 0 and b"nonzero instance" in result.stderr
+    print("Ethernet Link diagnostics passed direct, routed optional, and malformed replies.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
@@ -479,6 +523,7 @@ def main():
     check_class_info(exe, root)
     check_port_info(exe, root)
     check_tcpip_info(exe, root)
+    check_link_info(exe, root)
 
     saved = root / "saved.toml"
     source = PROFILE.read_text(encoding="utf-8")

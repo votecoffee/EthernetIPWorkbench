@@ -315,6 +315,25 @@ def check_tcpip_info(cli, adapter, root):
     print("OpENer TCP/IP Interface address bytes and Physical Link Object path passed.")
 
 
+def check_link_info(cli, adapter, root):
+    root.mkdir()
+    with run_adapter(adapter, root):
+        result = subprocess.run([cli, "link-info", ADAPTER, "127.0.0.1", "1"],
+                                capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+    (root / "result.json").write_bytes(result.stdout)
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    report = json.loads(result.stdout)
+    assert (report["class"], report["instance"]) == (0xF6, 1)
+    replies = report["results"]
+    assert [entry["path"]["attribute"] for entry in replies] == list(range(1, 6))
+    assert [entry["decoded"] for entry in replies[:3]] == [
+        "100 Mb/s", "0x0000000F [Link up, full duplex, negotiation status 3]", "02:00:00:00:00:02",
+    ]
+    assert all(entry["status"] == "cip_rejected" and entry["general_status"] == 0x14
+               for entry in replies[3:])
+    print("OpENer Ethernet Link speed, flags, MAC address and optional counter rejections passed.")
+
+
 def check_explicit_write(cli, adapter, root, identity, *, connected=False):
     root.mkdir()
     pin = ":".join(str(identity[field]) for field in ("vendor", "device_type", "code", "serial"))
@@ -599,6 +618,7 @@ def main():
         check_explore(cli, adapter, root / "extended", identity, args.seconds)
         check_class_info(cli, adapter, root / "class-info")
         check_tcpip_info(cli, adapter, root / "tcpip-info")
+        check_link_info(cli, adapter, root / "link-info")
         check_explicit_write(cli, adapter, root / "explicit-write", identity)
         check_explicit_write(cli, adapter, root / "class3-write", identity, connected=True)
         check_connected_reads(cli, adapter, root / "connected-reads", identity)

@@ -47,6 +47,16 @@ impl Explorer {
             Err(error) => self.notice = Some(error),
         }
     }
+
+    pub(super) fn read_link_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
+        self.link_info = None;
+        match self.inspection_request(adapter, local, &self.instance) {
+            Ok((adapter, local, instance, route)) => self.start(move || {
+                explicit::read_link_info(adapter, local, instance, route).map(Response::LinkInfo)
+            }),
+            Err(error) => self.notice = Some(error),
+        }
+    }
 }
 
 pub(super) fn show(ui: &mut Ui, info: &ClassInfo) {
@@ -79,6 +89,16 @@ pub(super) fn show_tcpip(ui: &mut Ui, info: &TcpIpInfo) {
         ui,
         format!("TCP/IP Interface instance {}", info.instance),
         "tcpip-info-results",
+        info.route.as_ref(),
+        &info.batch,
+    );
+}
+
+pub(super) fn show_link(ui: &mut Ui, info: &LinkInfo) {
+    show_inspection(
+        ui,
+        format!("Ethernet Link instance {}", info.instance),
+        "link-info-results",
         info.route.as_ref(),
         &info.batch,
     );

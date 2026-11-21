@@ -294,6 +294,27 @@ def tcpip_info_reply(cip, mode, report):
     return bytes.fromhex("8E 00 00 00 " + values[attribute - 1])
 
 
+def link_info_reply(cip, mode, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    assert len(message) == 8 and message[:5] == bytes.fromhex("0E 03 20 F6 24")
+    instance, tag, attribute = message[5:]
+    assert (instance, route) in ((1, b""), (1, b"\x01\x03"), (2, b"\x01\x03"))
+    assert tag == 0x30 and 1 <= attribute <= 5
+    report.setdefault("link_reads", []).append([instance, attribute])
+    report["route_hex"] = route.hex()
+    if mode == "link-info-optional" and attribute == 5:
+        return bytes.fromhex("8E 00 14 01 02 03")
+    flags = 0x80000077 if instance == 1 else 0x02
+    interface = struct.pack("<11I", 0xFFFFFFFF, *range(1, 10), 0x80000002)
+    if mode == "link-info-malformed":
+        interface = interface[:-1]
+    data = (
+        struct.pack("<I", 1000 if instance == 1 else 0), struct.pack("<I", flags),
+        bytes.fromhex("02 AB CD 10 20 30"), interface, struct.pack("<12I", *range(20, 32)),
+    )[attribute - 1]
+    return bytes.fromhex("8E 00 00 00") + data
+
+
 def explicit_write_reply(cip, mode, attrs, report):
     route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
     assert route in (b"", b"\x01\x03")
@@ -416,6 +437,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
         "class-info": class_info_reply,
         "port-info": port_info_reply,
         "tcpip-info": tcpip_info_reply,
+        "link-info": link_info_reply,
     }
     object_reader = next((reader for name, reader in object_readers.items() if mode.startswith(name)), None)
     report_explicit = (
@@ -724,6 +746,7 @@ def main():
         "explicit", "saved-reads", "multiple-service", "large-keyed", "routed", "variable-input", "large-variable-input",
         "class-info", "class-info-malformed", "port-info", "port-info-optional", "port-info-malformed",
         "tcpip-info", "tcpip-info-optional", "tcpip-info-malformed",
+        "link-info", "link-info-optional", "link-info-malformed",
         "explicit-write", "explicit-write-review", "explicit-write-gui", "explicit-write-rejected",
         "explicit-write-no-reply", "explicit-write-router-timeout",
         "explicit-write-readback", "explicit-write-readback-mismatch", "explicit-write-readback-rejected",

@@ -895,6 +895,41 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode link-info-optional on localhost"]
+    fn explore_reads_ethernet_link_diagnostics_over_a_route() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[("Serial through bridge", 6, Some("1/3"))]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "Common attributes");
+        click(&mut device, &ctx, size, "Ethernet Link · Speed");
+        click(&mut device, &ctx, size, "Read link info");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Ethernet Link instance 1",
+            "Route 1/3",
+            "Media counters · CIP rejection",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Interface flags · Reply");
+        let labels = draw(&mut device, &ctx, size);
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text.contains("Link up, full duplex"))
+        );
+        assert_eq!(device.snapshot(), saved);
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode tcpip-info-optional on localhost"]
     fn explore_inspects_a_routed_tcpip_interface_without_changing_saved_requests() {
         let ctx = egui::Context::default();
