@@ -183,6 +183,25 @@ def check_capture(report, seconds):
     return samples
 
 
+def check_identity_discovery_tcp(cli, adapter, root):
+    root.mkdir()
+    results = []
+    with run_adapter(adapter, root):
+        for name, flags in (("udp", []), ("tcp", ["--tcp"])):
+            result = subprocess.run([cli, "discover", "127.0.0.1", ADAPTER, *flags],
+                                    capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+            (root / f"{name}.json").write_bytes(result.stdout)
+            assert result.returncode == 0 and not result.stderr, (result.stdout, result.stderr)
+            report = json.loads(result.stdout)
+            assert report["transport"] == name and report["invalid_replies"] == 0
+            device, = report["devices"]
+            assert device["source"] == f"{ADAPTER}:44818"
+            results.append(device)
+    assert results[0] == results[1]
+    assert results[0]["identity"]["serial"] == 123456789
+    print("OpENer returned identical ListIdentity data over UDP and TCP.")
+
+
 def check_list_services(cli, adapter, root):
     root.mkdir()
     with run_adapter(adapter, root):
@@ -715,6 +734,7 @@ def main():
     assert "ForwardClose: ConnSerNo" in log.read_text(encoding="utf-8", errors="replace")
     check_capture(report, args.seconds)
     if args.explore:
+        check_identity_discovery_tcp(cli, adapter, root / "list-identity-tcp")
         check_list_services(cli, adapter, root / "list-services")
         check_explore(cli, adapter, root / "extended", identity, args.seconds)
         check_class_info(cli, adapter, root / "class-info")

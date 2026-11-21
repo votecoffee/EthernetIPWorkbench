@@ -44,6 +44,7 @@ Usage:
   eipmaster-cli decode-input <settings.toml> \"<assembly hex bytes>\"
   eipmaster-cli identity <adapter-or-bridge-ipv4> <local-ipv4> [--route <port/link/...>] [--eds <vendor.eds>]
   eipmaster-cli discover <local-ipv4> [<destination-ipv4>]
+  eipmaster-cli discover <local-ipv4> <destination-ipv4> --tcp
   eipmaster-cli list-services <adapter-or-bridge-ipv4> <local-ipv4> [--tcp]
   eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
   eipmaster-cli class-info <adapter-or-bridge-ipv4> <local-ipv4> <class> [--route <port/link/...>]
@@ -100,19 +101,27 @@ fn main() -> ExitCode {
 fn run(args: &[OsString]) -> Result<bool, String> {
     match args {
         [command, local, target @ ..] if command == "discover" => {
-            let destination = match target {
-                [] => std::net::Ipv4Addr::BROADCAST,
-                [address] => address
-                    .to_string_lossy()
-                    .parse()
-                    .map_err(|_| "Invalid discovery destination IPv4 address")?,
+            use discovery::DiscoveryTransport::{Tcp, Udp};
+            let (address, transport) = match target {
+                [] => (None, Udp),
+                [flag] if flag == "--tcp" => {
+                    return Err("TCP discovery requires a destination IPv4 address".into());
+                }
+                [address] => (Some(address), Udp),
+                [address, flag] if flag == "--tcp" => (Some(address), Tcp),
                 _ => return Err(USAGE.into()),
             };
+            let destination = address
+                .map(|address| address.to_string_lossy().parse())
+                .transpose()
+                .map_err(|_| "Invalid discovery destination IPv4 address")?
+                .unwrap_or(std::net::Ipv4Addr::BROADCAST);
             let local = local
                 .to_string_lossy()
                 .parse()
                 .map_err(|_| "Invalid local IPv4 address")?;
-            let report = discovery::discover(local, destination).map_err(|e| e.to_string())?;
+            let report = discovery::discover_with_transport(local, destination, transport)
+                .map_err(|e| e.to_string())?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?

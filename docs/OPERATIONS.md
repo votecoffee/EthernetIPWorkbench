@@ -20,7 +20,14 @@ Use Mappings for field definitions and CSV column selection, Outputs for staged 
 
 ## Discover and read
 
-Set the NIC address in Device. In Explore, enter a unicast or broadcast destination and select Discover. The scan sends one ListIdentity request and waits up to 2.2 seconds. It deduplicates replies and shows the number of invalid datagrams. The CLI also includes each responder's advertised endpoint. Broadcast discovery depends on the NIC, local firewall and adapter. Use the responder's source IP and verify the Identity Object before connecting.
+Set the NIC address in Device. In Explore, choose **Discovery UDP** for a broadcast or unicast destination. **Discover** sends one ListIdentity datagram and collects replies for up to 2.2 seconds. The report deduplicates responders and counts malformed or unrelated datagrams. Broadcast discovery depends on the NIC, local firewall and adapter.
+
+Choose **Discovery TCP** for a known unicast endpoint. Switching from the default broadcast destination fills the field with the adapter address from Device. The TCP probe reads one ListIdentity reply before registering a session. Both transports report the responder address separately from its advertised endpoint. **Use adapter** copies the responder IP into Device. Verify the Identity Object before opening cyclic I/O. [Pinned OpENer ListIdentity implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/enet_encap/encap.c)
+
+~~~powershell
+.\target\release\eipmaster-cli.exe discover 192.0.2.11
+.\target\release\eipmaster-cli.exe discover 192.0.2.11 192.0.2.10 --tcp
+~~~
 
 Select a known attribute in the CIP browser or enter a documented class, instance and attribute. The browser uses Get_Attribute_Single or Get_Attributes_All and supports 8-, 16- and 32-bit IDs. Discovery and reads run independently of cyclic I/O and the CSV writer.
 

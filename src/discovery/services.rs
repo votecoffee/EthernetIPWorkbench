@@ -1,15 +1,15 @@
 //! Sessionless EtherNet/IP ListServices over unicast UDP or TCP.
 
-use super::unregistered_request;
+use super::{DiscoveryTransport as ServicesTransport, query_tcp, unregistered_request};
 use crate::{
-    encapsulation::{PORT, connect_tcp, read_tcp_frame},
+    encapsulation::PORT,
     explicit::{EipError, is_unicast},
     model::hex,
 };
 use ethernetip_core::encap::{HEADER_LEN, Header};
 use serde::Serialize;
 use std::{
-    io::{self, Write},
+    io,
     net::{Ipv4Addr, UdpSocket},
     time::{Duration, Instant},
 };
@@ -17,23 +17,6 @@ use std::{
 const LIST_SERVICES: u16 = 0x0004;
 const COMMUNICATIONS_ITEM: u16 = 0x0100;
 const TIMEOUT: Duration = Duration::from_secs(2);
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ServicesTransport {
-    #[default]
-    Udp,
-    Tcp,
-}
-
-impl ServicesTransport {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Udp => "UDP",
-            Self::Tcp => "TCP",
-        }
-    }
-}
 
 #[derive(Debug, Serialize)]
 pub struct ServicesReport {
@@ -80,9 +63,7 @@ pub fn list_services_with_transport(
     let services = match transport {
         ServicesTransport::Udp => query_udp(adapter, local, &request)?,
         ServicesTransport::Tcp => {
-            let mut stream = connect_tcp(adapter, local, TIMEOUT)?;
-            stream.write_all(&request)?;
-            let (header, body) = read_tcp_frame(&mut stream, TIMEOUT)?;
+            let (header, body) = query_tcp(adapter, local, &request)?;
             decode_reply(header, &body, &request[12..20])?
         }
     };

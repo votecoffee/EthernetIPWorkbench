@@ -69,7 +69,7 @@ Use **Profiles…** to load/save a named TOML setup. Use **Manage devices…** t
 
 ### Discover adapters and read CIP objects
 
-Set the local NIC IPv4 address in **Device**, then open **Explore**. **Discover** sends one UDP ListIdentity request to the selected destination. Use the default broadcast or enter a known adapter address for a unicast probe. Select **Use adapter** to copy the responder's address into the current setup. Verify it with **Read identity** before opening cyclic I/O.
+Set the local NIC IPv4 address in **Device**, then open **Explore**. **Discover** sends one ListIdentity request. Use the default UDP broadcast, enter a known adapter address for UDP unicast, or choose **Discovery TCP** for a known endpoint. Select **Use adapter** to copy the responder's address into the current setup. Verify it with **Read identity** before opening cyclic I/O.
 
 Select **List services** in Explore or run `list-services <adapter-or-bridge-ipv4> <local-ipv4>` to see the endpoint's advertised encapsulation version, CIP over TCP, and cyclic I/O over UDP. UDP is the default transport. Choose **TCP** beside the button or append `--tcp` to query over TCP. [ListServices inspection](docs/OPERATIONS.md#inspect-advertised-ethernetip-services)
 

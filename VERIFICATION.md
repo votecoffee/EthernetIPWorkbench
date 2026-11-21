@@ -810,3 +810,9 @@ The Windows loopback fixture verified the sessionless 24-byte request, selected 
 Pinned Windows OpENer returned one Communications item over UDP with protocol version 1 and flags `0x0120`. Both capability flags decoded as advertised. Physical-device verification remains open. [Pinned OpENer ListServices implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/enet_encap/encap.c)
 
 The TCP fixture split the reply across three writes and confirmed the scanner closed the stream after reading it. It also verified sender-context rejection and early connection closure during a reply. Headless Explore selected TCP and displayed the actual transport. OpENer returned the same Communications item over both transports and completed a registered Assembly class read through the shared TCP frame reader. The direct and routed Class 1 and Class 3 localhost regressions passed.
+
+## EtherNet/IP ListIdentity over TCP
+
+A Windows localhost fixture verified a 24-byte ListIdentity request without a registered session and split the reply across three writes. The scanner deduplicated Identity items, retained the peer address separately from the advertised endpoint, and distinguished a malformed Identity item, an encapsulation rejection, and a sender-context mismatch. The headless Explore test selected TCP from the default broadcast setup and checked that **Use adapter** copied the peer IP.
+
+Pinned Windows OpENer returned identical Identity data over UDP and TCP. The existing UDP discovery fixture still counted malformed and unrelated replies and deduplicated valid responders. Physical-device verification remains open. [Pinned OpENer ListIdentity implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/enet_encap/encap.c)

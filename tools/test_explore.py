@@ -137,12 +137,45 @@ def discover(exe):
                     client.kill()
                     client.wait()
     report = json.loads(stdout)
-    assert report["invalid_replies"] == 2 and not report["limit_reached"]
+    assert report["transport"] == "udp" and report["invalid_replies"] == 2 and not report["limit_reached"]
     device, = report["devices"]
     assert device["source"] == device["advertised_endpoint"] == f"{LOCAL}:44818"
     assert device["identity"]["serial"] == 0x12345678 and device["identity"]["name"] == name.decode()
     assert device["state"] == 3 and device["protocol_version"] == 1
     return report
+
+
+def check_identity_discovery_tcp(exe, root):
+    adapter = "127.0.0.2"
+    for mode, error in (
+        ("list-identity-stream", None),
+        ("list-identity-stream-context", "ListIdentity reply sender context does not match"),
+        ("list-identity-stream-rejected", "EIP encapsulation status 0x00000001"),
+        ("list-identity-stream-malformed", "Invalid ListIdentity item list"),
+    ):
+        result, peer = with_adapter(
+            root, mode, [exe, "discover", LOCAL, adapter, "--tcp"],
+            mode, fixture_args=("--address", adapter),
+        )
+        request = bytes.fromhex(peer["request_hex"])
+        assert len(request) == 24 and request[:12] == bytes.fromhex("63 00 00 00 00 00 00 00 00 00 00 00")
+        assert request[20:] == bytes(4) and peer["source_ip"] == LOCAL and peer["tcp_eof"]
+        if error is not None:
+            assert result.returncode == 1 and not result.stdout and error in result.stderr
+            (root / f"{mode}.txt").write_text(result.stderr, encoding="utf-8")
+            continue
+        assert result.returncode == 0 and not result.stderr, (result.stdout, result.stderr)
+        (root / f"{mode}.json").write_text(result.stdout, encoding="utf-8")
+        report = json.loads(result.stdout)
+        assert report["transport"] == "tcp" and report["invalid_replies"] == 0 and not report["limit_reached"]
+        device, = report["devices"]
+        assert device["source"] == f"{adapter}:44818" and device["advertised_endpoint"] == "127.0.0.9:44819"
+        assert device["identity"]["serial"] == 0x12345678 and device["identity"]["name"] == "TCP Loopback Adapter"
+        assert device["state"] == 3 and device["protocol_version"] == 1
+    for args in (["--tcp"], ["255.255.255.255", "--tcp"]):
+        result = subprocess.run([exe, "discover", LOCAL, *args], capture_output=True, timeout=5)
+        assert result.returncode == 1 and b"TCP discovery requires" in result.stderr
+    print("TCP ListIdentity passed fragmented replies, deduplication, endpoint handling, and error cases.")
 
 
 def check_class_info(exe, root):
@@ -560,6 +593,7 @@ def main():
     exe, root = args.exe.resolve(strict=True), args.results.resolve()
     root.mkdir(parents=True, exist_ok=False)
     (root / "discovery.json").write_text(json.dumps(discover(exe), indent=2), encoding="utf-8")
+    check_identity_discovery_tcp(exe, root)
 
     eds = root / "utf16.eds"
     eds.write_text(

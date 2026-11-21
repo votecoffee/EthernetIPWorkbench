@@ -838,7 +838,25 @@ def serve_list_services(address, mode, report):
         peer.sendto(reply, source)
 
 
-def serve_list_services_stream(address, mode, report):
+def list_identity_stream_reply(request, source, mode, report):
+    command, size, session, status, context, options = struct.unpack("<HHII8sI", request)
+    assert (command, size, session, status, options) == (0x63, 0, 0, 0, 0)
+    report["request_hex"] = request.hex()
+    report["source_ip"] = source[0]
+    name = b"TCP Loopback Adapter"
+    name_length = len(name) + int(mode == "list-identity-stream-malformed")
+    identity = struct.pack("<HHHBBHIB", 1, 12, 1, 2, 3, 0x60, 0x12345678, name_length)
+    identity = struct.pack("<H", 1) + sockaddr("127.0.0.9", 44819) + identity + name + b"\x03"
+    item = struct.pack("<HH", 0x0C, len(identity)) + identity
+    payload = bytes.fromhex("03 00 01 90 01 00 A5") + item + item
+    if mode == "list-identity-stream-context":
+        context = bytes([context[0] ^ 1]) + context[1:]
+    if mode == "list-identity-stream-rejected":
+        payload, status = b"", 1
+    return struct.pack("<HHII8sI", command, len(payload), session, status, context, options) + payload
+
+
+def serve_encapsulation_stream(address, mode, report):
     with socket.socket() as listener:
         listener.bind((address, 44818))
         listener.listen(1)
@@ -849,7 +867,8 @@ def serve_list_services_stream(address, mode, report):
             connection.settimeout(5)
             connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             request = recv_exact(connection, 24)
-            reply = list_services_reply(request, source, mode, report)
+            make_reply = list_identity_stream_reply if mode.startswith("list-identity-stream") else list_services_reply
+            reply = make_reply(request, source, mode, report)
             if mode == "list-services-stream-truncated":
                 connection.sendall(reply[:-1])
                 connection.shutdown(socket.SHUT_WR)
@@ -884,6 +903,8 @@ def main():
         "list-services", "list-services-tcp", "list-services-malformed",
         "list-services-rejected", "list-services-header",
         "list-services-stream", "list-services-stream-context", "list-services-stream-truncated",
+        "list-identity-stream", "list-identity-stream-context", "list-identity-stream-rejected",
+        "list-identity-stream-malformed",
         "explicit-write", "explicit-write-review", "explicit-write-gui", "explicit-write-rejected",
         "explicit-write-no-reply", "explicit-write-router-timeout",
         "explicit-write-readback", "explicit-write-readback-mismatch", "explicit-write-readback-rejected",
@@ -917,9 +938,12 @@ def main():
         parser.error("--tcp-timeout must be positive")
     address = str(args.address)
     report = {"mode": args.mode, "forward_close": False}
-    if args.mode.startswith("list-services"):
-        serve_services = serve_list_services_stream if args.mode.startswith("list-services-stream") else serve_list_services
-        serve_services(address, args.mode, report)
+    if args.mode.startswith(("list-services", "list-identity-stream")):
+        serve_discovery = (
+            serve_encapsulation_stream if args.mode.startswith(("list-identity-stream", "list-services-stream"))
+            else serve_list_services
+        )
+        serve_discovery(address, args.mode, report)
         args.report.write_text(json.dumps(report), encoding="utf-8")
         return
     with socket.socket() as listener:

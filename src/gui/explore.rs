@@ -1,6 +1,6 @@
 use super::*;
 use assembly_scanner::{
-    discovery::{self, ServicesTransport},
+    discovery::{self, DiscoveryTransport, ServicesTransport},
     explicit::{
         self, AssemblyInfo, AttributeWrite, Class3Size, ClassInfo, LinkInfo, ManagerInfo, PortInfo,
         ProfileAssemblyCheck, QosInfo, ReadPath, Reader, Route, SavedRead, SavedReadMode,
@@ -68,6 +68,7 @@ struct ReadReply {
 
 pub(super) struct Explorer {
     destination: String,
+    discovery_transport: DiscoveryTransport,
     services_transport: ServicesTransport,
     services: Option<discovery::ServicesReport>,
     class: String,
@@ -103,6 +104,7 @@ impl Default for Explorer {
     fn default() -> Self {
         Self {
             destination: Ipv4Addr::BROADCAST.to_string(),
+            discovery_transport: DiscoveryTransport::default(),
             services_transport: ServicesTransport::default(),
             services: None,
             class: "0x01".into(),
@@ -281,6 +283,27 @@ impl Device {
         ui.horizontal_wrapped(|ui| {
             ui.label("Destination IPv4");
             ui.text_edit_singleline(&mut explorer.destination);
+            egui::ComboBox::from_id_salt("list-identity-transport")
+                .selected_text(format!(
+                    "Discovery {}",
+                    explorer.discovery_transport.label()
+                ))
+                .show_ui(ui, |ui| {
+                    for transport in [DiscoveryTransport::Udp, DiscoveryTransport::Tcp] {
+                        if ui
+                            .selectable_value(
+                                &mut explorer.discovery_transport,
+                                transport,
+                                transport.label(),
+                            )
+                            .changed()
+                            && transport == DiscoveryTransport::Tcp
+                            && explorer.destination == "255.255.255.255"
+                        {
+                            explorer.destination.clone_from(&self.device);
+                        }
+                    }
+                });
             if ui
                 .add_enabled(!explorer.busy(), egui::Button::new("Discover"))
                 .clicked()
@@ -291,8 +314,9 @@ impl Device {
                 match parsed {
                     Ok((nic, target)) => {
                         explorer.discovered = None;
+                        let transport = explorer.discovery_transport;
                         explorer.start(move || {
-                            discovery::discover(nic, target)
+                            discovery::discover_with_transport(nic, target, transport)
                                 .map(|report| Response::Discovery(nic, report))
                                 .map_err(|error| error.to_string())
                         });
@@ -307,8 +331,9 @@ impl Device {
         let mut selected = None;
         if let Some((nic, report)) = &explorer.discovered {
             ui.small(format!(
-                "{} replies on {nic} · {} invalid{}",
+                "{} found on {nic} via {} · {} invalid replies{}",
                 report.devices.len(),
+                report.transport.label(),
                 report.invalid_replies,
                 if report.limit_reached {
                     " · Result limit reached"
