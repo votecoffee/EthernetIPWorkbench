@@ -81,6 +81,8 @@ Select **Read class info** beside the class field to inspect its revision, insta
 
 Select **List objects** to browse the classes advertised by a device's optional Message Router Object List. Selecting a class fills the read form for class inspection. The CLI `list-objects` command returns the same class IDs and raw reply. [Object List inspection](docs/OPERATIONS.md#browse-the-cip-object-list)
 
+Select **Find instances** to browse instance IDs for the selected class when the target supports Find_Next_Object_Instance. Select a returned instance to fill the read form, or use **Next instances** to advance the cursor. The CLI `list-instances` command reads one page. [CIP instance browsing](docs/OPERATIONS.md#browse-cip-instances)
+
 Choose a **Port Object** preset in Explore, then select **Read port info**. Instance 0 shows the port directory. A specific instance shows the reported port number, node address, and routing capabilities. The CLI `port-info` command exports the same fields. [Port Object inspection](docs/OPERATIONS.md#inspect-a-cip-port)
 
 Choose **Network objects → TCP/IP Interface · Status**, then select **Read interface info** to see the reported IP address, mask, gateway, DNS servers, startup method, hostname, and Physical Link Object path. The CLI `tcpip-info` command exports these fields and their raw replies. [TCP/IP Interface inspection](docs/OPERATIONS.md#inspect-a-tcpip-interface)

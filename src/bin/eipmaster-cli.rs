@@ -49,6 +49,7 @@ Usage:
   eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
   eipmaster-cli class-info <adapter-or-bridge-ipv4> <local-ipv4> <class> [--route <port/link/...>]
   eipmaster-cli list-objects <adapter-or-bridge-ipv4> <local-ipv4> [--route <port/link/...>]
+  eipmaster-cli list-instances <adapter-or-bridge-ipv4> <local-ipv4> <class> [<after-instance>] [--route <port/link/...>]
   eipmaster-cli port-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli tcpip-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli link-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
@@ -181,6 +182,21 @@ fn run(args: &[OsString]) -> Result<bool, String> {
             let report = explicit::read_object_list(adapter, local, route)?;
             println!("{}", report.report_json()?);
             Ok(report.class_ids.is_some())
+        }
+        [command, adapter, local, class, options @ ..] if command == "list-instances" => {
+            let (after, endpoint_options) = match options {
+                [after, rest @ ..] if after != "--route" => (
+                    u16::try_from(explicit::parse_id(&after.to_string_lossy())?)
+                        .map_err(|_| "Instance cursor must be from 0 to 65535")?,
+                    rest,
+                ),
+                _ => (0, options),
+            };
+            let (adapter, local, route) = explicit_endpoint(adapter, local, endpoint_options)?;
+            let class = explicit::parse_id(&class.to_string_lossy())?;
+            let report = explicit::find_instances_page(adapter, local, class, after, route)?;
+            println!("{}", report.report_json()?);
+            Ok(matches!(report.decoded(), Ok(Some(_))))
         }
         [command, adapter, local, instance, options @ ..] if command == "port-info" => {
             let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;

@@ -822,3 +822,9 @@ Pinned Windows OpENer returned identical Identity data over UDP and TCP. The exi
 The Windows loopback fixture verified a single Get_Attribute_Single request for class 2, instance 1, attribute 1. Direct and routed replies retained the advertised ID order, including vendor class `0x1234`. The CLI distinguished a valid empty list, an unsupported attribute, a bridge rejection, and malformed replies. The headless Explore test selected the vendor class, populated the class revision address on the existing route, and preserved the saved requests.
 
 Pinned Windows OpENer rejected the optional Object List with CIP status `0x14` and completed the separate Assembly class inspection. Positive Object List decoding was verified with the synthetic fixture. Physical-device verification remains open. [Keyence NU-EP1 Message Router Object](https://support.rockwellautomation.com/ci/okcsFattach/get/1091470_5)
+
+## CIP instance browsing
+
+The Windows loopback fixture verified Find_Next_Object_Instance requests for vendor class `0x1234` using a one-byte page limit. The test decoded a sparse list, advanced from cursor 300 using a 16-bit instance segment, and recognized both a terminal zero ID and an empty page. It retained malformed reply bytes and distinguished a repeated cursor, a target service rejection, and a bridge rejection. The headless Explore test paged through the same route, selected instance 600, and preserved the saved reads.
+
+Pinned Windows OpENer rejected the optional Assembly service with CIP status `0x08`. Positive enumeration and continuation were verified with the synthetic fixture. Physical-device verification remains open. [ODVA instance discovery example](https://www.odva.org/wp-content/uploads/2023/10/2023-ODVA-Conference_Majcher_Enabling-Data-Scientist-Use-Cases.pdf)

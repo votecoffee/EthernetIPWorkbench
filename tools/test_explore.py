@@ -624,6 +624,43 @@ def check_object_list(exe, root):
     print("Object List passed direct, routed, empty, unsupported, and malformed replies.")
 
 
+def check_instance_list(exe, root):
+    for case, mode, route, after, ids, next_after, error in (
+        ("first", "instance-list", None, None, [1, 44, 300], 300, None),
+        ("routed-tail", "instance-list", "1/3", "0x12C", [600], None, None),
+        ("empty", "instance-list", None, "600", [], None, None),
+        ("unsupported", "instance-list-unsupported", None, None, None, None, None),
+        ("router-rejected", "instance-list", "1/7", None, None, None, None),
+        ("malformed", "instance-list-malformed", None, None, None, None, "declares 2 IDs"),
+        ("stalled", "instance-list-stalled", "1/3", "300", None, None, "must increase beyond"),
+    ):
+        command = [exe, "list-instances", LOCAL, LOCAL, "0x1234"]
+        if after is not None:
+            command.append(after)
+        if route:
+            command.extend(("--route", route))
+        result, peer = with_adapter(root, f"instance-list-{case}", command, mode)
+        assert result.returncode == (0 if ids is not None else 1) and not result.stderr
+        report = json.loads(result.stdout)
+        (root / f"instance-list-{case}.json").write_text(result.stdout, encoding="utf-8")
+        assert report["service"] == "Find_Next_Object_Instance" and report["requested_max"] == 64
+        cursor = int(after, 0) if after else 0
+        assert report["path"] == {"class": 0x1234, "instance": cursor, "attribute": None}
+        assert (report.get("route"), report["instance_ids"], report["next_after"]) == (route, ids, next_after)
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert peer["instance_list_cursors"] == [cursor]
+        assert peer["route_hex"] == {None: "", "1/3": "0103", "1/7": "0107"}[route]
+        if error:
+            assert error in report["decode_error"] and len(bytes.fromhex(report["data_hex"])) == 3
+        if case == "unsupported":
+            assert report["general_status"] == 0x08
+        if case == "router-rejected":
+            assert (report["reply_from"], report["extended_status"]) == ("router", [0x0311])
+    invalid = subprocess.run([exe, "list-instances", LOCAL, LOCAL, "4", "65536"], capture_output=True, timeout=5)
+    assert invalid.returncode == 1 and b"cursor must be from 0 to 65535" in invalid.stderr
+    print("Instance browsing passed sparse, routed, terminal, unsupported, and malformed replies.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
@@ -827,6 +864,7 @@ def main():
     check_profile_assemblies(exe, root)
     check_list_services(exe, root)
     check_object_list(exe, root)
+    check_instance_list(exe, root)
 
     saved = root / "saved.toml"
     source = PROFILE.read_text(encoding="utf-8")

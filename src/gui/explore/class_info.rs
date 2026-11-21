@@ -48,7 +48,7 @@ impl Explorer {
         }
     }
 
-    fn inspection_request(
+    pub(super) fn inspection_request(
         &self,
         adapter: &str,
         local: Option<Ipv4Addr>,

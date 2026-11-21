@@ -895,6 +895,53 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode instance-list-gui on localhost"]
+    fn explore_pages_through_a_routed_instance_list() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[("Vendor class through bridge", 6, Some("1/3"))]);
+        device.preferences.cip_reads[0].path.class = 0x1234;
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Vendor class through bridge");
+        click(&mut device, &ctx, size, "Find instances");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "CIP instances for class 0x1234",
+            "Route 1/3",
+            "Instance 300",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Next instances");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Instances after 300",
+            "End of instance list",
+            "Instance 600",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Instance 600");
+        let labels = draw(&mut device, &ctx, size);
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text == "Instance 600 attributes")
+        );
+        assert_eq!(device.snapshot(), saved);
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode object-list on localhost"]
     fn explore_selects_a_class_from_a_routed_object_list() {
         let ctx = egui::Context::default();

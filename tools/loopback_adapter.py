@@ -402,6 +402,30 @@ def object_list_reply(cip, mode, report):
     return bytes.fromhex("8E 00 00 00 " + values[mode])
 
 
+def instance_list_reply(cip, mode, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    request = {
+        bytes.fromhex("11 03 21 00 34 12 24 00 40"): 0,
+        bytes.fromhex("11 04 21 00 34 12 25 00 2C 01 40"): 300,
+        bytes.fromhex("11 04 21 00 34 12 25 00 58 02 40"): 600,
+    }
+    after = request[bytes(message)]
+    assert route in (b"", b"\x01\x03", b"\x01\x07")
+    report.setdefault("instance_list_cursors", []).append(after)
+    report["route_hex"] = route.hex()
+    if route == b"\x01\x07":
+        return bytes.fromhex("D2 00 01 01 11 03")
+    if mode == "instance-list-unsupported":
+        return bytes.fromhex("91 00 08 00")
+    if mode == "instance-list-malformed":
+        return bytes.fromhex("91 00 00 00 02 01 00")
+    if mode == "instance-list-stalled":
+        assert after == 300
+        return bytes.fromhex("91 00 00 00 01 2C 01")
+    payload = {0: "03 01 00 2C 00 2C 01", 300: "02 58 02 00 00", 600: "00"}[after]
+    return bytes.fromhex("91 00 00 00 " + payload)
+
+
 def explicit_write_reply(cip, mode, attrs, report):
     route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
     assert route in (b"", b"\x01\x03")
@@ -530,6 +554,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
         "assembly-info": assembly_info_reply,
         "profile-assemblies": profile_assemblies_reply,
         "object-list": object_list_reply,
+        "instance-list": instance_list_reply,
     }
     object_reader = next((reader for name, reader in object_readers.items() if mode.startswith(name)), None)
     report_explicit = (
@@ -922,6 +947,8 @@ def main():
         "profile-assemblies", "profile-assemblies-malformed",
         "object-list", "object-list-empty", "object-list-malformed", "object-list-zero",
         "object-list-unsupported",
+        "instance-list", "instance-list-unsupported", "instance-list-malformed", "instance-list-stalled",
+        "instance-list-gui",
         "list-services", "list-services-tcp", "list-services-malformed",
         "list-services-rejected", "list-services-header",
         "list-services-stream", "list-services-stream-context", "list-services-stream-truncated",
@@ -974,6 +1001,7 @@ def main():
         listener.settimeout(30)
         print("Ready on loopback", flush=True)
         sequences = {
+            "instance-list-gui": ("instance-list", "instance-list"),
             "explicit-write-gui": ("explicit-write-review", "explicit-write-review", "explicit-write-readback"),
             "explicit-write-gui-current": ("explicit-write-review", "explicit-write-review", "explicit-write-current"),
             "class3-write-gui": ("explicit-write-review", "class3-write", "class3-write"),

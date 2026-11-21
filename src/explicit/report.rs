@@ -223,6 +223,36 @@ impl super::ObjectList {
     }
 }
 
+impl super::InstancePage {
+    pub fn report_json(&self) -> Result<String, String> {
+        let mut document = read_reply_document(
+            self.adapter_or_bridge,
+            self.path(),
+            self.route.as_ref(),
+            None,
+            self.reply.as_deref(),
+        )
+        .unwrap_or_else(|error| json!({"path": self.path(), "error": error}));
+        document["adapter_or_bridge"] = json!(self.adapter_or_bridge);
+        document["local_ip"] = json!(self.local_ip);
+        document["service"] = json!("Find_Next_Object_Instance");
+        document["requested_max"] = json!(super::INSTANCE_PAGE_SIZE);
+        if let Some(route) = &self.route {
+            document["route"] = json!(route);
+        }
+        let decoded = match self.decoded() {
+            Ok(ids) => ids,
+            Err(error) => {
+                document["decode_error"] = json!(error);
+                None
+            }
+        };
+        document["instance_ids"] = json!(decoded.as_ref().map(|page| &page.ids));
+        document["next_after"] = json!(decoded.and_then(|page| page.next_after));
+        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
+    }
+}
+
 fn instance_json(
     batch: &SavedReadBatch,
     class: u32,

@@ -21,6 +21,7 @@ mod assembly_info;
 mod batch;
 mod class_info;
 mod connected;
+mod instances;
 mod link_info;
 mod manager_info;
 mod multiple;
@@ -44,6 +45,7 @@ pub use connected::{
     Class3Size, ConnectedPacketBatch, ConnectedReadBatch, run_saved_reads_connected,
     run_saved_reads_connected_packet,
 };
+pub use instances::{INSTANCE_PAGE_SIZE, InstanceIds, InstancePage, find_instances_page};
 pub use link_info::{ETHERNET_LINK_CLASS, LinkInfo, read_link_info};
 pub use manager_info::{CONNECTION_MANAGER_CLASS, ManagerInfo, read_manager_info};
 pub use multiple::run_saved_reads_packet;
@@ -421,15 +423,17 @@ impl Session {
 }
 
 fn read_message(address: ReadPath) -> Vec<u8> {
+    let service = if address.attribute.is_some() {
+        0x0e
+    } else {
+        0x01
+    };
+    encode_read_path(service, address)
+}
+
+fn encode_read_path(service: u8, address: ReadPath) -> Vec<u8> {
     let mut request = Vec::with_capacity(20);
-    request.extend([
-        if address.attribute.is_some() {
-            0x0e
-        } else {
-            0x01
-        },
-        0,
-    ]);
+    request.extend([service, 0]);
     logical_segment(&mut request, 0x20, address.class);
     logical_segment(&mut request, 0x24, address.instance);
     if let Some(attribute) = address.attribute {

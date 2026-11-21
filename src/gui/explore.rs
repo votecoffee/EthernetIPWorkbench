@@ -2,9 +2,9 @@ use super::*;
 use assembly_scanner::{
     discovery::{self, DiscoveryTransport, ServicesTransport},
     explicit::{
-        self, AssemblyInfo, AttributeWrite, Class3Size, ClassInfo, LinkInfo, ManagerInfo,
-        ObjectList, PortInfo, ProfileAssemblyCheck, QosInfo, ReadPath, Reader, Route, SavedRead,
-        SavedReadMode, SavedReadReport, TcpIpInfo, WriteCurrentCheck, WriteInspection,
+        self, AssemblyInfo, AttributeWrite, Class3Size, ClassInfo, InstancePage, LinkInfo,
+        ManagerInfo, ObjectList, PortInfo, ProfileAssemblyCheck, QosInfo, ReadPath, Reader, Route,
+        SavedRead, SavedReadMode, SavedReadReport, TcpIpInfo, WriteCurrentCheck, WriteInspection,
         WriteOutcome, WriteReport,
     },
 };
@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 mod batch;
 mod class_info;
+mod instances;
 mod object_list;
 mod receipt;
 mod services;
@@ -41,6 +42,7 @@ enum Response {
     Services(discovery::ServicesReport),
     Read(ReadReply),
     ClassInfo(ClassInfo),
+    InstancePage(InstancePage),
     ObjectList(ObjectList),
     PortInfo(PortInfo),
     TcpIpInfo(TcpIpInfo),
@@ -82,6 +84,7 @@ pub(super) struct Explorer {
     selection: Option<Selection>,
     read_result: Option<ReadReply>,
     class_info: Option<ClassInfo>,
+    instance_page: Option<InstancePage>,
     object_list: Option<ObjectList>,
     port_info: Option<PortInfo>,
     tcpip_info: Option<TcpIpInfo>,
@@ -119,6 +122,7 @@ impl Default for Explorer {
             selection: None,
             read_result: None,
             class_info: None,
+            instance_page: None,
             object_list: None,
             port_info: None,
             tcpip_info: None,
@@ -168,6 +172,7 @@ impl Explorer {
             Ok(Ok(Response::Services(report))) => self.services = Some(report),
             Ok(Ok(Response::Read(reply))) => self.read_result = Some(reply),
             Ok(Ok(Response::ClassInfo(info))) => self.class_info = Some(info),
+            Ok(Ok(Response::InstancePage(page))) => self.instance_page = Some(page),
             Ok(Ok(Response::ObjectList(list))) => self.object_list = Some(list),
             Ok(Ok(Response::PortInfo(info))) => self.port_info = Some(info),
             Ok(Ok(Response::TcpIpInfo(info))) => self.tcpip_info = Some(info),
@@ -517,6 +522,13 @@ impl Device {
             {
                 explorer.read_class_info(&self.device, local.as_ref().ok().copied());
             }
+            if ui
+                .add_enabled(!explorer.busy(), egui::Button::new("Find instances"))
+                .on_hover_text("Read the first page of instance IDs for this class.")
+                .clicked()
+            {
+                explorer.find_instances(&self.device, local.as_ref().ok().copied());
+            }
             explorer.instance_action(ui, &self.device, local.as_ref().ok().copied());
         });
         let mut typed = explorer.selection.is_some();
@@ -619,6 +631,28 @@ impl Device {
             && let Some(class) = object_list::show(ui, list)
         {
             explorer.load_preset("Class revision", u32::from(class), 0, 1);
+        }
+        if let Some(page) = &explorer.instance_page {
+            match instances::show(ui, page, !explorer.busy()) {
+                Some(instances::Action::Select(instance)) => {
+                    let path = ReadPath {
+                        class: page.class,
+                        instance: u32::from(instance),
+                        attribute: None,
+                    };
+                    explorer.load(path);
+                    explorer.selection = None;
+                    explorer.name = format!("Instance {instance} attributes");
+                }
+                Some(instances::Action::Next(after)) => explorer.load_instances(
+                    page.adapter_or_bridge,
+                    page.local_ip,
+                    page.class,
+                    after,
+                    page.route.clone(),
+                ),
+                None => {}
+            }
         }
         if let Some(info) = &explorer.port_info {
             class_info::show_port(ui, info);

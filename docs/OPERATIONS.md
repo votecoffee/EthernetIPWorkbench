@@ -77,6 +77,17 @@ In **Explore**, enter the target's known **CIP route** if needed, then select **
 
 The CLI returns `class_ids` as numeric IDs. Expand **Object List** in Explore for raw bytes, a decode error, or the target or router CIP status. A valid empty list returns `[]`. A rejected or unreadable list returns `null` and exit code 1.
 
+### Browse CIP instances
+
+In **Explore**, enter a class ID or choose one from **List objects**, then select **Find instances**. The query uses the selected CIP route and requests up to 64 entries starting after instance 0. **Next instances** requests one additional page using the last instance returned. Choose an instance to fill the read form for that class. [ODVA instance discovery example](https://www.odva.org/wp-content/uploads/2023/10/2023-ODVA-Conference_Majcher_Enabling-Data-Scientist-Use-Cases.pdf)
+
+~~~powershell
+.\target\release\eipmaster-cli.exe list-instances 192.0.2.10 192.0.2.11 4
+.\target\release\eipmaster-cli.exe list-instances 192.0.2.10 192.0.2.11 4 300 --route 1/3
+~~~
+
+The optional cursor is a decimal or hexadecimal UINT. Use the JSON `next_after` value as the cursor for another page. A valid terminal reply has `next_after: null`. The report retains the raw reply, a decode error, or the router or target CIP status. The command returns exit code 1 for an unsupported service, a malformed list, or an exchange error. Each request uses one registered explicit session for one page of 16-bit IDs. [ODVA CIP Object Tests, Find_Next_Object_Instance](https://ticket.hilscher.com/secure/attachment/260555/CIP_PCTS.pdf)
+
 ### Inspect a CIP class
 
 In **Explore**, enter a class ID or select a common attribute to fill in its class. Set **CIP route** when reading through a bridge, then select **Read class info**. The inspection queries class instance zero with seven Get_Attribute_Single requests on one TCP session. The results show the revision, maximum instance ID, instance count, optional instance attributes and services, and maximum attribute IDs. Maximum IDs describe bounds. Use the device manual for the implemented instance and attribute addresses. [Common class attribute formats](https://assets.danfoss.com/documents/366937/BC361183001812en-000201.pdf) · [EtherNet/IP class attribute example](https://product-help.schneider-electric.com/Machine%20Expert/V1.1/en/tm3bcprg/tm3bcprg/TM3_Ethernet_Bus_Coupler/TM3_Ethernet_Bus_Coupler-6.htm)
