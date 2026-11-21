@@ -368,6 +368,21 @@ def assembly_info_reply(cip, mode, report):
     return bytes.fromhex("8E 00 00 00") + body
 
 
+def profile_assemblies_reply(cip, mode, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    assert len(message) == 8 and message[:5] == bytes.fromhex("0E 03 20 04 24")
+    instance = message[5]
+    assert message[6:] == b"\x30\x04" and route in (b"", b"\x01\x03")
+    report.setdefault("assembly_size_instances", []).append(instance)
+    report["route_hex"] = route.hex()
+    if route and instance == 1:
+        return bytes.fromhex("8E 00 14 01 02 03")
+    if mode == "profile-assemblies-malformed" and instance == 1:
+        return bytes.fromhex("8E 00 00 00 00")
+    sizes = {101: 5, 254: 4} if route else {101: 4, 254: 0, 1: 0}
+    return bytes.fromhex("8E 00 00 00") + struct.pack("<H", sizes[instance])
+
+
 def explicit_write_reply(cip, mode, attrs, report):
     route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
     assert route in (b"", b"\x01\x03")
@@ -494,6 +509,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
         "manager-info": manager_info_reply,
         "qos-info": qos_info_reply,
         "assembly-info": assembly_info_reply,
+        "profile-assemblies": profile_assemblies_reply,
     }
     object_reader = next((reader for name, reader in object_readers.items() if mode.startswith(name)), None)
     report_explicit = (
@@ -807,6 +823,7 @@ def main():
         "qos-info", "qos-info-optional", "qos-info-malformed",
         "assembly-info", "assembly-info-size-unsupported", "assembly-info-data-unsupported",
         "assembly-info-malformed", "assembly-info-empty",
+        "profile-assemblies", "profile-assemblies-malformed",
         "explicit-write", "explicit-write-review", "explicit-write-gui", "explicit-write-rejected",
         "explicit-write-no-reply", "explicit-write-router-timeout",
         "explicit-write-readback", "explicit-write-readback-mismatch", "explicit-write-readback-rejected",

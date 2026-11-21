@@ -385,6 +385,34 @@ def check_assembly_info(cli, adapter, root):
     print("OpENer reported and returned 32 input assembly bytes and 10 configuration assembly bytes.")
 
 
+def check_profile_assemblies(cli, adapter, root):
+    root.mkdir()
+    source = PROFILE.read_text(encoding="utf-8")
+    owner = root / "owner.toml"
+    owner.write_text(
+        source.replace("input_only = true", "input_only = false")
+        .replace("output_instance = 152", "output_instance = 150")
+        .replace("output_size = 0", "output_size = 32")
+        .replace("config_size = 0", "config_size = 10")
+        .replace('output_hex = ""', f'output_hex = "{bytes(32).hex(" ")}"')
+        .replace('config_hex = ""', f'config_hex = "{bytes(10).hex(" ")}"'),
+        encoding="utf-8",
+    )
+    with run_adapter(adapter, root):
+        for name, profile, expected in (
+            ("input-only", PROFILE, [(100, 32), (152, 0)]),
+            ("owner", owner, [(100, 32), (150, 32), (151, 10)]),
+        ):
+            result = subprocess.run([cli, "check-assemblies", profile], capture_output=True,
+                                    timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+            (root / f"{name}.json").write_bytes(result.stdout)
+            assert result.returncode == 0 and not result.stderr, (result.stdout, result.stderr)
+            report = json.loads(result.stdout)
+            assert report["matches_profile"] is True
+            assert [(check["instance"], check["declared_size_bytes"]) for check in report["checks"]] == expected
+    print("OpENer verified the input-only heartbeat and the owner profile's input, output, and configuration sizes.")
+
+
 def check_explicit_write(cli, adapter, root, identity, *, connected=False):
     root.mkdir()
     pin = ":".join(str(identity[field]) for field in ("vendor", "device_type", "code", "serial"))
@@ -673,6 +701,7 @@ def main():
         check_manager_info(cli, adapter, root / "manager-info")
         check_qos_info(cli, adapter, root / "qos-info")
         check_assembly_info(cli, adapter, root / "assembly-info")
+        check_profile_assemblies(cli, adapter, root / "check-assemblies")
         check_explicit_write(cli, adapter, root / "explicit-write", identity)
         check_explicit_write(cli, adapter, root / "class3-write", identity, connected=True)
         check_connected_reads(cli, adapter, root / "connected-reads", identity)

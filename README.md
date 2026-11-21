@@ -89,6 +89,8 @@ Choose **Connection Manager** in Explore, then select **Read connection counters
 
 Choose **Common attributes → Assembly · Data**, then select **Read assembly info** to inspect the selected instance's declared size and the actual explicit data bytes. The CLI `assembly-info` command reports both lengths and any difference. [Assembly inspection](docs/OPERATIONS.md#inspect-an-assembly)
 
+Select **Check profile assembly sizes** in Explore, or run `check-assemblies <settings.toml>`, to compare the adapter's reported sizes with the profile's application payload lengths before connecting. [Profile assembly size check](docs/OPERATIONS.md#check-profile-assembly-sizes)
+
 Use **Stage attribute write** in Explore to review and send a documented Set_Attribute_Single request. Enter hex or select **Enter typed value** to preview the encoded bytes. The CLI `write-attribute` previews the address, route and bytes offline and accepts typed entry with `--type`. Sending requires the reviewed device identity, including its serial number. For a readable attribute, **Require current value** or `--expect-current` checks the bytes before sending. **Read back after write** or `--readback` checks the returned bytes after acknowledgment. [Review and send an attribute write](docs/OPERATIONS.md#review-and-send-an-attribute-write)
 
 Choose **Use Class 3** in the write review or pass `write-attribute --connected` for a device that requires connected explicit messaging. Identity verification, the write, and any value checks share the direct or routed Class 3 connection. The result reports Forward_Close separately. [Class 3 attribute writes](docs/OPERATIONS.md#send-a-class-3-attribute-write)

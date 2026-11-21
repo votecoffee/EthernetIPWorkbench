@@ -129,6 +129,18 @@ In **Explore → Common attributes**, choose **Assembly · Data** to start from 
 
 One registered session reads the declared byte count from attribute 4 and the raw data from attribute 3 with separate Get_Attribute_Single requests. The CLI exposes `declared_size_bytes`, `data_size_bytes`, and `sizes_match`. A missing or malformed reply leaves its size unavailable. An empty data reply counts as zero bytes. A mismatch is visible in both interfaces even when both reads succeeded. Compare the reported values with the documented cyclic payload, including any device-specific size or header rules, before choosing Forward_Open settings. [Pinned OpENer Assembly Object reference](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipassembly.c)
 
+### Check profile assembly sizes
+
+In **Explore**, select **Check profile assembly sizes**. The check uses the adapter, local NIC, cyclic I/O route, and effective assembly settings from Device. The CLI loads the same settings from a saved profile.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe check-assemblies .\samples\opener-loopback.toml
+~~~
+
+One registered explicit session reads the declared size from Assembly attribute 4 once per distinct instance. The report compares each input and output role against its configured fixed size or variable-size range. An input-only heartbeat expects zero output bytes. A configuration comparison is included when the profile carries configuration bytes. The comparisons use application payload lengths before connected I/O headers are added. This is a read-only check of the target-reported sizes and is separate from cyclic acceptance. [Pinned OpENer Assembly size attribute](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipassembly.c)
+
+Expand **Assembly size replies** for raw data and CIP errors. The CLI returns exit code 0 when every reported size is within its profile range. A mismatch or unavailable size returns exit code 1 and retains each comparison and reply in JSON.
+
 ### Review and send an attribute write
 
 Use the documented writable class, instance and attribute. In **Explore**, enter the address and optional CIP route, and select **Stage attribute write**. Enter space-separated hex or select **Enter typed value**, choose a format, and inspect the encoded bytes. Select **Verify target identity**, then review the device's name and identity, the NIC, address, route and exact bytes before selecting **Send reviewed write**. Changing the value or its encoding clears the prior review. The send checks the full identity on the same registered session that carries the write. [Set_Attribute_Single reference](https://product-help.schneider-electric.com/Machine%20Expert/V2.2/en/EtherNetIP_Services/EtherNetIP_Services/modules/set-attribute-si.html)

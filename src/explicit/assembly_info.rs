@@ -5,7 +5,7 @@ use std::net::Ipv4Addr;
 
 pub const ASSEMBLY_CLASS: u32 = 0x04;
 const DATA_ATTRIBUTE: u32 = 3;
-const SIZE_ATTRIBUTE: u32 = 4;
+pub(super) const SIZE_ATTRIBUTE: u32 = 4;
 const ATTRIBUTES: &[(u32, &str)] = &[
     (SIZE_ATTRIBUTE, "Declared size"),
     (DATA_ATTRIBUTE, "Assembly data"),
@@ -87,7 +87,7 @@ pub(super) fn decode(attribute: u32, bytes: &[u8]) -> Option<Result<String, Stri
     }
 }
 
-fn size(bytes: &[u8]) -> Result<u16, String> {
+pub(super) fn size(bytes: &[u8]) -> Result<u16, String> {
     bytes.try_into().map(u16::from_le_bytes).map_err(|_| {
         format!(
             "Assembly size requires a two-byte UINT, got {} bytes",

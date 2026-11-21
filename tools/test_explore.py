@@ -451,6 +451,60 @@ def check_assembly_info(exe, root):
     print("Assembly size and raw data passed direct, routed mismatch, optional, malformed, and empty replies.")
 
 
+def check_profile_assemblies(exe, root):
+    source = PROFILE.read_text(encoding="utf-8")
+    routed = ('io_route = "1/3"\n'
+              + source.replace("input_size = 4", "input_min_size = 3\ninput_size = 6")
+              .replace("output_size = 0", "output_min_size = 1\noutput_size = 3")
+              .replace("input_only = true", "input_only = false")
+              .replace("config_size = 0", "config_size = 2")
+              .replace("run_idle = false", "run_idle = true"))
+    shared = (source.replace("output_instance = 254", "output_instance = 101")
+              .replace("output_size = 0", "output_size = 4")
+              .replace("input_only = true", "input_only = false")
+              .replace("config_instance = 1\n", ""))
+    config = (source.replace("input_only = true", "input_only = false")
+              .replace("config_size = 0", "config_size = 2"))
+    for name, profile, mode, route, instances, expected in (
+        ("fixed", source, "profile-assemblies", None, [101, 254],
+         [("Input", 101, 4, 4, 4, True), ("Output", 254, 0, 0, 0, True)]),
+        ("variable-routed", routed, "profile-assemblies", "1/3", [101, 254, 1],
+         [("Input", 101, 3, 6, 5, True), ("Output", 254, 1, 3, 4, False),
+          ("Configuration", 1, 2, 2, None, None)]),
+        ("shared", shared, "profile-assemblies", None, [101],
+         [("Input", 101, 4, 4, 4, True), ("Output", 101, 4, 4, 4, True)]),
+        ("malformed", config, "profile-assemblies-malformed", None, [101, 254, 1],
+         [("Input", 101, 4, 4, 4, True), ("Output", 254, 0, 0, 0, True),
+          ("Configuration", 1, 2, 2, None, None)]),
+    ):
+        case = f"profile-assemblies-{name}"
+        path = root / f"{case}.toml"
+        path.write_text(profile, encoding="utf-8")
+        result, peer = with_adapter(root, case, [exe, "check-assemblies", path], mode)
+        complete = all(check[-1] is True for check in expected)
+        assert result.returncode == (0 if complete else 1) and not result.stderr, (result.stdout, result.stderr)
+        report = json.loads(result.stdout)
+        (root / f"{case}.json").write_text(result.stdout, encoding="utf-8")
+        assert report["matches_profile"] is complete and report.get("route") == route
+        keys = ("role", "instance", "minimum_bytes", "maximum_bytes", "declared_size_bytes", "matches_profile")
+        assert [tuple(row[key] for key in keys) for row in report["checks"]] == expected
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert peer["assembly_size_instances"] == instances and peer["route_hex"] == ("0103" if route else "")
+        assert [row["path"] for row in report["results"]] == [
+            {"class": 4, "instance": instance, "attribute": 4} for instance in instances
+        ]
+        last = report["results"][-1]
+        if route:
+            assert last["reply_from"] == "target" and last["extended_status"] == [0x0302]
+        if name == "malformed":
+            assert last["data_hex"] == "00" and "two-byte UINT" in last["decode_error"]
+    invalid = root / "profile-assemblies-invalid.toml"
+    invalid.write_text(source.replace("input_instance = 101", "input_instance = 0"), encoding="utf-8")
+    result = subprocess.run([exe, "check-assemblies", invalid], capture_output=True, timeout=5)
+    assert result.returncode == 1 and b"instance must be nonzero" in result.stderr
+    print("Profile assembly sizes passed direct, routed ranges, shared instances, and malformed size checks.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
@@ -650,6 +704,7 @@ def main():
     check_manager_info(exe, root)
     check_qos_info(exe, root)
     check_assembly_info(exe, root)
+    check_profile_assemblies(exe, root)
 
     saved = root / "saved.toml"
     source = PROFILE.read_text(encoding="utf-8")

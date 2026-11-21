@@ -895,6 +895,52 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode profile-assemblies on localhost"]
+    fn explore_checks_profile_sizes_through_the_configured_io_route() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[("Serial through other slot", 6, Some("1/7"))]);
+        device.settings.io_route = "1/3".into();
+        device.settings.input_instance = 101;
+        device.settings.input_min_size = Some(3);
+        device.settings.input_size = 6;
+        device.settings.input_only = false;
+        device.settings.output_instance = 254;
+        device.settings.output_min_size = Some(1);
+        device.settings.output_size = 3;
+        device.settings.config_instance = Some(1);
+        device.settings.config_size = 2;
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through other slot");
+        click(&mut device, &ctx, size, "Check profile assembly sizes");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Profile assembly size check",
+            "Cyclic I/O route 1/3",
+            "3–6",
+            "Within range",
+            "Size mismatch",
+            "Unavailable",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Assembly size replies");
+        let labels = draw(&mut device, &ctx, size);
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text == "Assembly 1 declared size · CIP rejection")
+        );
+        assert_eq!(device.snapshot(), saved);
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode assembly-info on localhost"]
     fn explore_shows_a_routed_assembly_size_mismatch() {
         let ctx = egui::Context::default();

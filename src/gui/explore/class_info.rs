@@ -217,6 +217,59 @@ pub(super) fn show_assembly(ui: &mut Ui, info: &AssemblyInfo) {
     );
 }
 
+pub(super) fn show_profile_assemblies(ui: &mut Ui, report: &ProfileAssemblyCheck) {
+    egui::CollapsingHeader::new("Profile assembly size check")
+        .default_open(true)
+        .show(ui, |ui| {
+            ui.small(format!(
+                "{} · Local NIC {}",
+                report.batch.adapter_or_bridge, report.batch.local_ip
+            ));
+            if let Some(route) = &report.route {
+                ui.small(format!("Cyclic I/O route {route}"));
+            }
+            egui::Grid::new("profile-assembly-size-comparison")
+                .striped(true)
+                .show(ui, |ui| {
+                    for heading in [
+                        "Role",
+                        "Instance",
+                        "Profile bytes at check",
+                        "Reported bytes",
+                        "Result",
+                    ] {
+                        ui.strong(heading);
+                    }
+                    ui.end_row();
+                    for check in &report.checks {
+                        ui.label(check.role);
+                        ui.label(check.instance.to_string());
+                        if check.minimum_bytes == check.maximum_bytes {
+                            ui.label(check.maximum_bytes.to_string());
+                        } else {
+                            ui.label(format!("{}–{}", check.minimum_bytes, check.maximum_bytes));
+                        }
+                        ui.label(
+                            check
+                                .declared_size_bytes
+                                .map_or_else(|| "—".into(), |size| size.to_string()),
+                        );
+                        match check.matches_profile {
+                            Some(true) => ui.colored_label(CYAN, "Within range"),
+                            Some(false) => ui.colored_label(AMBER, "Size mismatch"),
+                            None => ui.label("Unavailable"),
+                        };
+                        ui.end_row();
+                    }
+                });
+            ui.collapsing("Assembly size replies", |ui| {
+                for result in &report.batch.results {
+                    batch::show_result(ui, result);
+                }
+            });
+        });
+}
+
 fn show_inspection(
     ui: &mut Ui,
     title: String,

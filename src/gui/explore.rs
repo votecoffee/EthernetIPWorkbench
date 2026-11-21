@@ -3,8 +3,8 @@ use assembly_scanner::{
     discovery,
     explicit::{
         self, AssemblyInfo, AttributeWrite, Class3Size, ClassInfo, LinkInfo, ManagerInfo, PortInfo,
-        QosInfo, ReadPath, Reader, Route, SavedRead, SavedReadMode, SavedReadReport, TcpIpInfo,
-        WriteCurrentCheck, WriteInspection, WriteOutcome, WriteReport,
+        ProfileAssemblyCheck, QosInfo, ReadPath, Reader, Route, SavedRead, SavedReadMode,
+        SavedReadReport, TcpIpInfo, WriteCurrentCheck, WriteInspection, WriteOutcome, WriteReport,
     },
 };
 use std::sync::Arc;
@@ -43,6 +43,7 @@ enum Response {
     ManagerInfo(ManagerInfo),
     QosInfo(QosInfo),
     AssemblyInfo(AssemblyInfo),
+    ProfileAssemblies(ProfileAssemblyCheck),
     Batch(SavedReadReport),
     SavedReport(PathBuf),
     OpenedWriteDraft(Box<write::Draft>),
@@ -79,6 +80,7 @@ pub(super) struct Explorer {
     manager_info: Option<ManagerInfo>,
     qos_info: Option<QosInfo>,
     assembly_info: Option<AssemblyInfo>,
+    profile_assemblies: Option<ProfileAssemblyCheck>,
     batch_mode: SavedReadMode,
     saved_batch: Option<Arc<SavedReadReport>>,
     saved_report: Option<PathBuf>,
@@ -111,6 +113,7 @@ impl Default for Explorer {
             manager_info: None,
             qos_info: None,
             assembly_info: None,
+            profile_assemblies: None,
             batch_mode: SavedReadMode::default(),
             saved_batch: None,
             saved_report: None,
@@ -157,6 +160,7 @@ impl Explorer {
             Ok(Ok(Response::ManagerInfo(info))) => self.manager_info = Some(info),
             Ok(Ok(Response::QosInfo(info))) => self.qos_info = Some(info),
             Ok(Ok(Response::AssemblyInfo(info))) => self.assembly_info = Some(info),
+            Ok(Ok(Response::ProfileAssemblies(check))) => self.profile_assemblies = Some(check),
             Ok(Ok(Response::Batch(batch))) => self.saved_batch = Some(Arc::new(batch)),
             Ok(Ok(Response::SavedReport(path))) => self.saved_report = Some(path),
             Ok(Ok(Response::OpenedWriteDraft(draft))) => self.write_draft = Some(*draft),
@@ -263,6 +267,7 @@ impl Device {
         let can_change_adapter =
             !self.link_busy() && !self.capturing && self.identity_task.is_none();
         let local = self.local.parse::<Ipv4Addr>();
+        let profile_addresses = self.addresses();
         let explorer = &mut self.explorer;
         ui.heading("Discover adapters");
         ui.label(format!("Local NIC · {} (set in Device)", self.local));
@@ -376,6 +381,30 @@ impl Device {
                     1,
                     1,
                 );
+            }
+            if ui
+                .add_enabled(
+                    !explorer.busy(),
+                    egui::Button::new("Check profile assembly sizes"),
+                )
+                .on_hover_text(
+                    "Read declared sizes using the adapter, NIC, and cyclic I/O route in Device.",
+                )
+                .clicked()
+            {
+                explorer.profile_assemblies = None;
+                match profile_addresses {
+                    Ok((adapter, nic)) => {
+                        let mut settings = self.settings.clone();
+                        settings.device_ip = adapter;
+                        settings.local_ip = nic;
+                        explorer.start(move || {
+                            explicit::check_profile_assemblies(&settings)
+                                .map(Response::ProfileAssemblies)
+                        });
+                    }
+                    Err(error) => explorer.notice = Some(error),
+                }
             }
         });
         ui.horizontal_wrapped(|ui| {
@@ -517,6 +546,9 @@ impl Device {
         }
         if let Some(info) = &explorer.assembly_info {
             class_info::show_assembly(ui, info);
+        }
+        if let Some(check) = &explorer.profile_assemblies {
+            class_info::show_profile_assemblies(ui, check);
         }
         ui.collapsing("Saved reads", |ui| {
             if batch::controls(

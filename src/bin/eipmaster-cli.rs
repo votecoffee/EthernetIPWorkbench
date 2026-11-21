@@ -52,6 +52,7 @@ Usage:
   eipmaster-cli manager-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli qos-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli assembly-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
+  eipmaster-cli check-assemblies <settings.toml>
   eipmaster-cli write-attribute <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute> \"<value>\" [--type <Kind>] [--endian <little|big>] [--swap <none|bytes_in_words|word_order>] [--text-bytes <count>] [--route <port/link/...>] [--expect-current \"<hex bytes>\"] [--readback] [--connected [--connection-size <bytes>]] [--save-draft <new.toml> | --apply <vendor:type:product:serial>]
   eipmaster-cli write-draft <draft.toml> [--verify | --inspect | --apply <vendor:type:product:serial>]
   eipmaster-cli write-receipt <receipt-or-check.json> [--check-current]
@@ -214,6 +215,12 @@ fn run(args: &[OsString]) -> Result<bool, String> {
             )?;
             println!("{}", report.report_json()?);
             Ok(report.is_usable())
+        }
+        [command, profile] if command == "check-assemblies" => {
+            let (settings, _) = settings_file::load_profile(Path::new(profile))?;
+            let report = explicit::check_profile_assemblies(&settings)?;
+            println!("{}", report.report_json()?);
+            Ok(report.matches_profile())
         }
         [
             command,

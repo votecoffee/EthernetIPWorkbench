@@ -198,6 +198,18 @@ impl super::AssemblyInfo {
     }
 }
 
+impl super::ProfileAssemblyCheck {
+    pub fn report_json(&self) -> Result<String, String> {
+        let mut document = self.batch.report_document()?;
+        if let Some(route) = &self.route {
+            document["route"] = json!(route);
+        }
+        document["checks"] = json!(self.checks);
+        document["matches_profile"] = json!(self.matches_profile());
+        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
+    }
+}
+
 fn instance_json(
     batch: &SavedReadBatch,
     class: u32,

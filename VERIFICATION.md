@@ -796,3 +796,9 @@ Pinned Windows OpENer returned the configured urgent, scheduled, high, low and e
 The Windows loopback fixture verified two Get_Attribute_Single requests on one registered session for each inspection. The harness covered equal sizes, a routed mismatch, an unsupported size or data attribute, a malformed size, and a zero-byte data reply. The headless Explore test displayed the routed mismatch, retained the raw three-byte data and preserved the saved requests.
 
 Pinned Windows OpENer reported 32 bytes for input assembly 100 and 10 bytes for configuration assembly 151. Each subsequent explicit data reply matched the corresponding declared count. The inspection used read-only explicit messages. Physical-device verification against cyclic payloads remains open. [Pinned OpENer Assembly Object implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipassembly.c)
+
+## Profile assembly size check
+
+The Windows loopback fixtures verified fixed and variable application payload sizes, read a shared assembly instance once for both profile roles, and retained raw or rejected size replies. In the routed case, the reported five-byte input fit the three-to-six-byte range and the four-byte output exceeded the configured three-byte maximum. The headless Explore test used the profile route `1/3` while the single-read editor used `1/7`. Reported values and the optional configuration attribute rejection were visible without changing the profile.
+
+Pinned Windows OpENer matched the 32-byte input and zero-byte heartbeat in the input-only profile. It also matched a separate owner profile with a 32-byte output and ten-byte configuration payload. The check used explicit reads. Physical comparison remains open. [Pinned OpENer Assembly Object implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipassembly.c)
