@@ -155,6 +155,19 @@ Enable **Include multicast and session settings** before selecting **Read interf
 
 The multicast pending flag comes from interface status bit 4. The allocation reply includes the control code, number of addresses, and starting address. For a cyclic capture, use the group returned by Forward_Open and recorded under `cyclic_io`. The reported encapsulation inactivity timeout applies to idle TCP sessions. Zero disables that timer. Review the separate receive watchdog in the cyclic capture report for Class 1 I/O timeouts. [Belden TCP inactivity timeout](https://www.belden.com/-/media/project/belden/catalog-assets/assets/2026/02/07/20/30/pdf1001143.pdf?rev=59f39d8442364a889d1f05610991e474) · [Pinned OpENer multicast encoding](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/ciptcpipinterface.c#L336)
 
+#### Inspect IPv4 address conflicts
+
+In **Explore → Network objects**, choose **TCP/IP Interface · Status**, select the interface instance, and click **Read address conflicts**. Enter a documented CIP route to inspect a target behind a bridge.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe acd-info 127.0.0.2 127.0.0.1 1
+.\target\release\eipmaster-cli.exe acd-info 192.0.2.10 192.0.2.11 1 --route 1/3
+~~~
+
+On one registered session, the inspection reads the interface status and capability flags, the ACD selection, and the last conflict record. The JSON `address_conflict_detection` fields show support, enabled state, conflict and fault flags, and the last recorded event. Expand **Last address conflict · Reply** in Explore to see the recorded phase, remote MAC, and sender and target IPv4 addresses when the saved PDU is Ethernet/IPv4 ARP. [Rockwell TCP/IP Interface attributes](https://support.rockwellautomation.com/cc/okcsFattachCustom/get/1041842_5) · [Hilscher ACD and ARP field definitions](https://www.hilscher.com/fileadmin/cms_upload/de/Resources/pdf/EtherNetIP_Adapter_Protocol_API_20_EN.pdf#page=62)
+
+Unavailable values appear as `null` in the summary. Activity code 0 means the device reports no retained conflict since the record was last cleared. The individual result preserves CIP rejections, malformed payloads, and raw bytes. A historical conflict can help explain an interruption. Use the interface flags and a bench packet trace to establish when a conflict occurred.
+
 ### Inspect Ethernet Link diagnostics
 
 In **Explore → Network objects**, choose **Ethernet Link · Speed**, enter the Ethernet Link Object instance, and select **Read link info**. Use the device documentation or the Physical Link Object path from TCP/IP Interface inspection to identify the instance. The path `20 F6 24 01` points to Ethernet Link instance 1. Leave **CIP route** blank for a direct read or enter the documented route to the target.

@@ -777,6 +777,12 @@ The opt-in diagnostics fixture checked nine reads in one session. The direct cas
 
 Pinned Windows OpENer reported TTL 1, default allocation of one address starting at `239.192.1.32`, and a 120-second encapsulation inactivity timeout. The inspection used explicit reads on loopback. Physical multicast and TCP timeout behavior remain open for bench verification. [Pinned OpENer TCP/IP Interface implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/ciptcpipinterface.c)
 
+### IPv4 address conflict detection
+
+The Windows fixture verified the four read requests on one explicit session, both directly and through route `1/3`. It supplied capability, enablement and fault flags, a recorded conflict, and a probe with sender IPv4 `0.0.0.0`. Unknown ARP formats retained the saved bytes, and activity code zero produced a no-conflict record. The CLI retained malformed replies and distinguished target attribute rejections from a bridge rejection. The headless Explore test displayed the routed probe evidence.
+
+Pinned Windows OpENer returned interface status and capability flags and rejected the two ACD detail attributes with status `0x14`. The inspection left both unavailable. Positive conflict records were verified with synthetic data. Physical ACD behavior remains open. [Pinned OpENer TCP/IP Interface attribute declarations](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/ciptcpipinterface.c#L641)
+
 ## CIP Ethernet Link diagnostics
 
 The Windows loopback fixture checked five Get_Attribute_Single requests in one registered session per inspection, including a routed read of instance 2. The fixture covered link up with full duplex, link down with a stale duplex bit, the full flags mask, the MAC address, and unsigned 32-bit counters. A truncated counter block retained its raw bytes and a decode error. An unsupported media counter attribute retained the routed target's general and extended CIP status. Headless Explore displayed the routed flags and optional CIP rejection without changing saved requests.

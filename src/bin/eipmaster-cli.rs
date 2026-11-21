@@ -53,6 +53,7 @@ Usage:
   eipmaster-cli list-instances <adapter-or-bridge-ipv4> <local-ipv4> <class> [<after-instance>] [--route <port/link/...>]
   eipmaster-cli port-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli tcpip-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--diagnostics] [--route <port/link/...>]
+  eipmaster-cli acd-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli link-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli manager-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli connection-data <adapter-or-bridge-ipv4> <local-ipv4> <number|connection-serial:vendor:originator-serial> [--route <port/link/...>]
@@ -249,6 +250,17 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                 explicit::read_tcpip_info
             };
             let report = read(
+                adapter,
+                local,
+                explicit::parse_id(&instance.to_string_lossy())?,
+                route,
+            )?;
+            println!("{}", report.report_json()?);
+            Ok(report.is_usable())
+        }
+        [command, adapter, local, instance, options @ ..] if command == "acd-info" => {
+            let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;
+            let report = explicit::read_tcpip_address_conflicts(
                 adapter,
                 local,
                 explicit::parse_id(&instance.to_string_lossy())?,

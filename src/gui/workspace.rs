@@ -1463,6 +1463,38 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode acd-info-probe on localhost"]
+    fn explore_reads_address_conflict_evidence_over_a_route() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[("Serial through bridge", 6, Some("1/3"))]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "Network objects");
+        click(&mut device, &ctx, size, "TCP/IP Interface · Status");
+        click(&mut device, &ctx, size, "Read address conflicts");
+        wait_for_explore(&mut device);
+        click(&mut device, &ctx, size, "Last address conflict · Reply");
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Route 1/3",
+            "Address conflicts · TCP/IP Interface instance 1",
+            "ACD supported Yes · Enabled Yes",
+            "Conflict flag Yes · Fault flag Yes",
+            "IPv4 probing · Remote MAC 02:12:34:56:78:9A · ARP sender 0.0.0.0 · Target 198.51.100.37",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        assert_eq!(device.snapshot(), saved);
+        assert!(device.connection.is_none());
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode tcpip-info-diagnostics-optional on localhost"]
     fn explore_reads_multicast_and_session_diagnostics_over_a_route() {
         let ctx = egui::Context::default();

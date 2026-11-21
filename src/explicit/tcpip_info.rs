@@ -7,15 +7,22 @@ use super::{
 use serde::Serialize;
 use std::net::Ipv4Addr;
 
+mod acd;
+pub use acd::{AddressConflictDiagnostics, AddressConflictRecord, Ipv4Arp};
+
 pub const TCPIP_INTERFACE_CLASS: u32 = 0xf5;
 const BASIC_ATTRIBUTE_COUNT: usize = 6;
+const NETWORK_ATTRIBUTE_COUNT: usize = 9;
 const STATUS: u32 = 1;
+const CAPABILITY: u32 = 2;
+const STATUS_ATTRIBUTE: (u32, &str) = (STATUS, "Interface status");
+const CAPABILITY_ATTRIBUTE: (u32, &str) = (CAPABILITY, "Configuration capability");
 const MULTICAST_TTL: u32 = 8;
 const MULTICAST_CONFIGURATION: u32 = 9;
 const ENCAPSULATION_INACTIVITY_TIMEOUT: u32 = 13;
 pub(super) const ATTRIBUTES: &[(u32, &str)] = &[
-    (STATUS, "Interface status"),
-    (2, "Configuration capability"),
+    STATUS_ATTRIBUTE,
+    CAPABILITY_ATTRIBUTE,
     (3, "Configuration control"),
     (4, "Physical Link Object path"),
     (5, "Interface configuration"),
@@ -26,6 +33,8 @@ pub(super) const ATTRIBUTES: &[(u32, &str)] = &[
         ENCAPSULATION_INACTIVITY_TIMEOUT,
         "Encapsulation inactivity timeout",
     ),
+    acd::SELECT_ATTRIBUTE,
+    acd::CONFLICT_ATTRIBUTE,
 ];
 
 pub struct TcpIpInfo {
@@ -59,28 +68,36 @@ impl TcpIpInfo {
 
     /// Return the decoded network settings when requested. See the batch for any missing value.
     pub fn diagnostics(&self) -> Option<TcpIpDiagnostics> {
-        let find = |attribute| {
-            self.batch
-                .results
-                .iter()
-                .find(|entry| entry.request.path.attribute == Some(attribute))
-        };
-        find(MULTICAST_TTL)?;
-        let reply = |attribute| match &find(attribute)?.outcome {
-            SavedReadOutcome::Reply(bytes) => Some(bytes.as_slice()),
-            _ => None,
-        };
+        self.entry(MULTICAST_TTL)?;
         Some(TcpIpDiagnostics {
-            multicast_pending: reply(STATUS).and_then(|bytes| {
+            multicast_pending: self.reply(STATUS).and_then(|bytes| {
                 let flags = dword(bytes).ok()?;
                 Some(flags & (1 << 4) != 0)
             }),
-            multicast_ttl: reply(MULTICAST_TTL).and_then(|bytes| multicast_ttl(bytes).ok()),
-            multicast_configuration: reply(MULTICAST_CONFIGURATION)
+            multicast_ttl: self
+                .reply(MULTICAST_TTL)
+                .and_then(|bytes| multicast_ttl(bytes).ok()),
+            multicast_configuration: self
+                .reply(MULTICAST_CONFIGURATION)
                 .and_then(|bytes| multicast_configuration(bytes).ok()),
-            encapsulation_inactivity_timeout_seconds: reply(ENCAPSULATION_INACTIVITY_TIMEOUT)
+            encapsulation_inactivity_timeout_seconds: self
+                .reply(ENCAPSULATION_INACTIVITY_TIMEOUT)
                 .and_then(|bytes| inactivity_timeout(bytes).ok()),
         })
+    }
+
+    fn entry(&self, attribute: u32) -> Option<&super::SavedReadResult> {
+        self.batch
+            .results
+            .iter()
+            .find(|entry| entry.request.path.attribute == Some(attribute))
+    }
+
+    fn reply(&self, attribute: u32) -> Option<&[u8]> {
+        match &self.entry(attribute)?.outcome {
+            SavedReadOutcome::Reply(bytes) => Some(bytes),
+            _ => None,
+        }
     }
 }
 
@@ -107,7 +124,34 @@ pub fn read_tcpip_diagnostics(
     instance: u32,
     route: Option<Route>,
 ) -> Result<TcpIpInfo, String> {
-    read_info(adapter, local, instance, route, ATTRIBUTES)
+    read_info(
+        adapter,
+        local,
+        instance,
+        route,
+        &ATTRIBUTES[..NETWORK_ATTRIBUTE_COUNT],
+    )
+}
+
+/// Read the device's address conflict status, configuration and recorded evidence.
+pub fn read_tcpip_address_conflicts(
+    adapter: Ipv4Addr,
+    local: Ipv4Addr,
+    instance: u32,
+    route: Option<Route>,
+) -> Result<TcpIpInfo, String> {
+    read_info(
+        adapter,
+        local,
+        instance,
+        route,
+        &[
+            STATUS_ATTRIBUTE,
+            CAPABILITY_ATTRIBUTE,
+            acd::SELECT_ATTRIBUTE,
+            acd::CONFLICT_ATTRIBUTE,
+        ],
+    )
 }
 
 fn read_info(
@@ -159,7 +203,7 @@ pub(super) fn decode(attribute: u32, bytes: &[u8]) -> Option<Result<String, Stri
                 _ => format!("{seconds} s"),
             })
         }
-        _ => return None,
+        _ => return acd::decode(attribute, bytes),
     })
 }
 

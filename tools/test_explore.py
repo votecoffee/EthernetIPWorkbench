@@ -372,6 +372,68 @@ def check_tcpip_diagnostics(exe, root):
     print("TCP/IP multicast and TCP inactivity diagnostics passed direct, routed, and malformed checks.")
 
 
+def check_acd_info(exe, root):
+    for mode, route, code in (
+        ("acd-info", None, 0),
+        ("acd-info-probe", "1/3", 0),
+        ("acd-info-clear", None, 0),
+        ("acd-info-unsupported", "1/3", 0),
+        ("acd-info-malformed", None, 1),
+        ("acd-info-unknown-arp", None, 0),
+        ("acd-info", "1/7", 1),
+    ):
+        case = "acd-router-rejected" if route == "1/7" else mode
+        command = [exe, "acd-info", LOCAL, LOCAL, "1", *(("--route", route) if route else ())]
+        result, peer = with_adapter(root, case, command, mode)
+        assert result.returncode == code and not result.stderr, (result.stdout, result.stderr)
+        (root / f"{case}.json").write_text(result.stdout, encoding="utf-8")
+        report = json.loads(result.stdout)
+        assert (report["class"], report["instance"], report.get("route")) == (0xF5, 1, route)
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert peer["route_hex"] == {"1/3": "0103", "1/7": "0107", None: ""}[route]
+        flags = report["address_conflict_detection"]
+        assert "network_diagnostics" not in report
+        rows = report["results"]
+        assert peer["acd_attributes"] == [1, 2, 10, 11]
+        assert [row["path"]["attribute"] for row in rows] == peer["acd_attributes"]
+        if route == "1/7":
+            assert all((row["reply_from"], row["extended_status"]) == ("router", [0x0311]) for row in rows)
+            assert all(value is None for value in flags.values())
+            continue
+        last = flags["last_conflict"]
+        expected_conflict = mode not in ("acd-info-clear", "acd-info-unsupported")
+        assert flags["conflict_detected"] == flags["fault"] == expected_conflict
+        assert flags["capable"] == (mode != "acd-info-unsupported")
+        if mode == "acd-info-unsupported":
+            assert flags["enabled"] is None and last is None
+            assert [row["general_status"] for row in rows[2:]] == [0x14, 0x14]
+            assert [row["reply_from"] for row in rows[2:]] == ["target", "target"]
+        elif mode == "acd-info-malformed":
+            assert flags["enabled"] is None and last is None
+            assert rows[2]["data_hex"] == "02" and "BOOL value" in rows[2]["decode_error"]
+            assert len(bytes.fromhex(rows[3]["data_hex"])) == 34
+            assert rows[3]["decode_error"] == "Last address conflict requires 35 bytes, got 34"
+        else:
+            assert len(bytes.fromhex(last["arp_pdu_hex"])) == 28
+            assert flags["enabled"] == expected_conflict
+            if mode == "acd-info-clear":
+                assert last["activity_code"] == 0 and last["remote_mac"] is None and last["arp_ipv4"] is None
+                assert rows[3]["decoded"] == "No conflict recorded"
+            else:
+                assert last["remote_mac"] == "02:12:34:56:78:9A"
+                if mode == "acd-info-unknown-arp":
+                    assert last["arp_ipv4"] is None and last["arp_pdu_hex"].startswith("00 02")
+                else:
+                    probe = mode == "acd-info-probe"
+                    assert last["activity_code"] == (1 if probe else 2)
+                    assert last["arp_ipv4"] == {
+                        "opcode": 1 if probe else 2,
+                        "sender_ip": "0.0.0.0" if probe else "192.0.2.23",
+                        "target_ip": "198.51.100.37",
+                    }
+    print("Address conflict inspection passed direct and routed reads, saved ARP, unsupported and malformed replies.")
+
+
 def check_link_info(exe, root):
     for name, mode, instance, route, exit_code in (
         ("direct", "link-info", 1, None, 0),
@@ -1027,6 +1089,7 @@ def main():
     check_port_info(exe, root)
     check_tcpip_info(exe, root)
     check_tcpip_diagnostics(exe, root)
+    check_acd_info(exe, root)
     check_link_info(exe, root)
     check_manager_info(exe, root)
     check_connection_data(exe, root)

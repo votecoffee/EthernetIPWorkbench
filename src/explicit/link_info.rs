@@ -85,14 +85,18 @@ pub(super) fn decode(attribute: u32, bytes: &[u8]) -> Option<Result<String, Stri
             .map(|rate| format!("{rate} Mb/s"))
             .map_err(|_| "Interface speed requires a four-byte UDINT".into()),
         2 => flags(bytes),
-        3 => match bytes {
-            [a, b, c, d, e, f] => Ok(format!("{a:02X}:{b:02X}:{c:02X}:{d:02X}:{e:02X}:{f:02X}")),
-            _ => Err("MAC address requires six bytes".into()),
-        },
+        3 => bytes
+            .try_into()
+            .map(format_mac)
+            .map_err(|_| "MAC address requires six bytes".into()),
         4 => counters(bytes, INTERFACE_COUNTERS),
         5 => counters(bytes, MEDIA_COUNTERS),
         _ => return None,
     })
+}
+
+pub(super) fn format_mac([a, b, c, d, e, f]: &[u8; 6]) -> String {
+    format!("{a:02X}:{b:02X}:{c:02X}:{d:02X}:{e:02X}:{f:02X}")
 }
 
 fn flags(bytes: &[u8]) -> Result<String, String> {

@@ -93,6 +93,8 @@ Choose **Network objects → TCP/IP Interface · Status**, then select **Read in
 
 Enable **Include multicast and session settings**, or pass `tcpip-info --diagnostics`, for the reported multicast TTL, address allocation, pending flag, and TCP encapsulation inactivity timeout. [Multicast and session settings](docs/OPERATIONS.md#inspect-multicast-and-session-settings)
 
+Select **Read address conflicts** or run `acd-info` to check IPv4 address conflict detection and inspect the adapter's last recorded conflict, including the remote MAC and saved ARP data where available. [IPv4 address conflicts](docs/OPERATIONS.md#inspect-ipv4-address-conflicts)
+
 Choose **Network objects → Ethernet Link · Speed**, then select **Read link info** for the selected port's reported speed, link state, duplex, MAC address, and available counters. The CLI `link-info` command exports the same results. [Ethernet Link diagnostics](docs/OPERATIONS.md#inspect-ethernet-link-diagnostics)
 
 Choose **Network objects → Quality of Service · Explicit DSCP**, then select **Read QoS settings** for the selected target's configured DSCP values and 802.1Q tag setting where supported. The CLI `qos-info` command exports the same results. [QoS inspection](docs/OPERATIONS.md#inspect-quality-of-service-settings)

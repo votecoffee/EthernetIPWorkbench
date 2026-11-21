@@ -231,6 +231,9 @@ impl super::TcpIpInfo {
         if let Some(diagnostics) = self.diagnostics() {
             document["network_diagnostics"] = json!(diagnostics);
         }
+        if let Some(diagnostics) = self.address_conflicts() {
+            document["address_conflict_detection"] = json!(diagnostics);
+        }
         serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
     }
 }

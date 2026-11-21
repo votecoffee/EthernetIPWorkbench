@@ -332,6 +332,37 @@ def tcpip_info_reply(cip, mode, report):
     return bytes.fromhex("8E 00 00 00 " + values[attribute])
 
 
+def acd_info_reply(cip, mode, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    assert len(message) == 8 and message[:7] == bytes.fromhex("0E 03 20 F5 24 01 30")
+    attribute = message[7]
+    assert attribute in (1, 2, 10, 11) and route in (b"", b"\x01\x03", b"\x01\x07")
+    report.setdefault("acd_attributes", []).append(attribute)
+    report["route_hex"] = route.hex()
+    if route == b"\x01\x07":
+        return bytes.fromhex("D2 00 01 01 11 03")
+    if mode == "acd-info-unsupported" and attribute in (10, 11):
+        return bytes.fromhex("8E 00 14 00")
+
+    clear = mode in ("acd-info-clear", "acd-info-unsupported")
+    activity = 0 if clear else 1 if mode == "acd-info-probe" else 2
+    remote = bytes.fromhex("02 12 34 56 78 9A")
+    arp = struct.pack(">HHBBH", 1, 0x800, 6, 4, 1 if activity == 1 else 2)
+    sender = "0.0.0.0" if activity == 1 else "192.0.2.23"
+    arp += remote + socket.inet_aton(sender) + bytes(6) + socket.inet_aton("198.51.100.37")
+    if mode == "acd-info-unknown-arp":
+        arp = b"\x00\x02" + arp[2:]
+    values = {
+        1: struct.pack("<I", 0x01 if clear else 0xC1),
+        2: struct.pack("<I", 0x15 if mode == "acd-info-unsupported" else 0x95),
+        10: bytes((0 if clear else 1,)),
+        11: bytes((activity,)) + remote + arp,
+    }
+    if mode == "acd-info-malformed":
+        values.update({10: b"\x02", 11: values[11][:-1]})
+    return bytes.fromhex("8E 00 00 00") + values[attribute]
+
+
 def link_info_reply(cip, mode, report):
     route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
     assert len(message) == 8 and message[:5] == bytes.fromhex("0E 03 20 F6 24")
@@ -612,6 +643,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
         "class-info": class_info_reply,
         "port-info": port_info_reply,
         "tcpip-info": tcpip_info_reply,
+        "acd-info": acd_info_reply,
         "link-info": link_info_reply,
         "manager-info": manager_info_reply,
         "connection-data": connection_data_reply,
@@ -1009,6 +1041,8 @@ def main():
         "attribute-list", "attribute-list-mixed", "attribute-list-malformed", "attribute-list-unsupported",
         "class-info", "class-info-malformed", "class-info-empty", "port-info", "port-info-optional", "port-info-malformed",
         "tcpip-info-diagnostics", "tcpip-info-diagnostics-optional", "tcpip-info-diagnostics-malformed",
+        "acd-info", "acd-info-probe", "acd-info-clear", "acd-info-unsupported", "acd-info-malformed",
+        "acd-info-unknown-arp",
         "tcpip-info", "tcpip-info-optional", "tcpip-info-malformed",
         "link-info", "link-info-optional", "link-info-malformed",
         "manager-info", "manager-info-optional", "manager-info-malformed",

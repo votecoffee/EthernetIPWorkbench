@@ -24,6 +24,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/explicit/instances.rs and src/gui/explore/instances.rs | Bounded CIP instance paging and instance selection |
 | src/explicit/port_info.rs | Read-only CIP Port Object directory and instance inspection |
 | src/explicit/tcpip_info.rs | Read-only TCP/IP Interface Object inspection and attribute decoding |
+| src/explicit/tcpip_info/acd.rs | IPv4 conflict flags, ACD settings and retained ARP decoding |
 | src/explicit/link_info.rs | Read-only Ethernet Link Object status and counters |
 | src/explicit/qos_info.rs | Read-only QoS Object tagging and DSCP settings |
 | src/explicit/manager_info.rs | Read-only Connection Manager Object counters |
@@ -163,6 +164,8 @@ Run `explore_inspects_a_routed_port_without_changing_saved_requests` with the `p
 Run `explore_inspects_a_routed_tcpip_interface_without_changing_saved_requests` with the `tcpip-info-optional` fixture mode to verify the routed interface view, decoded network settings, and optional CIP rejection. The OpENer harness with `--explore` also checks the interface address bytes and Physical Link Object path against the independent stack.
 
 Run `explore_reads_multicast_and_session_diagnostics_over_a_route` with `tcpip-info-diagnostics-optional` to verify the opt-in interface diagnostics, including the pending flag and a rejected timeout attribute. In reusable Rust code, `explicit::read_tcpip_diagnostics` returns the ordinary interface batch with the extra attributes. `TcpIpInfo::diagnostics()` gives the typed view.
+
+Run `explore_reads_address_conflict_evidence_over_a_route` with `acd-info-probe` to verify the address conflict view. `explicit::read_tcpip_address_conflicts` returns the four read results, and `TcpIpInfo::address_conflicts()` gives their decoded summary. The OpENer harness with `--explore` checks the partial report when the stack lacks ACD details.
 
 Run `explore_reads_ethernet_link_diagnostics_over_a_route` with the `link-info-optional` fixture mode to verify the routed link status and optional counter rejection. The OpENer harness with `--explore` checks the independently reported speed, flags and MAC address.
 

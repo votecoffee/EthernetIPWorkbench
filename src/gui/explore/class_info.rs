@@ -1,6 +1,7 @@
 use super::*;
 
 type InstanceRead = fn(&mut Explorer, &str, Option<Ipv4Addr>);
+type InterfaceRead = fn(Ipv4Addr, Ipv4Addr, u32, Option<Route>) -> Result<TcpIpInfo, String>;
 
 impl Explorer {
     pub(super) fn instance_action(&mut self, ui: &mut Ui, adapter: &str, local: Option<Ipv4Addr>) {
@@ -17,6 +18,19 @@ impl Explorer {
                     &mut self.tcpip_diagnostics,
                     "Include multicast and session settings",
                 );
+                if ui
+                    .add_enabled(!self.busy(), egui::Button::new("Read address conflicts"))
+                    .on_hover_text(
+                        "Read the interface's address conflict flags and last recorded conflict.",
+                    )
+                    .clicked()
+                {
+                    self.read_tcpip_instance(
+                        adapter,
+                        local,
+                        explicit::read_tcpip_address_conflicts,
+                    );
+                }
                 (
                     "Read interface info",
                     "Read the selected TCP/IP Interface instance's reported network settings.",
@@ -97,12 +111,16 @@ impl Explorer {
     }
 
     fn read_tcpip_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
-        self.tcpip_info = None;
         let read = if self.tcpip_diagnostics {
             explicit::read_tcpip_diagnostics
         } else {
             explicit::read_tcpip_info
         };
+        self.read_tcpip_instance(adapter, local, read);
+    }
+
+    fn read_tcpip_instance(&mut self, adapter: &str, local: Option<Ipv4Addr>, read: InterfaceRead) {
+        self.tcpip_info = None;
         match self.inspection_request(adapter, local, &self.instance) {
             Ok((adapter, local, instance, route)) => {
                 self.start(move || read(adapter, local, instance, route).map(Response::TcpIpInfo))
@@ -180,6 +198,43 @@ pub(super) fn show_port(ui: &mut Ui, info: &PortInfo) {
 }
 
 pub(super) fn show_tcpip(ui: &mut Ui, info: &TcpIpInfo) {
+    if let Some(acd) = info.address_conflicts() {
+        ui.horizontal_wrapped(|ui| {
+            let show_flag = |value| match value {
+                Some(true) => "Yes",
+                Some(false) => "No",
+                None => "Unavailable",
+            };
+            ui.label(format!(
+                "ACD supported {} · Enabled {}",
+                show_flag(acd.capable),
+                show_flag(acd.enabled)
+            ));
+            ui.colored_label(
+                if acd.conflict_detected == Some(true) || acd.fault == Some(true) {
+                    AMBER
+                } else {
+                    ui.visuals().text_color()
+                },
+                format!(
+                    "Conflict flag {} · Fault flag {}",
+                    show_flag(acd.conflict_detected),
+                    show_flag(acd.fault)
+                ),
+            );
+        });
+        show_inspection(
+            ui,
+            format!(
+                "Address conflicts · TCP/IP Interface instance {}",
+                info.instance
+            ),
+            "tcpip-acd-results",
+            info.route.as_ref(),
+            &info.batch,
+        );
+        return;
+    }
     if info
         .diagnostics()
         .is_some_and(|diagnostics| diagnostics.multicast_pending == Some(true))

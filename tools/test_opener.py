@@ -424,6 +424,23 @@ def check_tcpip_diagnostics(cli, adapter, root):
     print("OpENer returned TTL 1, multicast allocation starting at 239.192.1.32, and 120 s TCP inactivity.")
 
 
+def check_acd_info(cli, adapter, root):
+    root.mkdir()
+    with run_adapter(adapter, root):
+        result = subprocess.run([cli, "acd-info", ADAPTER, "127.0.0.1", "1"],
+                                capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+    (root / "result.json").write_bytes(result.stdout)
+    assert result.returncode == 0 and not result.stderr, (result.stdout, result.stderr)
+    report = json.loads(result.stdout)
+    assert (report["class"], report["instance"]) == (0xF5, 1)
+    assert report["address_conflict_detection"] == {
+        "capable": False, "enabled": None, "conflict_detected": False, "fault": False, "last_conflict": None,
+    }
+    assert [row["path"]["attribute"] for row in report["results"]] == [1, 2, 10, 11]
+    assert [row["general_status"] for row in report["results"][2:]] == [0x14, 0x14]
+    print("OpENer returned IPv4 status and capability flags with unsupported ACD detail attributes.")
+
+
 def check_link_info(cli, adapter, root):
     root.mkdir()
     with run_adapter(adapter, root):
@@ -847,6 +864,7 @@ def main():
         check_instance_list(cli, adapter, root / "instance-list")
         check_tcpip_info(cli, adapter, root / "tcpip-info")
         check_tcpip_diagnostics(cli, adapter, root / "tcpip-diagnostics")
+        check_acd_info(cli, adapter, root / "acd-info")
         check_link_info(cli, adapter, root / "link-info")
         check_manager_info(cli, adapter, root / "manager-info")
         check_connection_data(cli, adapter, root / "connection-data")
