@@ -44,7 +44,7 @@ Usage:
   eipmaster-cli decode-input <settings.toml> \"<assembly hex bytes>\"
   eipmaster-cli identity <adapter-or-bridge-ipv4> <local-ipv4> [--route <port/link/...>] [--eds <vendor.eds>]
   eipmaster-cli discover <local-ipv4> [<destination-ipv4>]
-  eipmaster-cli list-services <adapter-or-bridge-ipv4> <local-ipv4>
+  eipmaster-cli list-services <adapter-or-bridge-ipv4> <local-ipv4> [--tcp]
   eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
   eipmaster-cli class-info <adapter-or-bridge-ipv4> <local-ipv4> <class> [--route <port/link/...>]
   eipmaster-cli port-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
@@ -119,10 +119,15 @@ fn run(args: &[OsString]) -> Result<bool, String> {
             );
             Ok(true)
         }
-        [command, adapter, local] if command == "list-services" => {
+        [command, adapter, local, options @ ..] if command == "list-services" => {
+            let transport = match options {
+                [] => discovery::ServicesTransport::Udp,
+                [flag] if flag == "--tcp" => discovery::ServicesTransport::Tcp,
+                _ => return Err(USAGE.into()),
+            };
             let (adapter, local, _) = explicit_endpoint(adapter, local, &[])?;
-            let report =
-                discovery::list_services(adapter, local).map_err(|error| error.to_string())?;
+            let report = discovery::list_services_with_transport(adapter, local, transport)
+                .map_err(|error| error.to_string())?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&report).map_err(|error| error.to_string())?

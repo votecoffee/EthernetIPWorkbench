@@ -2,6 +2,7 @@ pub mod capture;
 mod deadline_wait;
 pub mod discovery;
 pub mod eds;
+mod encapsulation;
 pub mod explicit;
 pub mod integration;
 pub mod model;

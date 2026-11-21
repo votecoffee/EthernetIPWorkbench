@@ -1,6 +1,6 @@
 use super::*;
 use assembly_scanner::{
-    discovery,
+    discovery::{self, ServicesTransport},
     explicit::{
         self, AssemblyInfo, AttributeWrite, Class3Size, ClassInfo, LinkInfo, ManagerInfo, PortInfo,
         ProfileAssemblyCheck, QosInfo, ReadPath, Reader, Route, SavedRead, SavedReadMode,
@@ -68,6 +68,7 @@ struct ReadReply {
 
 pub(super) struct Explorer {
     destination: String,
+    services_transport: ServicesTransport,
     services: Option<discovery::ServicesReport>,
     class: String,
     instance: String,
@@ -102,6 +103,7 @@ impl Default for Explorer {
     fn default() -> Self {
         Self {
             destination: Ipv4Addr::BROADCAST.to_string(),
+            services_transport: ServicesTransport::default(),
             services: None,
             class: "0x01".into(),
             instance: "1".into(),
@@ -349,15 +351,16 @@ impl Device {
             ui.label(format!("Adapter or bridge · {}", self.device));
             if ui
                 .add_enabled(!explorer.busy(), egui::Button::new("List services"))
-                .on_hover_text("Query the displayed endpoint's EtherNet/IP services over UDP.")
+                .on_hover_text("Query the displayed endpoint's EtherNet/IP services before session registration.")
                 .clicked()
             {
                 explorer.services = None;
                 match &profile_addresses {
                     Ok((adapter, nic)) => {
                         let (adapter, nic) = (*adapter, *nic);
+                        let transport = explorer.services_transport;
                         explorer.start(move || {
-                            discovery::list_services(adapter, nic)
+                            discovery::list_services_with_transport(adapter, nic, transport)
                                 .map(Response::Services)
                                 .map_err(|error| error.to_string())
                         });
@@ -365,6 +368,15 @@ impl Device {
                     Err(error) => explorer.notice = Some(error.clone()),
                 }
             }
+            egui::ComboBox::from_id_salt("list-services-transport")
+                .selected_text(explorer.services_transport.label())
+                .show_ui(ui, |ui| {
+                    for transport in [ServicesTransport::Udp, ServicesTransport::Tcp] {
+                        ui.selectable_value(&mut explorer.services_transport, transport, transport.label());
+                    }
+                })
+                .response
+                .on_hover_text("ListServices transport");
         });
         if let Some(report) = &explorer.services {
             services::show(ui, report);

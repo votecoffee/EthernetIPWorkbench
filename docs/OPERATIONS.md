@@ -50,10 +50,11 @@ selection = { offset = 2, kind = "I32", big_endian = true, swap = "word_order" }
 
 ### Inspect advertised EtherNet/IP services
 
-In **Explore**, select **List services** beside the adapter or bridge address from Device. The query sends a single unicast UDP ListServices request to port 44818 from the selected local NIC. It runs before session registration and addresses the Ethernet endpoint directly. The CLI returns the same information as JSON.
+In **Explore**, select **List services** beside the adapter or bridge address from Device. Select **UDP** or **TCP** using the adjacent control. The query sends one unicast ListServices request to port 44818 from the selected local NIC. For TCP, it opens a short connection to the addressed endpoint before session registration. UDP is the default and the JSON report records the transport used.
 
 ~~~powershell
 .\target\release\eipmaster-cli.exe list-services 192.0.2.10 192.0.2.11
+.\target\release\eipmaster-cli.exe list-services 192.0.2.10 192.0.2.11 --tcp
 ~~~
 
 The Communications item reports the protocol version, capability flags, CIP over TCP, and Class 0/1 cyclic I/O over UDP. The full flags and raw item bytes are kept, including unrecognized items. An encapsulation status is reported separately from a malformed reply. The advertised capabilities describe the endpoint. Confirm a particular cyclic profile with Forward_Open and capture on the intended path. [Pinned OpENer ListServices implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/enet_encap/encap.c)

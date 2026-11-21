@@ -895,6 +895,32 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode list-services-stream on localhost"]
+    fn explore_lists_services_over_tcp() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "UDP");
+        click(&mut device, &ctx, size, "TCP");
+        click(&mut device, &ctx, size, "List services");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Transport TCP",
+            "CIP over TCP · Yes",
+            "Cyclic I/O over UDP · Yes",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        assert_eq!(device.snapshot(), saved);
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode list-services on localhost"]
     fn explore_lists_the_selected_endpoints_services() {
         let ctx = egui::Context::default();

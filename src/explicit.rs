@@ -1,5 +1,6 @@
 //! EtherNet/IP explicit messaging for CIP reads and reviewed attribute writes.
 use crate::{
+    encapsulation,
     model::{Selection, Settings},
     scanner::{le16, le32, protocol},
 };
@@ -7,15 +8,14 @@ pub use ethernetip_core::error::EipError;
 use ethernetip_core::{
     cip::ReplyHeader,
     cpf::{self, Envelope, Item, item_type},
-    encap::{self, Command, HEADER_LEN, Header},
+    encap::{self, Command, Header},
     error::Result,
 };
 use serde::{Deserialize, Serialize};
-use socket2::{Domain, Protocol, Socket, Type};
 use std::{
-    io::{Read, Write},
+    io::Write,
     net::{Ipv4Addr, SocketAddr, TcpStream},
-    time::{Duration, Instant},
+    time::Duration,
 };
 mod assembly_info;
 mod batch;
@@ -59,7 +59,6 @@ pub use write::{
 pub use write_draft::WriteDraft;
 pub use write_receipt::{SavedWriteOutcome, SavedWriteReceipt, SavedWriteRecord};
 pub(crate) const TO_SOCKET: u16 = 0x8001;
-pub(crate) const PORT: u16 = 44818;
 pub(crate) const MAX_CIP_PATH_BYTES: usize = u8::MAX as usize * 2;
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -305,15 +304,7 @@ pub(crate) struct Session {
 }
 impl Session {
     pub(crate) fn open(device_ip: Ipv4Addr, local_ip: Ipv4Addr) -> Result<Self> {
-        let tcp = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
-        tcp.bind(&SocketAddr::from((local_ip, 0)).into())?;
-        tcp.connect_timeout(
-            &SocketAddr::from((device_ip, PORT)).into(),
-            EXCHANGE_TIMEOUT,
-        )?;
-        let tcp: TcpStream = tcp.into();
-        tcp.set_write_timeout(Some(EXCHANGE_TIMEOUT))?;
-        tcp.set_nodelay(true)?;
+        let tcp = encapsulation::connect_tcp(device_ip, local_ip, EXCHANGE_TIMEOUT)?;
         let mut session = Self {
             tcp,
             handle: 0,
@@ -336,12 +327,7 @@ impl Session {
         };
         self.tcp
             .write_all(&encap::encode_frame(cmd, self.handle, context, payload))?;
-        let deadline = Instant::now() + EXCHANGE_TIMEOUT;
-        let mut raw = [0; HEADER_LEN];
-        self.read_before(&mut raw, deadline)?;
-        let header = Header::parse(&raw)?;
-        let mut body = vec![0; header.length as usize];
-        self.read_before(&mut body, deadline)?;
+        let (header, body) = encapsulation::read_tcp_frame(&mut self.tcp, EXCHANGE_TIMEOUT)?;
         if header.command != cmd.as_u16()
             || (!connected && header.sender_context != context)
             || (self.handle != 0 && header.session_handle != self.handle)
@@ -358,30 +344,6 @@ impl Session {
         Ok((header, body))
     }
 
-    fn read_before(&mut self, mut bytes: &mut [u8], deadline: Instant) -> Result<()> {
-        use std::io::{Error, ErrorKind};
-        while !bytes.is_empty() {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                return Err(Error::new(ErrorKind::TimedOut, "EtherNet/IP reply deadline").into());
-            }
-            self.tcp
-                .set_read_timeout(Some(remaining.max(Duration::from_millis(1))))?;
-            match self.tcp.read(bytes) {
-                Ok(0) => {
-                    return Err(Error::new(
-                        ErrorKind::UnexpectedEof,
-                        "EtherNet/IP reply ended early",
-                    )
-                    .into());
-                }
-                Ok(n) => bytes = &mut bytes[n..],
-                Err(error) if error.kind() == ErrorKind::Interrupted => continue,
-                Err(error) => return Err(error.into()),
-            }
-        }
-        Ok(())
-    }
     pub(crate) fn cip(
         &mut self,
         service: u8,

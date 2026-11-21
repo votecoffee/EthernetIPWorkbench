@@ -513,13 +513,22 @@ def check_list_services(exe, root):
         ("list-services-malformed", "Invalid ListServices item list"),
         ("list-services-rejected", "EIP encapsulation status 0x00000001"),
         ("list-services-header", "Invalid ListServices encapsulation reply"),
+        ("list-services-stream", None),
+        ("list-services-stream-context", "ListServices reply sender context does not match"),
+        ("list-services-stream-truncated", "EtherNet/IP reply ended early"),
     ):
+        tcp = mode.startswith("list-services-stream")
+        command = [exe, "list-services", adapter, LOCAL]
+        if tcp:
+            command.append("--tcp")
         result, peer = with_adapter(
-            root, mode, [exe, "list-services", adapter, LOCAL], mode, fixture_args=("--address", adapter),
+            root, mode, command, mode, fixture_args=("--address", adapter),
         )
         request = bytes.fromhex(peer["request_hex"])
         assert len(request) == 24 and request[:12] == bytes.fromhex("04 00 00 00 00 00 00 00 00 00 00 00")
         assert request[20:] == bytes(4) and peer["source_ip"] == LOCAL
+        if tcp:
+            assert peer["tcp_eof"]
         if error is not None:
             assert result.returncode == 1 and not result.stdout and error in result.stderr
             (root / f"{mode}.txt").write_text(result.stderr, encoding="utf-8")
@@ -528,8 +537,9 @@ def check_list_services(exe, root):
         (root / f"{mode}.json").write_text(result.stdout, encoding="utf-8")
         report = json.loads(result.stdout)
         assert (report["adapter_ip"], report["local_ip"]) == (adapter, LOCAL)
+        assert report["transport"] == ("tcp" if tcp else "udp")
         communications, unknown = report["services"]
-        both = mode == "list-services"
+        both = mode != "list-services-tcp"
         assert communications["type_id"] == 0x0100 and len(bytes.fromhex(communications["data_hex"])) == 20
         assert communications["communications"] == {
             "name": "Communications", "protocol_version": 1,
@@ -539,7 +549,7 @@ def check_list_services(exe, root):
         assert unknown == {"type_id": 0x9001, "data_hex": "A5 16 2C"}
     invalid = subprocess.run([exe, "list-services", "255.255.255.255", LOCAL], capture_output=True, timeout=5)
     assert invalid.returncode == 1 and b"Enter unicast" in invalid.stderr
-    print("ListServices passed both capability cases, unrelated context, and malformed or rejected replies.")
+    print("ListServices passed UDP and fragmented TCP replies, context checks, and malformed or rejected replies.")
 
 
 def main():

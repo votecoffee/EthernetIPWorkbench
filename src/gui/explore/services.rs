@@ -8,6 +8,7 @@ pub(super) fn show(ui: &mut Ui, report: &ServicesReport) {
                 "{} · Local NIC {}",
                 report.adapter_ip, report.local_ip
             ));
+            ui.small(format!("Transport {}", report.transport.label()));
             if report.services.is_empty() {
                 ui.label("The endpoint returned an empty service list.");
             }

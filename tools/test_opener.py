@@ -186,19 +186,22 @@ def check_capture(report, seconds):
 def check_list_services(cli, adapter, root):
     root.mkdir()
     with run_adapter(adapter, root):
-        result = subprocess.run([cli, "list-services", ADAPTER, "127.0.0.1"],
-                                capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
-    (root / "result.json").write_bytes(result.stdout)
-    assert result.returncode == 0 and not result.stderr, (result.stdout, result.stderr)
-    report = json.loads(result.stdout)
-    assert (report["adapter_ip"], report["local_ip"]) == (ADAPTER, "127.0.0.1")
-    item, = report["services"]
-    assert item["type_id"] == 0x0100
-    assert item["communications"] == {
-        "name": "Communications", "protocol_version": 1, "capability_flags": 0x0120,
-        "cip_over_tcp": True, "cyclic_io_over_udp": True,
-    }
-    print("OpENer returned its Communications item and both capability bits over UDP.")
+        for name, flags in (("udp", []), ("tcp", ["--tcp"])):
+            result = subprocess.run([cli, "list-services", ADAPTER, "127.0.0.1", *flags],
+                                    capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+            (root / f"{name}.json").write_bytes(result.stdout)
+            assert result.returncode == 0 and not result.stderr, (result.stdout, result.stderr)
+            report = json.loads(result.stdout)
+            assert (report["adapter_ip"], report["local_ip"], report["transport"]) == (
+                ADAPTER, "127.0.0.1", name,
+            )
+            item, = report["services"]
+            assert item["type_id"] == 0x0100
+            assert item["communications"] == {
+                "name": "Communications", "protocol_version": 1, "capability_flags": 0x0120,
+                "cip_over_tcp": True, "cyclic_io_over_udp": True,
+            }
+    print("OpENer returned identical advertised capabilities over UDP and TCP.")
 
 
 def check_explore(cli, adapter, root, identity, seconds):

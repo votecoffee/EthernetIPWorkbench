@@ -14,8 +14,9 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/eds/identity.rs | Declared EDS identity fields and comparison with a CIP Identity Object readback |
 | src/preflight.rs | Effective configuration, EDS comparisons and offline validation |
 | src/settings_file.rs | Named profiles, workspace migration, preferences and file replacement |
-| src/explicit.rs and src/discovery.rs | Registered TCP exchange, identity, CIP reads, typed reply interpretation and UDP ListIdentity |
-| src/discovery/services.rs and src/gui/explore/services.rs | Unicast UDP ListServices and the advertised capabilities view |
+| src/explicit.rs and src/discovery.rs | Registered exchanges, identity, CIP reads, typed reply interpretation and UDP ListIdentity |
+| src/encapsulation.rs | TCP connection bound to the selected NIC and deadline-based EtherNet/IP frame reads |
+| src/discovery/services.rs and src/gui/explore/services.rs | Unicast UDP and TCP ListServices and the advertised capabilities view |
 | src/explicit/class_info.rs and src/gui/explore/class_info.rs | Common class attribute inspection, decoding and the Explore details view |
 | src/explicit/port_info.rs | Read-only CIP Port Object directory and instance inspection |
 | src/explicit/tcpip_info.rs | Read-only TCP/IP Interface Object inspection and attribute decoding |
@@ -166,7 +167,7 @@ Run `explore_shows_a_routed_assembly_size_mismatch` with the `assembly-info` fix
 
 Run `explore_checks_profile_sizes_through_the_configured_io_route` with the `profile-assemblies` fixture mode to verify that the profile check uses the cyclic I/O route and shows each role's expected and reported sizes. The OpENer harness with `--explore` checks the input-only fixture and an owner profile with configuration bytes using read-only explicit requests.
 
-Run `explore_lists_the_selected_endpoints_services` with the `list-services` fixture mode to verify the endpoint's advertised flags and raw unrecognized items. The OpENer harness with `--explore` checks the Communications item over UDP before a registered session.
+Run `explore_lists_the_selected_endpoints_services` with the `list-services` fixture mode to verify the endpoint's advertised flags and raw unrecognized items. Run `explore_lists_services_over_tcp` with the `list-services-stream` fixture mode to verify transport selection and stream framing. The OpENer harness with `--explore` checks the Communications item over both transports before a registered session.
 
 Run the ignored tests `explore_requires_fresh_review_after_editing_a_staged_write` and `explore_previews_typed_bytes_and_clears_review_on_format_change` with separate localhost fixtures in `explicit-write-gui` mode. They verify review invalidation, the encoded preview, and the matched readback.
 

@@ -1,6 +1,9 @@
 //! IPv4 EtherNet/IP discovery on an explicitly selected interface.
 
-use crate::explicit::{EipError, Identity, PORT, decode_identity, is_unicast};
+use crate::{
+    encapsulation::PORT,
+    explicit::{EipError, Identity, decode_identity, is_unicast},
+};
 use ethernetip_core::encap::{HEADER_LEN, Header};
 use serde::Serialize;
 use std::{
@@ -15,7 +18,10 @@ const IDENTITY_ITEM: u16 = 0x0c;
 const LIMIT: usize = 256;
 
 mod services;
-pub use services::{CommunicationsService, ServiceItem, ServicesReport, list_services};
+pub use services::{
+    CommunicationsService, ServiceItem, ServicesReport, ServicesTransport, list_services,
+    list_services_with_transport,
+};
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Device {

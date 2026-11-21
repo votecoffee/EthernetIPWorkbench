@@ -1,12 +1,16 @@
-//! Sessionless EtherNet/IP ListServices over unicast UDP.
+//! Sessionless EtherNet/IP ListServices over unicast UDP or TCP.
 
-use super::{
-    EipError, HEADER_LEN, Header, Ipv4Addr, PORT, UdpSocket, is_unicast, unregistered_request,
+use super::unregistered_request;
+use crate::{
+    encapsulation::{PORT, connect_tcp, read_tcp_frame},
+    explicit::{EipError, is_unicast},
+    model::hex,
 };
-use crate::model::hex;
+use ethernetip_core::encap::{HEADER_LEN, Header};
 use serde::Serialize;
 use std::{
-    io,
+    io::{self, Write},
+    net::{Ipv4Addr, UdpSocket},
     time::{Duration, Instant},
 };
 
@@ -14,10 +18,28 @@ const LIST_SERVICES: u16 = 0x0004;
 const COMMUNICATIONS_ITEM: u16 = 0x0100;
 const TIMEOUT: Duration = Duration::from_secs(2);
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ServicesTransport {
+    #[default]
+    Udp,
+    Tcp,
+}
+
+impl ServicesTransport {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Udp => "UDP",
+            Self::Tcp => "TCP",
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct ServicesReport {
     pub adapter_ip: Ipv4Addr,
     pub local_ip: Ipv4Addr,
+    pub transport: ServicesTransport,
     pub services: Vec<ServiceItem>,
 }
 
@@ -38,18 +60,49 @@ pub struct CommunicationsService {
     pub cyclic_io_over_udp: bool,
 }
 
-/// Ask one IPv4 endpoint which EtherNet/IP encapsulation services it advertises.
+/// Ask one IPv4 endpoint which EtherNet/IP encapsulation services it advertises over UDP.
 pub fn list_services(adapter: Ipv4Addr, local: Ipv4Addr) -> Result<ServicesReport, EipError> {
+    list_services_with_transport(adapter, local, ServicesTransport::Udp)
+}
+
+/// Query the addressed endpoint before registering an encapsulation session.
+pub fn list_services_with_transport(
+    adapter: Ipv4Addr,
+    local: Ipv4Addr,
+    transport: ServicesTransport,
+) -> Result<ServicesReport, EipError> {
     if !is_unicast(adapter) || !is_unicast(local) {
         return Err(EipError::Protocol(
             "Enter unicast adapter and local NIC IPv4 addresses".into(),
         ));
     }
+    let request = unregistered_request(LIST_SERVICES)?;
+    let services = match transport {
+        ServicesTransport::Udp => query_udp(adapter, local, &request)?,
+        ServicesTransport::Tcp => {
+            let mut stream = connect_tcp(adapter, local, TIMEOUT)?;
+            stream.write_all(&request)?;
+            let (header, body) = read_tcp_frame(&mut stream, TIMEOUT)?;
+            decode_reply(header, &body, &request[12..20])?
+        }
+    };
+    Ok(ServicesReport {
+        adapter_ip: adapter,
+        local_ip: local,
+        transport,
+        services,
+    })
+}
+
+fn query_udp(
+    adapter: Ipv4Addr,
+    local: Ipv4Addr,
+    request: &[u8; HEADER_LEN],
+) -> Result<Vec<ServiceItem>, EipError> {
     let socket = UdpSocket::bind((local, 0))?;
     socket.connect((adapter, PORT))?;
-    let request = unregistered_request(LIST_SERVICES)?;
     let context = &request[12..20];
-    socket.send(&request)?;
+    socket.send(request)?;
 
     let deadline = Instant::now() + TIMEOUT;
     let mut datagram = [0; 65_536];
@@ -71,26 +124,33 @@ pub fn list_services(adapter: Ipv4Addr, local: Ipv4Addr) -> Result<ServicesRepor
         if header.sender_context.as_slice() != context {
             continue;
         }
-        if header.command != LIST_SERVICES
-            || header.session_handle != 0
-            || header.options != 0
-            || packet.len() != HEADER_LEN + usize::from(header.length)
-        {
-            return Err(EipError::Protocol(
-                "Invalid ListServices encapsulation reply".into(),
-            ));
-        }
-        if header.status != 0 {
-            return Err(EipError::Encap(header.status));
-        }
-        let services = parse_items(&packet[HEADER_LEN..])
-            .ok_or_else(|| EipError::Protocol("Invalid ListServices item list".into()))?;
-        return Ok(ServicesReport {
-            adapter_ip: adapter,
-            local_ip: local,
-            services,
-        });
+        return decode_reply(header, &packet[HEADER_LEN..], context);
     }
+}
+
+fn decode_reply(
+    header: Header,
+    payload: &[u8],
+    context: &[u8],
+) -> Result<Vec<ServiceItem>, EipError> {
+    if header.command != LIST_SERVICES
+        || header.session_handle != 0
+        || header.options != 0
+        || payload.len() != usize::from(header.length)
+    {
+        return Err(EipError::Protocol(
+            "Invalid ListServices encapsulation reply".into(),
+        ));
+    }
+    if header.sender_context.as_slice() != context {
+        return Err(EipError::Protocol(
+            "ListServices reply sender context does not match".into(),
+        ));
+    }
+    if header.status != 0 {
+        return Err(EipError::Encap(header.status));
+    }
+    parse_items(payload).ok_or_else(|| EipError::Protocol("Invalid ListServices item list".into()))
 }
 
 fn parse_items(payload: &[u8]) -> Option<Vec<ServiceItem>> {
