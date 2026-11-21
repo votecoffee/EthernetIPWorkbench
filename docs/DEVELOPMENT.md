@@ -19,6 +19,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/explicit/port_info.rs | Read-only CIP Port Object directory and instance inspection |
 | src/explicit/tcpip_info.rs | Read-only TCP/IP Interface Object inspection and attribute decoding |
 | src/explicit/link_info.rs | Read-only Ethernet Link Object status and counters |
+| src/explicit/manager_info.rs | Read-only Connection Manager Object counters |
 | src/explicit/write.rs, src/gui/explore/write.rs and src/bin/eipmaster-cli/writes.rs | Identity-checked Set_Attribute_Single, GUI review and CLI preview/apply |
 | src/explicit/write_draft.rs | Versioned TOML write drafts and transport dispatch shared by Explore and the CLI |
 | src/explicit/write_receipt.rs | Offline loading and read-only follow-up for completed write receipts |
@@ -123,7 +124,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 |---|---|
 | Profiles, mapping, CLI and capture | python tools/test_cli.py target/release/eipmaster-cli.exe .local/cli-check-01 |
 | Explicit write preview, typed encoding, identity pin, current-value check, readback, Class 3 close, draft portability and receipt follow-up | python tools/test_explicit_write.py target/release/eipmaster-cli.exe .local/write-check-01 |
-| EDS assembly-member sizes and mapping suggestions, discovery, class, Port Object, TCP/IP Interface and Ethernet Link inspection, direct and routed reads, saved requests, target identity, keyed and routed cyclic I/O, extended CIP ports and hexadecimal links | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
+| EDS assembly-member sizes and mapping suggestions, discovery, class and standard object inspection including Connection Manager counters, direct and routed reads, saved requests, target identity, keyed and routed cyclic I/O, extended CIP ports and hexadecimal links | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
 | Variable-size T→O, EDS provenance, CSV and all three exports | python tools/test_variable_input.py target/release/eipmaster-cli.exe .local/variable-check-01 |
 | Direct and routed multicast T→O, returned endpoints and failed setup cleanup | python tools/test_multicast.py target/release/eipmaster-cli.exe .local/multicast-check-01 |
 | Default unicast UDP 2222, standard and routed Large Forward_Open, and port conflicts | python tools/test_default_unicast.py target/release/eipmaster-cli.exe .local/default-unicast-check-01 |
@@ -152,6 +153,8 @@ Run `explore_inspects_a_routed_port_without_changing_saved_requests` with the `p
 Run `explore_inspects_a_routed_tcpip_interface_without_changing_saved_requests` with the `tcpip-info-optional` fixture mode to verify the routed interface view, decoded network settings, and optional CIP rejection. The OpENer harness with `--explore` also checks the interface address bytes and Physical Link Object path against the independent stack.
 
 Run `explore_reads_ethernet_link_diagnostics_over_a_route` with the `link-info-optional` fixture mode to verify the routed link status and optional counter rejection. The OpENer harness with `--explore` checks the independently reported speed, flags and MAC address.
+
+Run `explore_reads_connection_manager_counters_over_a_route` with the `manager-info-optional` fixture mode to verify a routed counter and optional CIP rejection in Explore. The OpENer harness with `--explore` checks the reply handling when the stack lacks all eight optional counters.
 
 Run the ignored tests `explore_requires_fresh_review_after_editing_a_staged_write` and `explore_previews_typed_bytes_and_clears_review_on_format_change` with separate localhost fixtures in `explicit-write-gui` mode. They verify review invalidation, the encoded preview, and the matched readback.
 

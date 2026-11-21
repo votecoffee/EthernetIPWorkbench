@@ -328,6 +328,48 @@ def check_link_info(exe, root):
     print("Ethernet Link diagnostics passed direct, routed optional, and malformed replies.")
 
 
+def check_manager_info(exe, root):
+    for case, mode, route, exit_code in (
+        ("direct", "manager-info", None, 0),
+        ("routed-optional", "manager-info-optional", "1/3", 0),
+        ("malformed", "manager-info-malformed", None, 1),
+        ("router-rejected", "manager-info", "1/7", 1),
+    ):
+        command = [exe, "manager-info", LOCAL, LOCAL, "1"]
+        if route:
+            command.extend(("--route", route))
+        result, peer = with_adapter(root, f"manager-info-{case}", command, mode)
+        assert result.returncode == exit_code and not result.stderr, (result.stdout, result.stderr)
+        report = json.loads(result.stdout)
+        (root / f"manager-info-{case}.json").write_text(result.stdout, encoding="utf-8")
+        assert (report["class"], report["instance"], report.get("route")) == (6, 1, route)
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert peer["manager_attributes"] == list(range(1, 9))
+        assert peer["route_hex"] == {None: "", "1/3": "0103", "1/7": "0107"}[route]
+        rows = report["results"]
+        assert [row["path"] for row in rows] == [
+            {"class": 6, "instance": 1, "attribute": attr} for attr in range(1, 9)
+        ]
+        if case == "router-rejected":
+            assert all(row["reply_from"] == "router" and row["extended_status"] == [0x0311] for row in rows)
+            continue
+        expected = ["65535", "0", "513", "32773", "42", "2", "3", "41248"]
+        if case == "routed-optional":
+            unsupported = rows[2]
+            assert (unsupported["reply_from"], unsupported["general_status"], unsupported["extended_status"]) == (
+                "target", 0x14, [0x0302],
+            )
+            expected[2] = None
+        if case == "malformed":
+            assert rows[4]["data_hex"] == "2A 00 01 00"
+            assert "requires a two-byte UINT" in rows[4]["decode_error"]
+            expected[4] = None
+        assert [row.get("decoded") for row in rows] == expected
+    result = subprocess.run([exe, "manager-info", LOCAL, LOCAL, "0"], capture_output=True, timeout=5)
+    assert result.returncode != 0 and b"nonzero instance" in result.stderr
+    print("Connection Manager counters passed direct, routed optional, malformed and router-rejected replies.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
@@ -524,6 +566,7 @@ def main():
     check_port_info(exe, root)
     check_tcpip_info(exe, root)
     check_link_info(exe, root)
+    check_manager_info(exe, root)
 
     saved = root / "saved.toml"
     source = PROFILE.read_text(encoding="utf-8")

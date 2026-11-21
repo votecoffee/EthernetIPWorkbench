@@ -94,6 +94,19 @@ In **Explore → Common attributes**, choose **Ethernet Link · Speed**, enter t
 
 The inspection reads five attributes on one registered session using Get_Attribute_Single. It reports speed, the full flags word with link state, active duplex and negotiation status code, and the MAC address. Supported ports also show cumulative 32-bit interface and media counters, including discards, FCS errors, and collisions. Their values can wrap. Each result retains the raw reply or CIP rejection. Inspecting these attributes leaves the device counters intact. [Schneider Electric EtherNet/IP device objects](https://product-help.schneider-electric.com/Machine%20Expert/V1.2/en/lmcprg/lmcprg/Ethernet_Configuration/Ethernet_Configuration-17.htm) · [Pinned OpENer Ethernet Link counter layout](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipethernetlink.h)
 
+### Inspect Connection Manager counters
+
+In **Explore**, choose **Connection Manager** and select **Read connection counters**. The preset selects instance 1. Enter another nonzero instance if documented by the device. Leave **CIP route** blank to inspect the directly addressed device, or enter a known route to inspect the target at its end.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe manager-info 192.0.2.10 192.0.2.11 1
+.\target\release\eipmaster-cli.exe manager-info 192.0.2.10 192.0.2.11 1 --route 1/3
+~~~
+
+One registered explicit session reads attributes 1–8 with Get_Attribute_Single. The counters are unsigned 16-bit totals from the selected Connection Manager. They cover requests from other originators and can wrap. Review them alongside the scanner's connection diagnostics. Reads leave the counters intact. [Siemens Connection Manager attribute definitions](https://cache.industry.siemens.com/dl/files/201/109758201/att_988551/v1/manual_Ethernet_IP_communication_module_3RW5_en-US.pdf?download=true)
+
+Each result retains its raw reply, decoding error, or CIP status. The CLI accepts a usable partial report when at least one counter decodes and the target marks the others unsupported. If every counter is unsupported, the CLI retains all rejections in JSON and returns exit code 1.
+
 ### Review and send an attribute write
 
 Use the documented writable class, instance and attribute. In **Explore**, enter the address and optional CIP route, and select **Stage attribute write**. Enter space-separated hex or select **Enter typed value**, choose a format, and inspect the encoded bytes. Select **Verify target identity**, then review the device's name and identity, the NIC, address, route and exact bytes before selecting **Send reviewed write**. Changing the value or its encoding clears the prior review. The send checks the full identity on the same registered session that carries the write. [Set_Attribute_Single reference](https://product-help.schneider-electric.com/Machine%20Expert/V2.2/en/EtherNetIP_Services/EtherNetIP_Services/modules/set-attribute-si.html)

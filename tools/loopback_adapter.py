@@ -315,6 +315,23 @@ def link_info_reply(cip, mode, report):
     return bytes.fromhex("8E 00 00 00") + data
 
 
+def manager_info_reply(cip, mode, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    assert len(message) == 8 and message[:7] == bytes.fromhex("0E 03 20 06 24 01 30")
+    attribute = message[7]
+    assert 1 <= attribute <= 8 and route in (b"", b"\x01\x03", b"\x01\x07")
+    report.setdefault("manager_attributes", []).append(attribute)
+    report["route_hex"] = route.hex()
+    if route == b"\x01\x07":
+        return bytes.fromhex("D2 00 01 01 11 03")
+    if mode == "manager-info-optional" and attribute == 3:
+        return bytes.fromhex("8E 00 14 01 02 03")
+    if mode == "manager-info-malformed" and attribute == 5:
+        return bytes.fromhex("8E 00 00 00 2A 00 01 00")
+    values = (0xFFFF, 0, 0x0201, 0x8005, 42, 2, 3, 0xA120)
+    return bytes.fromhex("8E 00 00 00") + struct.pack("<H", values[attribute - 1])
+
+
 def explicit_write_reply(cip, mode, attrs, report):
     route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
     assert route in (b"", b"\x01\x03")
@@ -438,6 +455,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
         "port-info": port_info_reply,
         "tcpip-info": tcpip_info_reply,
         "link-info": link_info_reply,
+        "manager-info": manager_info_reply,
     }
     object_reader = next((reader for name, reader in object_readers.items() if mode.startswith(name)), None)
     report_explicit = (
@@ -747,6 +765,7 @@ def main():
         "class-info", "class-info-malformed", "port-info", "port-info-optional", "port-info-malformed",
         "tcpip-info", "tcpip-info-optional", "tcpip-info-malformed",
         "link-info", "link-info-optional", "link-info-malformed",
+        "manager-info", "manager-info-optional", "manager-info-malformed",
         "explicit-write", "explicit-write-review", "explicit-write-gui", "explicit-write-rejected",
         "explicit-write-no-reply", "explicit-write-router-timeout",
         "explicit-write-readback", "explicit-write-readback-mismatch", "explicit-write-readback-rejected",

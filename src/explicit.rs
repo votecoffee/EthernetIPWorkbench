@@ -21,6 +21,7 @@ mod batch;
 mod class_info;
 mod connected;
 mod link_info;
+mod manager_info;
 mod multiple;
 mod port_info;
 mod report;
@@ -39,6 +40,7 @@ pub use connected::{
     run_saved_reads_connected_packet,
 };
 pub use link_info::{ETHERNET_LINK_CLASS, LinkInfo, read_link_info};
+pub use manager_info::{CONNECTION_MANAGER_CLASS, ManagerInfo, read_manager_info};
 pub use multiple::run_saved_reads_packet;
 pub use port_info::{PORT_OBJECT_CLASS, PortInfo, read_port_info};
 pub use report::read_reply_document;
@@ -126,6 +128,13 @@ impl ReadPath {
                 && self.instance != 0
                 && let Some(attribute) = self.attribute
                 && let Some(decoded) = link_info::decode(attribute, bytes)
+            {
+                return decoded.map(Some);
+            }
+            if self.class == CONNECTION_MANAGER_CLASS
+                && self.instance != 0
+                && let Some(attribute) = self.attribute
+                && let Some(decoded) = manager_info::decode(attribute, bytes)
             {
                 return decoded.map(Some);
             }

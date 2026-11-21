@@ -161,6 +161,17 @@ impl super::LinkInfo {
     }
 }
 
+impl super::ManagerInfo {
+    pub fn report_json(&self) -> Result<String, String> {
+        instance_json(
+            &self.batch,
+            super::CONNECTION_MANAGER_CLASS,
+            self.instance,
+            self.route.as_ref(),
+        )
+    }
+}
+
 fn instance_json(
     batch: &SavedReadBatch,
     class: u32,

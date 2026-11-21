@@ -895,6 +895,36 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode manager-info-optional on localhost"]
+    fn explore_reads_connection_manager_counters_over_a_route() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[("Serial through bridge", 6, Some("1/3"))]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "Connection Manager");
+        click(&mut device, &ctx, size, "Read connection counters");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Connection Manager instance 1",
+            "Route 1/3",
+            "Open resource rejects · CIP rejection",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Open requests · Reply");
+        let labels = draw(&mut device, &ctx, size);
+        assert!(labels.iter().any(|(text, _)| text == "65535"));
+        assert_eq!(device.snapshot(), saved);
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode link-info-optional on localhost"]
     fn explore_reads_ethernet_link_diagnostics_over_a_route() {
         let ctx = egui::Context::default();

@@ -1,6 +1,43 @@
 use super::*;
 
+type InstanceRead = fn(&mut Explorer, &str, Option<Ipv4Addr>);
+
 impl Explorer {
+    pub(super) fn instance_action(&mut self, ui: &mut Ui, adapter: &str, local: Option<Ipv4Addr>) {
+        let (label, description, read): (&str, &str, InstanceRead) = match explicit::parse_id(
+            &self.class,
+        ) {
+            Ok(explicit::PORT_OBJECT_CLASS) => (
+                "Read port info",
+                "Read the Port Object directory at instance 0 or inspect a port instance.",
+                Self::read_port_info,
+            ),
+            Ok(explicit::TCPIP_INTERFACE_CLASS) => (
+                "Read interface info",
+                "Read the selected TCP/IP Interface instance's reported network settings.",
+                Self::read_tcpip_info,
+            ),
+            Ok(explicit::ETHERNET_LINK_CLASS) => (
+                "Read link info",
+                "Read the selected Ethernet Link instance's status and counters.",
+                Self::read_link_info,
+            ),
+            Ok(explicit::CONNECTION_MANAGER_CLASS) => (
+                "Read connection counters",
+                "Read the selected Connection Manager's open, close, reject and timeout counters.",
+                Self::read_manager_info,
+            ),
+            _ => return,
+        };
+        if ui
+            .add_enabled(!self.busy(), egui::Button::new(label))
+            .on_hover_text(description)
+            .clicked()
+        {
+            read(self, adapter, local);
+        }
+    }
+
     fn inspection_request(
         &self,
         adapter: &str,
@@ -28,7 +65,7 @@ impl Explorer {
         }
     }
 
-    pub(super) fn read_port_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
+    fn read_port_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
         self.port_info = None;
         match self.inspection_request(adapter, local, &self.instance) {
             Ok((adapter, local, instance, route)) => self.start(move || {
@@ -38,7 +75,7 @@ impl Explorer {
         }
     }
 
-    pub(super) fn read_tcpip_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
+    fn read_tcpip_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
         self.tcpip_info = None;
         match self.inspection_request(adapter, local, &self.instance) {
             Ok((adapter, local, instance, route)) => self.start(move || {
@@ -48,11 +85,22 @@ impl Explorer {
         }
     }
 
-    pub(super) fn read_link_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
+    fn read_link_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
         self.link_info = None;
         match self.inspection_request(adapter, local, &self.instance) {
             Ok((adapter, local, instance, route)) => self.start(move || {
                 explicit::read_link_info(adapter, local, instance, route).map(Response::LinkInfo)
+            }),
+            Err(error) => self.notice = Some(error),
+        }
+    }
+
+    fn read_manager_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
+        self.manager_info = None;
+        match self.inspection_request(adapter, local, &self.instance) {
+            Ok((adapter, local, instance, route)) => self.start(move || {
+                explicit::read_manager_info(adapter, local, instance, route)
+                    .map(Response::ManagerInfo)
             }),
             Err(error) => self.notice = Some(error),
         }
@@ -99,6 +147,16 @@ pub(super) fn show_link(ui: &mut Ui, info: &LinkInfo) {
         ui,
         format!("Ethernet Link instance {}", info.instance),
         "link-info-results",
+        info.route.as_ref(),
+        &info.batch,
+    );
+}
+
+pub(super) fn show_manager(ui: &mut Ui, info: &ManagerInfo) {
+    show_inspection(
+        ui,
+        format!("Connection Manager instance {}", info.instance),
+        "manager-info-results",
         info.route.as_ref(),
         &info.batch,
     );

@@ -83,6 +83,8 @@ Choose **Common attributes → TCP/IP Interface · Status**, then select **Read 
 
 Choose **Common attributes → Ethernet Link · Speed**, then select **Read link info** for the selected port's reported speed, link state, duplex, MAC address, and available counters. The CLI `link-info` command exports the same results. [Ethernet Link diagnostics](docs/OPERATIONS.md#inspect-ethernet-link-diagnostics)
 
+Choose **Connection Manager** in Explore, then select **Read connection counters** to inspect the target's cumulative open, close, rejection, and timeout totals. The CLI `manager-info` command exports the same results. [Connection Manager counters](docs/OPERATIONS.md#inspect-connection-manager-counters)
+
 Use **Stage attribute write** in Explore to review and send a documented Set_Attribute_Single request. Enter hex or select **Enter typed value** to preview the encoded bytes. The CLI `write-attribute` previews the address, route and bytes offline and accepts typed entry with `--type`. Sending requires the reviewed device identity, including its serial number. For a readable attribute, **Require current value** or `--expect-current` checks the bytes before sending. **Read back after write** or `--readback` checks the returned bytes after acknowledgment. [Review and send an attribute write](docs/OPERATIONS.md#review-and-send-an-attribute-write)
 
 Choose **Use Class 3** in the write review or pass `write-attribute --connected` for a device that requires connected explicit messaging. Identity verification, the write, and any value checks share the direct or routed Class 3 connection. The result reports Forward_Close separately. [Class 3 attribute writes](docs/OPERATIONS.md#send-a-class-3-attribute-write)

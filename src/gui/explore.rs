@@ -2,9 +2,9 @@ use super::*;
 use assembly_scanner::{
     discovery,
     explicit::{
-        self, AttributeWrite, Class3Size, ClassInfo, LinkInfo, PortInfo, ReadPath, Reader, Route,
-        SavedRead, SavedReadMode, SavedReadReport, TcpIpInfo, WriteCurrentCheck, WriteInspection,
-        WriteOutcome, WriteReport,
+        self, AttributeWrite, Class3Size, ClassInfo, LinkInfo, ManagerInfo, PortInfo, ReadPath,
+        Reader, Route, SavedRead, SavedReadMode, SavedReadReport, TcpIpInfo, WriteCurrentCheck,
+        WriteInspection, WriteOutcome, WriteReport,
     },
 };
 use std::sync::Arc;
@@ -33,6 +33,7 @@ enum Response {
     PortInfo(PortInfo),
     TcpIpInfo(TcpIpInfo),
     LinkInfo(LinkInfo),
+    ManagerInfo(ManagerInfo),
     Batch(SavedReadReport),
     SavedReport(PathBuf),
     OpenedWriteDraft(Box<write::Draft>),
@@ -66,6 +67,7 @@ pub(super) struct Explorer {
     port_info: Option<PortInfo>,
     tcpip_info: Option<TcpIpInfo>,
     link_info: Option<LinkInfo>,
+    manager_info: Option<ManagerInfo>,
     batch_mode: SavedReadMode,
     saved_batch: Option<Arc<SavedReadReport>>,
     saved_report: Option<PathBuf>,
@@ -95,6 +97,7 @@ impl Default for Explorer {
             port_info: None,
             tcpip_info: None,
             link_info: None,
+            manager_info: None,
             batch_mode: SavedReadMode::default(),
             saved_batch: None,
             saved_report: None,
@@ -138,6 +141,7 @@ impl Explorer {
             Ok(Ok(Response::PortInfo(info))) => self.port_info = Some(info),
             Ok(Ok(Response::TcpIpInfo(info))) => self.tcpip_info = Some(info),
             Ok(Ok(Response::LinkInfo(info))) => self.link_info = Some(info),
+            Ok(Ok(Response::ManagerInfo(info))) => self.manager_info = Some(info),
             Ok(Ok(Response::Batch(batch))) => self.saved_batch = Some(Arc::new(batch)),
             Ok(Ok(Response::SavedReport(path))) => self.saved_report = Some(path),
             Ok(Ok(Response::OpenedWriteDraft(draft))) => self.write_draft = Some(*draft),
@@ -341,6 +345,15 @@ impl Device {
                         }
                     }
                 });
+            if ui.button("Connection Manager").clicked() {
+                explorer.load(ReadPath {
+                    class: explicit::CONNECTION_MANAGER_CLASS,
+                    instance: 1,
+                    attribute: Some(1),
+                });
+                explorer.name = "Connection Manager open requests".into();
+                explorer.selection = None;
+            }
         });
         ui.horizontal_wrapped(|ui| {
             ui.label("CIP route (optional)");
@@ -366,37 +379,7 @@ impl Device {
             {
                 explorer.read_class_info(&self.device, local.as_ref().ok().copied());
             }
-            let class = explicit::parse_id(&explorer.class);
-            if class == Ok(explicit::PORT_OBJECT_CLASS)
-                && ui
-                    .add_enabled(!explorer.busy(), egui::Button::new("Read port info"))
-                    .on_hover_text(
-                        "Read the Port Object directory at instance 0 or inspect a port instance.",
-                    )
-                    .clicked()
-            {
-                explorer.read_port_info(&self.device, local.as_ref().ok().copied());
-            }
-            if class == Ok(explicit::TCPIP_INTERFACE_CLASS)
-                && ui
-                    .add_enabled(!explorer.busy(), egui::Button::new("Read interface info"))
-                    .on_hover_text(
-                        "Read the selected TCP/IP Interface instance's reported network settings.",
-                    )
-                    .clicked()
-            {
-                explorer.read_tcpip_info(&self.device, local.as_ref().ok().copied());
-            }
-            if class == Ok(explicit::ETHERNET_LINK_CLASS)
-                && ui
-                    .add_enabled(!explorer.busy(), egui::Button::new("Read link info"))
-                    .on_hover_text(
-                        "Read the selected Ethernet Link instance's status and counters.",
-                    )
-                    .clicked()
-            {
-                explorer.read_link_info(&self.device, local.as_ref().ok().copied());
-            }
+            explorer.instance_action(ui, &self.device, local.as_ref().ok().copied());
         });
         let mut typed = explorer.selection.is_some();
         if ui.checkbox(&mut typed, "Decode reply field").changed() {
@@ -502,6 +485,9 @@ impl Device {
         }
         if let Some(info) = &explorer.link_info {
             class_info::show_link(ui, info);
+        }
+        if let Some(info) = &explorer.manager_info {
+            class_info::show_manager(ui, info);
         }
         ui.collapsing("Saved reads", |ui| {
             if batch::controls(
