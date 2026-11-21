@@ -1,10 +1,34 @@
 use super::{
-    Class3Size, EipError, Reader, Route, RoutedReadError, SavedRead,
+    Class3Size, EipError, ReadPath, Reader, Route, RoutedReadError, SavedRead,
     connected::{run_connected_packet_sized, run_connected_sized},
     run_saved_reads_packet, validate_saved_reads,
 };
 use crate::scanner::CloseOutcome;
 use std::net::Ipv4Addr;
+
+pub(super) fn read_object_attributes(
+    adapter: Ipv4Addr,
+    local: Ipv4Addr,
+    class: u32,
+    instance: u32,
+    route: Option<&Route>,
+    attributes: &[(u32, &str)],
+) -> Result<SavedReadBatch, String> {
+    let reads = attributes
+        .iter()
+        .map(|&(attribute, name)| SavedRead {
+            name: name.into(),
+            path: ReadPath {
+                class,
+                instance,
+                attribute: Some(attribute),
+            },
+            route: route.cloned(),
+            selection: None,
+        })
+        .collect();
+    run_saved_reads(adapter, local, reads)
+}
 
 pub struct SavedReadBatch {
     pub adapter_or_bridge: Ipv4Addr,

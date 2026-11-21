@@ -130,14 +130,39 @@ impl ClassInfo {
 
 impl super::PortInfo {
     pub fn report_json(&self) -> Result<String, String> {
-        let mut document = self.batch.report_document()?;
-        document["class"] = json!(super::PORT_OBJECT_CLASS);
-        document["instance"] = json!(self.instance);
-        if let Some(route) = &self.route {
-            document["route"] = json!(route);
-        }
-        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
+        instance_json(
+            &self.batch,
+            super::PORT_OBJECT_CLASS,
+            self.instance,
+            self.route.as_ref(),
+        )
     }
+}
+
+impl super::TcpIpInfo {
+    pub fn report_json(&self) -> Result<String, String> {
+        instance_json(
+            &self.batch,
+            super::TCPIP_INTERFACE_CLASS,
+            self.instance,
+            self.route.as_ref(),
+        )
+    }
+}
+
+fn instance_json(
+    batch: &SavedReadBatch,
+    class: u32,
+    instance: u32,
+    route: Option<&Route>,
+) -> Result<String, String> {
+    let mut document = batch.report_document()?;
+    document["class"] = json!(class);
+    document["instance"] = json!(instance);
+    if let Some(route) = route {
+        document["route"] = json!(route);
+    }
+    serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
 }
 
 impl ConnectedPacketBatch {

@@ -24,6 +24,7 @@ mod multiple;
 mod port_info;
 mod report;
 mod route;
+mod tcpip_info;
 mod write;
 mod write_draft;
 mod write_receipt;
@@ -40,6 +41,7 @@ pub use multiple::run_saved_reads_packet;
 pub use port_info::{PORT_OBJECT_CLASS, PortInfo, read_port_info};
 pub use report::read_reply_document;
 pub use route::{Route, RoutedReadError};
+pub use tcpip_info::{TCPIP_INTERFACE_CLASS, TcpIpInfo, read_tcpip_info};
 pub use write::{
     AttributeWrite, CurrentValueCheck, ReadbackOutcome, WriteCurrentCheck, WriteInspection,
     WriteOptions, WriteOutcome, WriteReport,
@@ -108,6 +110,13 @@ impl ReadPath {
             if self.class == PORT_OBJECT_CLASS
                 && let Some(attribute) = self.attribute
                 && let Some(decoded) = port_info::decode(self.instance, attribute, bytes)
+            {
+                return decoded.map(Some);
+            }
+            if self.class == TCPIP_INTERFACE_CLASS
+                && self.instance != 0
+                && let Some(attribute) = self.attribute
+                && let Some(decoded) = tcpip_info::decode(attribute, bytes)
             {
                 return decoded.map(Some);
             }

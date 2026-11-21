@@ -3,8 +3,8 @@ use assembly_scanner::{
     discovery,
     explicit::{
         self, AttributeWrite, Class3Size, ClassInfo, PortInfo, ReadPath, Reader, Route, SavedRead,
-        SavedReadMode, SavedReadReport, WriteCurrentCheck, WriteInspection, WriteOutcome,
-        WriteReport,
+        SavedReadMode, SavedReadReport, TcpIpInfo, WriteCurrentCheck, WriteInspection,
+        WriteOutcome, WriteReport,
     },
 };
 use std::sync::Arc;
@@ -31,6 +31,7 @@ enum Response {
     Read(ReadReply),
     ClassInfo(ClassInfo),
     PortInfo(PortInfo),
+    TcpIpInfo(TcpIpInfo),
     Batch(SavedReadReport),
     SavedReport(PathBuf),
     OpenedWriteDraft(Box<write::Draft>),
@@ -62,6 +63,7 @@ pub(super) struct Explorer {
     read_result: Option<ReadReply>,
     class_info: Option<ClassInfo>,
     port_info: Option<PortInfo>,
+    tcpip_info: Option<TcpIpInfo>,
     batch_mode: SavedReadMode,
     saved_batch: Option<Arc<SavedReadReport>>,
     saved_report: Option<PathBuf>,
@@ -89,6 +91,7 @@ impl Default for Explorer {
             read_result: None,
             class_info: None,
             port_info: None,
+            tcpip_info: None,
             batch_mode: SavedReadMode::default(),
             saved_batch: None,
             saved_report: None,
@@ -130,6 +133,7 @@ impl Explorer {
             Ok(Ok(Response::Read(reply))) => self.read_result = Some(reply),
             Ok(Ok(Response::ClassInfo(info))) => self.class_info = Some(info),
             Ok(Ok(Response::PortInfo(info))) => self.port_info = Some(info),
+            Ok(Ok(Response::TcpIpInfo(info))) => self.tcpip_info = Some(info),
             Ok(Ok(Response::Batch(batch))) => self.saved_batch = Some(Arc::new(batch)),
             Ok(Ok(Response::SavedReport(path))) => self.saved_report = Some(path),
             Ok(Ok(Response::OpenedWriteDraft(draft))) => self.write_draft = Some(*draft),
@@ -358,7 +362,8 @@ impl Device {
             {
                 explorer.read_class_info(&self.device, local.as_ref().ok().copied());
             }
-            if explicit::parse_id(&explorer.class) == Ok(explicit::PORT_OBJECT_CLASS)
+            let class = explicit::parse_id(&explorer.class);
+            if class == Ok(explicit::PORT_OBJECT_CLASS)
                 && ui
                     .add_enabled(!explorer.busy(), egui::Button::new("Read port info"))
                     .on_hover_text(
@@ -367,6 +372,16 @@ impl Device {
                     .clicked()
             {
                 explorer.read_port_info(&self.device, local.as_ref().ok().copied());
+            }
+            if class == Ok(explicit::TCPIP_INTERFACE_CLASS)
+                && ui
+                    .add_enabled(!explorer.busy(), egui::Button::new("Read interface info"))
+                    .on_hover_text(
+                        "Read the selected TCP/IP Interface instance's reported network settings.",
+                    )
+                    .clicked()
+            {
+                explorer.read_tcpip_info(&self.device, local.as_ref().ok().copied());
             }
         });
         let mut typed = explorer.selection.is_some();
@@ -467,6 +482,9 @@ impl Device {
         }
         if let Some(info) = &explorer.port_info {
             class_info::show_port(ui, info);
+        }
+        if let Some(info) = &explorer.tcpip_info {
+            class_info::show_tcpip(ui, info);
         }
         ui.collapsing("Saved reads", |ui| {
             if batch::controls(

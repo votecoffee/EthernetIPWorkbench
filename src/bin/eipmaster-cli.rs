@@ -47,6 +47,7 @@ Usage:
   eipmaster-cli read <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute|all> [--route <port/link/...>]
   eipmaster-cli class-info <adapter-or-bridge-ipv4> <local-ipv4> <class> [--route <port/link/...>]
   eipmaster-cli port-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
+  eipmaster-cli tcpip-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli write-attribute <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute> \"<value>\" [--type <Kind>] [--endian <little|big>] [--swap <none|bytes_in_words|word_order>] [--text-bytes <count>] [--route <port/link/...>] [--expect-current \"<hex bytes>\"] [--readback] [--connected [--connection-size <bytes>]] [--save-draft <new.toml> | --apply <vendor:type:product:serial>]
   eipmaster-cli write-draft <draft.toml> [--verify | --inspect | --apply <vendor:type:product:serial>]
   eipmaster-cli write-receipt <receipt-or-check.json> [--check-current]
@@ -147,6 +148,17 @@ fn run(args: &[OsString]) -> Result<bool, String> {
         [command, adapter, local, instance, options @ ..] if command == "port-info" => {
             let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;
             let report = explicit::read_port_info(
+                adapter,
+                local,
+                explicit::parse_id(&instance.to_string_lossy())?,
+                route,
+            )?;
+            println!("{}", report.report_json()?);
+            Ok(report.is_usable())
+        }
+        [command, adapter, local, instance, options @ ..] if command == "tcpip-info" => {
+            let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;
+            let report = explicit::read_tcpip_info(
                 adapter,
                 local,
                 explicit::parse_id(&instance.to_string_lossy())?,

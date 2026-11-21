@@ -895,6 +895,40 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode tcpip-info-optional on localhost"]
+    fn explore_inspects_a_routed_tcpip_interface_without_changing_saved_requests() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[("Serial through bridge", 6, Some("1/3"))]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "Common attributes");
+        click(&mut device, &ctx, size, "TCP/IP Interface · Status");
+        click(&mut device, &ctx, size, "Read interface info");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "TCP/IP Interface instance 1",
+            "Route 1/3",
+            "Interface configuration · Reply",
+            "Host name · CIP rejection",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Interface configuration · Reply");
+        let labels = draw(&mut device, &ctx, size);
+        assert!(labels.iter().any(|(text, _)| {
+            text.starts_with("IP 192.0.2.10, Mask 255.255.255.0, Gateway 192.0.2.1")
+        }));
+        assert_eq!(device.snapshot(), saved);
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode port-info-optional on localhost"]
     fn explore_inspects_a_routed_port_without_changing_saved_requests() {
         let ctx = egui::Context::default();

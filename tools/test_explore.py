@@ -241,6 +241,49 @@ def check_port_info(exe, root):
     print("Port Object directory, routed port details, and partial or malformed replies passed.")
 
 
+def check_tcpip_info(exe, root):
+    for case, mode, route, exit_code in (
+        ("direct", "tcpip-info", None, 0),
+        ("routed", "tcpip-info-optional", "1/3", 0),
+        ("malformed", "tcpip-info-malformed", None, 1),
+    ):
+        command = [exe, "tcpip-info", LOCAL, LOCAL, "1"]
+        if route:
+            command.extend(("--route", route))
+        result, peer = with_adapter(root, f"tcpip-info-{case}", command, mode)
+        assert result.returncode == exit_code and not result.stderr, (result.stdout, result.stderr)
+        report = json.loads(result.stdout)
+        (root / f"tcpip-info-{case}.json").write_text(result.stdout, encoding="utf-8")
+        assert (report["class"], report["instance"], report.get("route")) == (0xF5, 1, route)
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert peer["tcpip_attributes"] == list(range(1, 7))
+        assert peer["route_hex"] == ("0103" if route else "")
+        replies = report["results"]
+        assert [row["path"] for row in replies] == [
+            {"class": 0xF5, "instance": 1, "attribute": idx} for idx in range(1, 7)
+        ]
+        assert [row["decoded"] for row in replies[:4]] == [
+            "0x00000001", "0x00000015", "0x00000012 [DHCP]", "20 F6 24 01",
+        ]
+        if case == "malformed":
+            assert replies[4]["decoded"] is None
+            assert replies[4]["data_hex"].endswith("08 00 6C 61 62")
+            assert "Domain name length" in replies[4]["decode_error"]
+        else:
+            assert replies[4]["decoded"] == (
+                "IP 192.0.2.10, Mask 255.255.255.0, Gateway 192.0.2.1, "
+                "Primary DNS 198.51.100.53, Secondary DNS 203.0.113.7, Domain lab"
+            )
+        if route:
+            assert all(row["reply_from"] == "target" for row in replies)
+            assert (replies[5]["general_status"], replies[5]["extended_status"]) == (0x14, [0x0302])
+        else:
+            assert replies[5]["decoded"] == "bench"
+    result = subprocess.run([exe, "tcpip-info", LOCAL, LOCAL, "0"], capture_output=True, timeout=5)
+    assert result.returncode != 0 and b"nonzero instance" in result.stderr
+    print("TCP/IP Interface inspection passed direct, routed optional, and malformed replies.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
@@ -435,6 +478,7 @@ def main():
     assert failure["general_status"] == 0x14 and failure["extended_status"] == [0x0302]
     check_class_info(exe, root)
     check_port_info(exe, root)
+    check_tcpip_info(exe, root)
 
     saved = root / "saved.toml"
     source = PROFILE.read_text(encoding="utf-8")

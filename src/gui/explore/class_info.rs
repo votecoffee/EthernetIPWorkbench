@@ -1,17 +1,26 @@
 use super::*;
 
 impl Explorer {
+    fn inspection_request(
+        &self,
+        adapter: &str,
+        local: Option<Ipv4Addr>,
+        id: &str,
+    ) -> Result<(Ipv4Addr, Ipv4Addr, u32, Option<Route>), String> {
+        const NEED_ADDRESSES: &str = "Set adapter and local NIC IPv4 addresses in Device";
+        let adapter = adapter.parse().map_err(|_| NEED_ADDRESSES)?;
+        let local = local.ok_or(NEED_ADDRESSES)?;
+        Ok((
+            adapter,
+            local,
+            explicit::parse_id(id)?,
+            self.parsed_route()?,
+        ))
+    }
+
     pub(super) fn read_class_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
         self.class_info = None;
-        let request = || {
-            let adapter = adapter
-                .parse()
-                .map_err(|_| "Set adapter and local NIC IPv4 addresses in Device")?;
-            let local = local.ok_or("Set adapter and local NIC IPv4 addresses in Device")?;
-            let class = explicit::parse_id(&self.class)?;
-            Ok::<_, String>((adapter, local, class, self.parsed_route()?))
-        };
-        match request() {
+        match self.inspection_request(adapter, local, &self.class) {
             Ok((adapter, local, class, route)) => self.start(move || {
                 explicit::read_class_info(adapter, local, class, route).map(Response::ClassInfo)
             }),
@@ -21,17 +30,19 @@ impl Explorer {
 
     pub(super) fn read_port_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
         self.port_info = None;
-        let request = || {
-            let adapter = adapter
-                .parse()
-                .map_err(|_| "Set adapter and local NIC IPv4 addresses in Device")?;
-            let local = local.ok_or("Set adapter and local NIC IPv4 addresses in Device")?;
-            let instance = explicit::parse_id(&self.instance)?;
-            Ok::<_, String>((adapter, local, instance, self.parsed_route()?))
-        };
-        match request() {
+        match self.inspection_request(adapter, local, &self.instance) {
             Ok((adapter, local, instance, route)) => self.start(move || {
                 explicit::read_port_info(adapter, local, instance, route).map(Response::PortInfo)
+            }),
+            Err(error) => self.notice = Some(error),
+        }
+    }
+
+    pub(super) fn read_tcpip_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
+        self.tcpip_info = None;
+        match self.inspection_request(adapter, local, &self.instance) {
+            Ok((adapter, local, instance, route)) => self.start(move || {
+                explicit::read_tcpip_info(adapter, local, instance, route).map(Response::TcpIpInfo)
             }),
             Err(error) => self.notice = Some(error),
         }
@@ -58,6 +69,16 @@ pub(super) fn show_port(ui: &mut Ui, info: &PortInfo) {
         ui,
         title,
         "port-info-results",
+        info.route.as_ref(),
+        &info.batch,
+    );
+}
+
+pub(super) fn show_tcpip(ui: &mut Ui, info: &TcpIpInfo) {
+    show_inspection(
+        ui,
+        format!("TCP/IP Interface instance {}", info.instance),
+        "tcpip-info-results",
         info.route.as_ref(),
         &info.batch,
     );

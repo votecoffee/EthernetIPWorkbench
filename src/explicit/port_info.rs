@@ -1,7 +1,6 @@
 //! Read-only inspection of one CIP Port Object directory or port instance.
 
-use super::{ReadPath, Route, SavedRead, SavedReadBatch, le16, run_saved_reads};
-use crate::model::hex;
+use super::{Route, SavedReadBatch, batch::read_object_attributes, le16, route::link_object};
 use std::net::Ipv4Addr;
 
 pub const PORT_OBJECT_CLASS: u32 = 0xf4;
@@ -42,20 +41,14 @@ pub fn read_port_info(
     route: Option<Route>,
 ) -> Result<PortInfo, String> {
     let attributes = if instance == 0 { DIRECTORY } else { INSTANCE };
-    let reads = attributes
-        .iter()
-        .map(|&(attribute, name)| SavedRead {
-            name: name.into(),
-            path: ReadPath {
-                class: PORT_OBJECT_CLASS,
-                instance,
-                attribute: Some(attribute),
-            },
-            route: route.clone(),
-            selection: None,
-        })
-        .collect();
-    let batch = run_saved_reads(adapter, local, reads)?;
+    let batch = read_object_attributes(
+        adapter,
+        local,
+        PORT_OBJECT_CLASS,
+        instance,
+        route.as_ref(),
+        attributes,
+    )?;
     Ok(PortInfo {
         instance,
         route,
@@ -99,20 +92,6 @@ fn port_pairs(bytes: &[u8]) -> Result<String, String> {
         .collect::<Vec<_>>()
         .join(", ");
     Ok(format!("[{ports}]"))
-}
-
-fn link_object(bytes: &[u8]) -> Result<String, String> {
-    let (size, path) = bytes
-        .split_first_chunk()
-        .ok_or("Link Object is missing its word count")?;
-    let words = usize::from(u16::from_le_bytes(*size));
-    if path.len() != words * 2 {
-        return Err(format!(
-            "Link Object declares {words} words, with {} path bytes",
-            path.len()
-        ));
-    }
-    Ok(hex(path))
 }
 
 fn capabilities(bytes: &[u8]) -> Result<String, String> {

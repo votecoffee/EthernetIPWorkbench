@@ -72,6 +72,17 @@ Instance 0 reads the maximum instance ID, instance count, entry-port instance an
 
 The report preserves raw replies and shows individual decode errors and CIP status. As with `class-info`, successful fields can accompany unsupported target attributes. Review the device's documented topology when choosing a new route.
 
+### Inspect a TCP/IP interface
+
+In **Explore → Common attributes**, choose **TCP/IP Interface · Status**. Enter the interface instance if it differs from the preset's instance 1, then select **Read interface info**. Leave **CIP route** blank for a direct read or enter a known route to read the interface reported by the routed target.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe tcpip-info 192.0.2.10 192.0.2.11 1
+.\target\release\eipmaster-cli.exe tcpip-info 192.0.2.10 192.0.2.11 1 --route 1/3
+~~~
+
+The inspection sends six Get_Attribute_Single requests in one registered session. The report shows interface status and configuration capability masks, the configured startup method, the Physical Link Object path, IPv4 address, mask, gateway, primary and secondary DNS servers, domain name, and hostname. Use the reported startup method alongside the live address fields. Each attribute retains its raw reply and any decode error or CIP rejection. [Schneider Electric TCP/IP Interface attributes](https://productinfo.se.com/tesys_tera_master/tesys-tera-motor-management-system-ethernet-communication-guide/EN/DOCA0258_Tera_Ethernet_guide_DD00602307.XML.xml/$/Tera_TCP_IPObject_Ethernet_DD00809230.XML)
+
 ### Review and send an attribute write
 
 Use the documented writable class, instance and attribute. In **Explore**, enter the address and optional CIP route, and select **Stage attribute write**. Enter space-separated hex or select **Enter typed value**, choose a format, and inspect the encoded bytes. Select **Verify target identity**, then review the device's name and identity, the NIC, address, route and exact bytes before selecting **Send reviewed write**. Changing the value or its encoding clears the prior review. The send checks the full identity on the same registered session that carries the write. [Set_Attribute_Single reference](https://product-help.schneider-electric.com/Machine%20Expert/V2.2/en/EtherNetIP_Services/EtherNetIP_Services/modules/set-attribute-si.html)

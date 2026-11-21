@@ -316,3 +316,16 @@ pub(super) fn decode_routed_reply<T>(
         error => Exchange(error),
     })
 }
+pub(super) fn link_object(bytes: &[u8]) -> Result<String, String> {
+    let (size, path) = bytes
+        .split_first_chunk()
+        .ok_or("Link Object is missing its word count")?;
+    let words = usize::from(u16::from_le_bytes(*size));
+    if path.len() != words * 2 {
+        return Err(format!(
+            "Link Object declares {words} words, with {} path bytes",
+            path.len()
+        ));
+    }
+    Ok(crate::model::hex(path))
+}

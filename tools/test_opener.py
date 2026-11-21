@@ -297,6 +297,24 @@ def check_class_info(cli, adapter, root):
     print("OpENer reported Assembly class metadata and separate optional attribute outcomes.")
 
 
+def check_tcpip_info(cli, adapter, root):
+    root.mkdir()
+    with run_adapter(adapter, root):
+        result = subprocess.run([cli, "tcpip-info", ADAPTER, "127.0.0.1", "1"],
+                                capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+    (root / "result.json").write_bytes(result.stdout)
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    report = json.loads(result.stdout)
+    assert (report["class"], report["instance"]) == (0xF5, 1)
+    replies = report["results"]
+    assert [entry["path"]["attribute"] for entry in replies] == list(range(1, 7))
+    assert all(entry["status"] == "success" and entry["decoded"] is not None for entry in replies)
+    assert replies[3]["decoded"] == "20 F6 24 01"
+    assert replies[4]["data_hex"].startswith("02 00 00 7F 00 00 00 FF ")
+    assert replies[4]["decoded"].startswith("IP 127.0.0.2, Mask 255.0.0.0, ")
+    print("OpENer TCP/IP Interface address bytes and Physical Link Object path passed.")
+
+
 def check_explicit_write(cli, adapter, root, identity, *, connected=False):
     root.mkdir()
     pin = ":".join(str(identity[field]) for field in ("vendor", "device_type", "code", "serial"))
@@ -580,6 +598,7 @@ def main():
     if args.explore:
         check_explore(cli, adapter, root / "extended", identity, args.seconds)
         check_class_info(cli, adapter, root / "class-info")
+        check_tcpip_info(cli, adapter, root / "tcpip-info")
         check_explicit_write(cli, adapter, root / "explicit-write", identity)
         check_explicit_write(cli, adapter, root / "class3-write", identity, connected=True)
         check_connected_reads(cli, adapter, root / "connected-reads", identity)
