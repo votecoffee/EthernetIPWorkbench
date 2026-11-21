@@ -50,14 +50,25 @@ pub enum SavedReadOutcome {
 
 impl SavedReadBatch {
     pub(super) fn is_usable_inspection(&self) -> bool {
-        let mut decoded = false;
+        self.is_usable_inspection_with_raw_attribute(None)
+    }
+
+    pub(super) fn is_usable_inspection_with_raw_attribute(
+        &self,
+        raw_attribute: Option<u32>,
+    ) -> bool {
+        let mut usable_reply = false;
         for entry in &self.results {
             match &entry.outcome {
                 SavedReadOutcome::Reply(bytes) => {
-                    if !matches!(entry.request.path.decode_reply(bytes, None), Ok(Some(_))) {
+                    let raw_reply =
+                        raw_attribute.is_some_and(|id| entry.request.path.attribute == Some(id));
+                    if !raw_reply
+                        && !matches!(entry.request.path.decode_reply(bytes, None), Ok(Some(_)))
+                    {
                         return false;
                     }
-                    decoded = true;
+                    usable_reply = true;
                 }
                 SavedReadOutcome::Rejected(RoutedReadError::Target(EipError::Cip {
                     status: 0x08 | 0x14,
@@ -66,7 +77,7 @@ impl SavedReadBatch {
                 _ => return false,
             }
         }
-        decoded
+        usable_reply
     }
 }
 

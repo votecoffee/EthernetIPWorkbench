@@ -183,19 +183,44 @@ impl super::QosInfo {
     }
 }
 
+impl super::AssemblyInfo {
+    pub fn report_json(&self) -> Result<String, String> {
+        let mut document = instance_document(
+            &self.batch,
+            super::ASSEMBLY_CLASS,
+            self.instance,
+            self.route.as_ref(),
+        )?;
+        document["declared_size_bytes"] = json!(self.declared_size());
+        document["data_size_bytes"] = json!(self.data_size());
+        document["sizes_match"] = json!(self.sizes_match());
+        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
+    }
+}
+
 fn instance_json(
     batch: &SavedReadBatch,
     class: u32,
     instance: u32,
     route: Option<&Route>,
 ) -> Result<String, String> {
+    let document = instance_document(batch, class, instance, route)?;
+    serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
+}
+
+fn instance_document(
+    batch: &SavedReadBatch,
+    class: u32,
+    instance: u32,
+    route: Option<&Route>,
+) -> Result<Value, String> {
     let mut document = batch.report_document()?;
     document["class"] = json!(class);
     document["instance"] = json!(instance);
     if let Some(route) = route {
         document["route"] = json!(route);
     }
-    serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
+    Ok(document)
 }
 
 impl ConnectedPacketBatch {

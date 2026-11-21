@@ -2,8 +2,8 @@ use super::*;
 use assembly_scanner::{
     discovery,
     explicit::{
-        self, AttributeWrite, Class3Size, ClassInfo, LinkInfo, ManagerInfo, PortInfo, QosInfo,
-        ReadPath, Reader, Route, SavedRead, SavedReadMode, SavedReadReport, TcpIpInfo,
+        self, AssemblyInfo, AttributeWrite, Class3Size, ClassInfo, LinkInfo, ManagerInfo, PortInfo,
+        QosInfo, ReadPath, Reader, Route, SavedRead, SavedReadMode, SavedReadReport, TcpIpInfo,
         WriteCurrentCheck, WriteInspection, WriteOutcome, WriteReport,
     },
 };
@@ -42,6 +42,7 @@ enum Response {
     LinkInfo(LinkInfo),
     ManagerInfo(ManagerInfo),
     QosInfo(QosInfo),
+    AssemblyInfo(AssemblyInfo),
     Batch(SavedReadReport),
     SavedReport(PathBuf),
     OpenedWriteDraft(Box<write::Draft>),
@@ -77,6 +78,7 @@ pub(super) struct Explorer {
     link_info: Option<LinkInfo>,
     manager_info: Option<ManagerInfo>,
     qos_info: Option<QosInfo>,
+    assembly_info: Option<AssemblyInfo>,
     batch_mode: SavedReadMode,
     saved_batch: Option<Arc<SavedReadReport>>,
     saved_report: Option<PathBuf>,
@@ -108,6 +110,7 @@ impl Default for Explorer {
             link_info: None,
             manager_info: None,
             qos_info: None,
+            assembly_info: None,
             batch_mode: SavedReadMode::default(),
             saved_batch: None,
             saved_report: None,
@@ -153,6 +156,7 @@ impl Explorer {
             Ok(Ok(Response::LinkInfo(info))) => self.link_info = Some(info),
             Ok(Ok(Response::ManagerInfo(info))) => self.manager_info = Some(info),
             Ok(Ok(Response::QosInfo(info))) => self.qos_info = Some(info),
+            Ok(Ok(Response::AssemblyInfo(info))) => self.assembly_info = Some(info),
             Ok(Ok(Response::Batch(batch))) => self.saved_batch = Some(Arc::new(batch)),
             Ok(Ok(Response::SavedReport(path))) => self.saved_report = Some(path),
             Ok(Ok(Response::OpenedWriteDraft(draft))) => self.write_draft = Some(*draft),
@@ -340,7 +344,7 @@ impl Device {
                     if ui.selectable_label(false, "Assembly · Data").clicked() {
                         explorer.load_preset(
                             "Input assembly data",
-                            4,
+                            explicit::ASSEMBLY_CLASS,
                             u32::from(self.settings.input_instance),
                             3,
                         );
@@ -510,6 +514,9 @@ impl Device {
         }
         if let Some(info) = &explorer.qos_info {
             class_info::show_qos(ui, info);
+        }
+        if let Some(info) = &explorer.assembly_info {
+            class_info::show_assembly(ui, info);
         }
         ui.collapsing("Saved reads", |ui| {
             if batch::controls(

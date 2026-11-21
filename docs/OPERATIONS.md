@@ -118,6 +118,17 @@ One registered explicit session reads attributes 1–8 with Get_Attribute_Single
 
 Each result retains its raw reply, decoding error, or CIP status. The CLI accepts a usable partial report when at least one counter decodes and the target marks the others unsupported. If every counter is unsupported, the CLI retains all rejections in JSON and returns exit code 1.
 
+### Inspect an assembly
+
+In **Explore → Common attributes**, choose **Assembly · Data** to start from the profile's input assembly instance. Change the instance to inspect another documented assembly, then select **Read assembly info**. Leave **CIP route** blank for a direct read or enter a known route.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe assembly-info 192.0.2.10 192.0.2.11 101
+.\target\release\eipmaster-cli.exe assembly-info 192.0.2.10 192.0.2.11 101 --route 1/3
+~~~
+
+One registered session reads the declared byte count from attribute 4 and the raw data from attribute 3 with separate Get_Attribute_Single requests. The CLI exposes `declared_size_bytes`, `data_size_bytes`, and `sizes_match`. A missing or malformed reply leaves its size unavailable. An empty data reply counts as zero bytes. A mismatch is visible in both interfaces even when both reads succeeded. Compare the reported values with the documented cyclic payload, including any device-specific size or header rules, before choosing Forward_Open settings. [Pinned OpENer Assembly Object reference](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipassembly.c)
+
 ### Review and send an attribute write
 
 Use the documented writable class, instance and attribute. In **Explore**, enter the address and optional CIP route, and select **Stage attribute write**. Enter space-separated hex or select **Enter typed value**, choose a format, and inspect the encoded bytes. Select **Verify target identity**, then review the device's name and identity, the NIC, address, route and exact bytes before selecting **Send reviewed write**. Changing the value or its encoding clears the prior review. The send checks the full identity on the same registered session that carries the write. [Set_Attribute_Single reference](https://product-help.schneider-electric.com/Machine%20Expert/V2.2/en/EtherNetIP_Services/EtherNetIP_Services/modules/set-attribute-si.html)

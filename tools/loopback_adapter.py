@@ -348,6 +348,26 @@ def qos_info_reply(cip, mode, report):
     return bytes.fromhex("8E 00 00 00") + bytes([settings[attribute - 1]])
 
 
+def assembly_info_reply(cip, mode, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    assert len(message) == 8 and message[:7] == bytes.fromhex("0E 03 20 04 24 65 30")
+    attribute = message[7]
+    assert attribute in (3, 4) and route in (b"", b"\x01\x03")
+    report.setdefault("assembly_attributes", []).append(attribute)
+    report["route_hex"] = route.hex()
+    if (mode, attribute) in (("assembly-info-size-unsupported", 4), ("assembly-info-data-unsupported", 3)):
+        return bytes.fromhex("8E 00 14 01 02 03")
+    if mode == "assembly-info-empty":
+        body = b"" if attribute == 3 else b"\0\0"
+    elif attribute == 3:
+        body = bytes.fromhex("A5 16 2C")
+    elif mode == "assembly-info-malformed":
+        body = b"\x03"
+    else:
+        body = struct.pack("<H", 32 if route else 3)
+    return bytes.fromhex("8E 00 00 00") + body
+
+
 def explicit_write_reply(cip, mode, attrs, report):
     route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
     assert route in (b"", b"\x01\x03")
@@ -473,6 +493,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
         "link-info": link_info_reply,
         "manager-info": manager_info_reply,
         "qos-info": qos_info_reply,
+        "assembly-info": assembly_info_reply,
     }
     object_reader = next((reader for name, reader in object_readers.items() if mode.startswith(name)), None)
     report_explicit = (
@@ -784,6 +805,8 @@ def main():
         "link-info", "link-info-optional", "link-info-malformed",
         "manager-info", "manager-info-optional", "manager-info-malformed",
         "qos-info", "qos-info-optional", "qos-info-malformed",
+        "assembly-info", "assembly-info-size-unsupported", "assembly-info-data-unsupported",
+        "assembly-info-malformed", "assembly-info-empty",
         "explicit-write", "explicit-write-review", "explicit-write-gui", "explicit-write-rejected",
         "explicit-write-no-reply", "explicit-write-router-timeout",
         "explicit-write-readback", "explicit-write-readback-mismatch", "explicit-write-readback-rejected",

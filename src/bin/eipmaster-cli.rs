@@ -51,6 +51,7 @@ Usage:
   eipmaster-cli link-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli manager-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli qos-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
+  eipmaster-cli assembly-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli write-attribute <adapter-or-bridge-ipv4> <local-ipv4> <class> <instance> <attribute> \"<value>\" [--type <Kind>] [--endian <little|big>] [--swap <none|bytes_in_words|word_order>] [--text-bytes <count>] [--route <port/link/...>] [--expect-current \"<hex bytes>\"] [--readback] [--connected [--connection-size <bytes>]] [--save-draft <new.toml> | --apply <vendor:type:product:serial>]
   eipmaster-cli write-draft <draft.toml> [--verify | --inspect | --apply <vendor:type:product:serial>]
   eipmaster-cli write-receipt <receipt-or-check.json> [--check-current]
@@ -195,6 +196,17 @@ fn run(args: &[OsString]) -> Result<bool, String> {
         [command, adapter, local, instance, options @ ..] if command == "qos-info" => {
             let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;
             let report = explicit::read_qos_info(
+                adapter,
+                local,
+                explicit::parse_id(&instance.to_string_lossy())?,
+                route,
+            )?;
+            println!("{}", report.report_json()?);
+            Ok(report.is_usable())
+        }
+        [command, adapter, local, instance, options @ ..] if command == "assembly-info" => {
+            let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;
+            let report = explicit::read_assembly_info(
                 adapter,
                 local,
                 explicit::parse_id(&instance.to_string_lossy())?,

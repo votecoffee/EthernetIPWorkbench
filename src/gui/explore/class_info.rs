@@ -32,6 +32,11 @@ impl Explorer {
                 "Read 802.1Q tagging and DSCP settings reported by the selected QoS instance.",
                 Self::read_qos_info,
             ),
+            Ok(explicit::ASSEMBLY_CLASS) => (
+                "Read assembly info",
+                "Read the selected assembly's declared size and explicit data.",
+                Self::read_assembly_info,
+            ),
             _ => return,
         };
         if ui
@@ -120,6 +125,17 @@ impl Explorer {
             Err(error) => self.notice = Some(error),
         }
     }
+
+    fn read_assembly_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
+        self.assembly_info = None;
+        match self.inspection_request(adapter, local, &self.instance) {
+            Ok((adapter, local, instance, route)) => self.start(move || {
+                explicit::read_assembly_info(adapter, local, instance, route)
+                    .map(Response::AssemblyInfo)
+            }),
+            Err(error) => self.notice = Some(error),
+        }
+    }
 }
 
 pub(super) fn show(ui: &mut Ui, info: &ClassInfo) {
@@ -182,6 +198,20 @@ pub(super) fn show_qos(ui: &mut Ui, info: &QosInfo) {
         ui,
         format!("Quality of Service instance {}", info.instance),
         "qos-info-results",
+        info.route.as_ref(),
+        &info.batch,
+    );
+}
+
+pub(super) fn show_assembly(ui: &mut Ui, info: &AssemblyInfo) {
+    let mut title = format!("Assembly instance {}", info.instance);
+    if info.sizes_match() == Some(false) {
+        title.push_str(" · Size mismatch");
+    }
+    show_inspection(
+        ui,
+        title,
+        "assembly-info-results",
         info.route.as_ref(),
         &info.batch,
     );

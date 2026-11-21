@@ -410,6 +410,47 @@ def check_qos_info(exe, root):
     print("QoS settings passed direct, routed optional, and malformed replies.")
 
 
+def check_assembly_info(exe, root):
+    for case, mode, route, exit_code, declared, data, match in (
+        ("direct", "assembly-info", None, 0, 3, 3, True),
+        ("routed-mismatch", "assembly-info", "1/3", 0, 32, 3, False),
+        ("size-unsupported", "assembly-info-size-unsupported", None, 0, None, 3, None),
+        ("data-unsupported", "assembly-info-data-unsupported", None, 0, 3, None, None),
+        ("malformed", "assembly-info-malformed", None, 1, None, 3, None),
+        ("empty", "assembly-info-empty", None, 0, 0, 0, True),
+    ):
+        command = [exe, "assembly-info", LOCAL, LOCAL, "101"]
+        if route:
+            command.extend(("--route", route))
+        result, peer = with_adapter(root, f"assembly-info-{case}", command, mode)
+        assert result.returncode == exit_code and not result.stderr, (result.stdout, result.stderr)
+        report = json.loads(result.stdout)
+        (root / f"assembly-info-{case}.json").write_text(result.stdout, encoding="utf-8")
+        assert (report["class"], report["instance"], report.get("route")) == (4, 101, route)
+        assert (report["declared_size_bytes"], report["data_size_bytes"], report["sizes_match"]) == (
+            declared, data, match,
+        )
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert peer["assembly_attributes"] == [4, 3] and peer["route_hex"] == ("0103" if route else "")
+        size_reply, data_reply = report["results"]
+        assert [row["path"] for row in report["results"]] == [
+            {"class": 4, "instance": 101, "attribute": attr} for attr in (4, 3)
+        ]
+        if declared is not None:
+            assert size_reply["decoded"] == f"{declared} bytes"
+        if case == "malformed":
+            assert size_reply["data_hex"] == "03" and "two-byte UINT" in size_reply["decode_error"]
+        if case.endswith("unsupported"):
+            reply = size_reply if case == "size-unsupported" else data_reply
+            assert (reply["general_status"], reply["extended_status"]) == (0x14, [0x0302])
+        if data is not None:
+            assert data_reply["bytes"] == data and data_reply["decoded"] is None
+            assert data_reply["data_hex"] == ("A5 16 2C" if data else "")
+    result = subprocess.run([exe, "assembly-info", LOCAL, LOCAL, "0"], capture_output=True, timeout=5)
+    assert result.returncode != 0 and b"nonzero instance" in result.stderr
+    print("Assembly size and raw data passed direct, routed mismatch, optional, malformed, and empty replies.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
@@ -608,6 +649,7 @@ def main():
     check_link_info(exe, root)
     check_manager_info(exe, root)
     check_qos_info(exe, root)
+    check_assembly_info(exe, root)
 
     saved = root / "saved.toml"
     source = PROFILE.read_text(encoding="utf-8")

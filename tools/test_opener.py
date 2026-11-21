@@ -366,6 +366,25 @@ def check_qos_info(cli, adapter, root):
     print("OpENer returned the configured DSCP settings and rejected its three unsupported attributes.")
 
 
+def check_assembly_info(cli, adapter, root):
+    root.mkdir()
+    with run_adapter(adapter, root):
+        for instance, size in ((100, 32), (151, 10)):
+            result = subprocess.run([cli, "assembly-info", ADAPTER, "127.0.0.1", str(instance)],
+                                    capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+            (root / f"instance-{instance}.json").write_bytes(result.stdout)
+            assert result.returncode == 0 and not result.stderr, (result.stdout, result.stderr)
+            report = json.loads(result.stdout)
+            assert (report["class"], report["instance"]) == (4, instance)
+            assert (report["declared_size_bytes"], report["data_size_bytes"], report["sizes_match"]) == (
+                size, size, True,
+            )
+            declared, data = report["results"]
+            assert declared["data_hex"] == f"{size:02X} 00" and declared["decoded"] == f"{size} bytes"
+            assert data["decoded"] is None and len(bytes.fromhex(data["data_hex"])) == size
+    print("OpENer reported and returned 32 input assembly bytes and 10 configuration assembly bytes.")
+
+
 def check_explicit_write(cli, adapter, root, identity, *, connected=False):
     root.mkdir()
     pin = ":".join(str(identity[field]) for field in ("vendor", "device_type", "code", "serial"))
@@ -653,6 +672,7 @@ def main():
         check_link_info(cli, adapter, root / "link-info")
         check_manager_info(cli, adapter, root / "manager-info")
         check_qos_info(cli, adapter, root / "qos-info")
+        check_assembly_info(cli, adapter, root / "assembly-info")
         check_explicit_write(cli, adapter, root / "explicit-write", identity)
         check_explicit_write(cli, adapter, root / "class3-write", identity, connected=True)
         check_connected_reads(cli, adapter, root / "connected-reads", identity)

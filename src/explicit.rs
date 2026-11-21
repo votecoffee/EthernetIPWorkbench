@@ -17,6 +17,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr, TcpStream},
     time::{Duration, Instant},
 };
+mod assembly_info;
 mod batch;
 mod class_info;
 mod connected;
@@ -31,6 +32,7 @@ mod tcpip_info;
 mod write;
 mod write_draft;
 mod write_receipt;
+pub use assembly_info::{ASSEMBLY_CLASS, AssemblyInfo, read_assembly_info};
 pub use batch::{
     SavedReadBatch, SavedReadMode, SavedReadOutcome, SavedReadReport, SavedReadResult,
     run_saved_reads, run_saved_reads_with_class3_size, run_saved_reads_with_mode,
@@ -108,44 +110,22 @@ impl ReadPath {
         selection: Option<Selection>,
     ) -> std::result::Result<Option<String>, String> {
         let Some(selection) = selection else {
-            if self.instance == 0
-                && let Some(attribute @ 1..=7) = self.attribute
-            {
-                return class_info::decode(attribute, bytes).map(Some);
-            }
-            if self.class == PORT_OBJECT_CLASS
-                && let Some(attribute) = self.attribute
-                && let Some(decoded) = port_info::decode(self.instance, attribute, bytes)
-            {
-                return decoded.map(Some);
-            }
-            if self.class == TCPIP_INTERFACE_CLASS
-                && self.instance != 0
-                && let Some(attribute) = self.attribute
-                && let Some(decoded) = tcpip_info::decode(attribute, bytes)
-            {
-                return decoded.map(Some);
-            }
-            if self.class == ETHERNET_LINK_CLASS
-                && self.instance != 0
-                && let Some(attribute) = self.attribute
-                && let Some(decoded) = link_info::decode(attribute, bytes)
-            {
-                return decoded.map(Some);
-            }
-            if self.class == CONNECTION_MANAGER_CLASS
-                && self.instance != 0
-                && let Some(attribute) = self.attribute
-                && let Some(decoded) = manager_info::decode(attribute, bytes)
-            {
-                return decoded.map(Some);
-            }
-            if self.class == QOS_CLASS
-                && self.instance != 0
-                && let Some(attribute) = self.attribute
-                && let Some(decoded) = qos_info::decode(attribute, bytes)
-            {
-                return decoded.map(Some);
+            if let Some(attribute) = self.attribute {
+                if self.instance == 0 && (1..=7).contains(&attribute) {
+                    return class_info::decode(attribute, bytes).map(Some);
+                }
+                let decoded = match (self.class, self.instance) {
+                    (PORT_OBJECT_CLASS, instance) => port_info::decode(instance, attribute, bytes),
+                    (TCPIP_INTERFACE_CLASS, 1..) => tcpip_info::decode(attribute, bytes),
+                    (ETHERNET_LINK_CLASS, 1..) => link_info::decode(attribute, bytes),
+                    (CONNECTION_MANAGER_CLASS, 1..) => manager_info::decode(attribute, bytes),
+                    (QOS_CLASS, 1..) => qos_info::decode(attribute, bytes),
+                    (ASSEMBLY_CLASS, 1..) => assembly_info::decode(attribute, bytes),
+                    _ => None,
+                };
+                if let Some(decoded) = decoded {
+                    return decoded.map(Some);
+                }
             }
             return Ok(self.describe(bytes));
         };

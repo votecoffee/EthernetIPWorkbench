@@ -895,6 +895,43 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode assembly-info on localhost"]
+    fn explore_shows_a_routed_assembly_size_mismatch() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[("Serial through bridge", 6, Some("1/3"))]);
+        device.settings.input_instance = 101;
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "Common attributes");
+        click(&mut device, &ctx, size, "Assembly · Data");
+        click(&mut device, &ctx, size, "Read assembly info");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Assembly instance 101 · Size mismatch",
+            "Route 1/3",
+            "Declared size · Reply",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Assembly data · Reply");
+        let labels = draw(&mut device, &ctx, size);
+        for expected in ["3 bytes", "0000  A5 16 2C"] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        assert_eq!(device.snapshot(), saved);
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode qos-info-optional on localhost"]
     fn explore_reads_qos_settings_over_a_route() {
         let ctx = egui::Context::default();

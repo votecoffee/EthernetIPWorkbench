@@ -74,6 +74,7 @@ The C# examples demonstrate HTTP and shared-memory latest values, retained HTTP 
 - Explore and `link-info` read Ethernet Link speed, flags, MAC address and 32-bit counters on direct or routed targets. On physical devices, compare the selected port and error counters against the device diagnostics.
 - Explore and `qos-info` read the device's reported 802.1Q tag enable and DSCP values. Compare those settings against a packet trace on the intended physical network.
 - Explore and `manager-info` read Connection Manager open, close, rejection, and timeout counters. On physical adapters that expose the counters, compare the reported totals with the device diagnostics and the scanner's session report.
+- Explore and `assembly-info` read Assembly Object size and data and flag when the explicit replies disagree. On physical adapters, compare their separate lengths with the documented and negotiated cyclic payload.
 - Variable-size T→O supports standard and Large Forward_Open, offline decoding, CSV and all three export feeds. Verify it on a physical adapter that produces variable-size assemblies.
 - Multicast T→O uses the adapter's group, port and connection ID with unicast O→T. Verify group membership and capture through a physical bench switch.
 - Listen-only profiles use the documented heartbeat assembly and read an existing multicast producer without taking output ownership. Verify against a physical adapter with a controlling multicast connection.
