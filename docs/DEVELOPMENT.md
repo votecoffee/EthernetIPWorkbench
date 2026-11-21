@@ -15,6 +15,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/preflight.rs | Effective configuration, EDS comparisons and offline validation |
 | src/settings_file.rs | Named profiles, workspace migration, preferences and file replacement |
 | src/explicit.rs and src/discovery.rs | Registered TCP exchange, identity, CIP reads, typed reply interpretation and UDP ListIdentity |
+| src/discovery/services.rs and src/gui/explore/services.rs | Unicast UDP ListServices and the advertised capabilities view |
 | src/explicit/class_info.rs and src/gui/explore/class_info.rs | Common class attribute inspection, decoding and the Explore details view |
 | src/explicit/port_info.rs | Read-only CIP Port Object directory and instance inspection |
 | src/explicit/tcpip_info.rs | Read-only TCP/IP Interface Object inspection and attribute decoding |
@@ -127,7 +128,7 @@ Omit --offline when dependencies need downloading. Select the test that exercise
 |---|---|
 | Profiles, mapping, CLI and capture | python tools/test_cli.py target/release/eipmaster-cli.exe .local/cli-check-01 |
 | Explicit write preview, typed encoding, identity pin, current-value check, readback, Class 3 close, draft portability and receipt follow-up | python tools/test_explicit_write.py target/release/eipmaster-cli.exe .local/write-check-01 |
-| EDS mapping suggestions, profile assembly size comparison, discovery, class and standard object inspection, direct and routed reads, saved requests, target identity, keyed and routed cyclic I/O, extended CIP ports and hexadecimal links | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
+| EDS mapping suggestions, profile assembly size comparison, ListIdentity and ListServices, class and standard object inspection, direct and routed reads, saved requests, target identity, keyed and routed cyclic I/O, extended CIP ports and hexadecimal links | python tools/test_explore.py target/release/eipmaster-cli.exe .local/explore-check-01 |
 | Variable-size T→O, EDS provenance, CSV and all three exports | python tools/test_variable_input.py target/release/eipmaster-cli.exe .local/variable-check-01 |
 | Direct and routed multicast T→O, returned endpoints and failed setup cleanup | python tools/test_multicast.py target/release/eipmaster-cli.exe .local/multicast-check-01 |
 | Default unicast UDP 2222, standard and routed Large Forward_Open, and port conflicts | python tools/test_default_unicast.py target/release/eipmaster-cli.exe .local/default-unicast-check-01 |
@@ -164,6 +165,8 @@ Run `explore_reads_qos_settings_over_a_route` with the `qos-info-optional` fixtu
 Run `explore_shows_a_routed_assembly_size_mismatch` with the `assembly-info` fixture mode to verify the routed size comparison and raw data in Explore. The OpENer harness with `--explore` checks two instances with different lengths against the independent stack.
 
 Run `explore_checks_profile_sizes_through_the_configured_io_route` with the `profile-assemblies` fixture mode to verify that the profile check uses the cyclic I/O route and shows each role's expected and reported sizes. The OpENer harness with `--explore` checks the input-only fixture and an owner profile with configuration bytes using read-only explicit requests.
+
+Run `explore_lists_the_selected_endpoints_services` with the `list-services` fixture mode to verify the endpoint's advertised flags and raw unrecognized items. The OpENer harness with `--explore` checks the Communications item over UDP before a registered session.
 
 Run the ignored tests `explore_requires_fresh_review_after_editing_a_staged_write` and `explore_previews_typed_bytes_and_clears_review_on_format_change` with separate localhost fixtures in `explicit-write-gui` mode. They verify review invalidation, the encoded preview, and the matched readback.
 

@@ -12,6 +12,7 @@ use std::sync::Arc;
 mod batch;
 mod class_info;
 mod receipt;
+mod services;
 mod write;
 
 const COMMON_PRESETS: [(&str, u32, u32); 7] = [
@@ -35,6 +36,7 @@ const NETWORK_PRESETS: [(&str, u32, u32); 3] = [
 
 enum Response {
     Discovery(Ipv4Addr, discovery::Report),
+    Services(discovery::ServicesReport),
     Read(ReadReply),
     ClassInfo(ClassInfo),
     PortInfo(PortInfo),
@@ -66,6 +68,7 @@ struct ReadReply {
 
 pub(super) struct Explorer {
     destination: String,
+    services: Option<discovery::ServicesReport>,
     class: String,
     instance: String,
     attribute: String,
@@ -99,6 +102,7 @@ impl Default for Explorer {
     fn default() -> Self {
         Self {
             destination: Ipv4Addr::BROADCAST.to_string(),
+            services: None,
             class: "0x01".into(),
             instance: "1".into(),
             attribute: "7".into(),
@@ -152,6 +156,7 @@ impl Explorer {
         let Some(work) = &self.work else { return };
         match work.try_recv() {
             Ok(Ok(Response::Discovery(nic, report))) => self.discovered = Some((nic, report)),
+            Ok(Ok(Response::Services(report))) => self.services = Some(report),
             Ok(Ok(Response::Read(reply))) => self.read_result = Some(reply),
             Ok(Ok(Response::ClassInfo(info))) => self.class_info = Some(info),
             Ok(Ok(Response::PortInfo(info))) => self.port_info = Some(info),
@@ -340,7 +345,30 @@ impl Device {
         }
         ui.separator();
         ui.heading("CIP object and attribute reads");
-        ui.label(format!("Adapter or bridge · {}", self.device));
+        ui.horizontal_wrapped(|ui| {
+            ui.label(format!("Adapter or bridge · {}", self.device));
+            if ui
+                .add_enabled(!explorer.busy(), egui::Button::new("List services"))
+                .on_hover_text("Query the displayed endpoint's EtherNet/IP services over UDP.")
+                .clicked()
+            {
+                explorer.services = None;
+                match &profile_addresses {
+                    Ok((adapter, nic)) => {
+                        let (adapter, nic) = (*adapter, *nic);
+                        explorer.start(move || {
+                            discovery::list_services(adapter, nic)
+                                .map(Response::Services)
+                                .map_err(|error| error.to_string())
+                        });
+                    }
+                    Err(error) => explorer.notice = Some(error.clone()),
+                }
+            }
+        });
+        if let Some(report) = &explorer.services {
+            services::show(ui, report);
+        }
         ui.horizontal_wrapped(|ui| {
             egui::ComboBox::from_id_salt("cip-presets")
                 .selected_text("Common attributes")

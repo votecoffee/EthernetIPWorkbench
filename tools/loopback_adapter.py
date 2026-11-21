@@ -804,6 +804,32 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
             io.join()
 
 
+def serve_list_services(address, mode, report):
+    with socket.socket(type=socket.SOCK_DGRAM) as peer:
+        peer.bind((address, 44818))
+        peer.settimeout(10)
+        print("Ready on loopback", flush=True)
+        request, source = peer.recvfrom(256)
+        command, size, session, status, context, options = struct.unpack("<HHII8sI", request)
+        assert (command, size, session, status, options) == (4, 0, 0, 0, 0)
+        report["request_hex"] = request.hex()
+        report["source_ip"] = source[0]
+        flags = 0x0020 if mode == "list-services-tcp" else 0x8120
+        communications = struct.pack("<HHHH16s", 0x0100, 20, 1, flags, b"Communications")
+        unknown = bytes.fromhex("01 90 03 00 A5 16 2C")
+        data = b"\x02\x00" + communications + unknown
+        if mode == "list-services-malformed":
+            data = data[:-1]
+        if mode == "list-services-rejected":
+            data, status = b"", 1
+        if mode == "list-services-header":
+            session = 0xA5162C31
+        if mode == "list-services":
+            unrelated = bytes([context[0] ^ 1]) + context[1:]
+            peer.sendto(struct.pack("<HHII8sI", 4, 0, 0, 1, unrelated, 0), source)
+        peer.sendto(struct.pack("<HHII8sI", 4, len(data), session, status, context, 0) + data, source)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("report", type=Path)
@@ -824,6 +850,8 @@ def main():
         "assembly-info", "assembly-info-size-unsupported", "assembly-info-data-unsupported",
         "assembly-info-malformed", "assembly-info-empty",
         "profile-assemblies", "profile-assemblies-malformed",
+        "list-services", "list-services-tcp", "list-services-malformed",
+        "list-services-rejected", "list-services-header",
         "explicit-write", "explicit-write-review", "explicit-write-gui", "explicit-write-rejected",
         "explicit-write-no-reply", "explicit-write-router-timeout",
         "explicit-write-readback", "explicit-write-readback-mismatch", "explicit-write-readback-rejected",
@@ -857,6 +885,10 @@ def main():
         parser.error("--tcp-timeout must be positive")
     address = str(args.address)
     report = {"mode": args.mode, "forward_close": False}
+    if args.mode.startswith("list-services"):
+        serve_list_services(address, args.mode, report)
+        args.report.write_text(json.dumps(report), encoding="utf-8")
+        return
     with socket.socket() as listener:
         listener.bind((address, 44818))
         listener.listen(1)

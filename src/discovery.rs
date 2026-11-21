@@ -1,4 +1,4 @@
-//! IPv4 EtherNet/IP ListIdentity discovery on an explicitly selected interface.
+//! IPv4 EtherNet/IP discovery on an explicitly selected interface.
 
 use crate::explicit::{EipError, Identity, PORT, decode_identity, is_unicast};
 use ethernetip_core::encap::{HEADER_LEN, Header};
@@ -13,6 +13,9 @@ use std::{
 const LIST_IDENTITY: u16 = 0x63;
 const IDENTITY_ITEM: u16 = 0x0c;
 const LIMIT: usize = 256;
+
+mod services;
+pub use services::{CommunicationsService, ServiceItem, ServicesReport, list_services};
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Device {
@@ -41,10 +44,7 @@ pub fn discover(local: Ipv4Addr, destination: Ipv4Addr) -> Result<Report, EipErr
     }
     let socket = UdpSocket::bind((local, 0))?;
     socket.set_broadcast(true)?;
-    let mut request = [0; HEADER_LEN];
-    request[..2].copy_from_slice(&LIST_IDENTITY.to_le_bytes());
-    // The first context word remains zero to request the standard broadcast delay.
-    getrandom::fill(&mut request[14..20]).map_err(|e| EipError::Protocol(e.to_string()))?;
+    let request = unregistered_request(LIST_IDENTITY)?;
     let context = request[12..20].try_into().unwrap();
     socket.send_to(&request, (destination, PORT))?;
 
@@ -83,6 +83,14 @@ pub fn discover(local: Ipv4Addr, destination: Ipv4Addr) -> Result<Report, EipErr
         devices: devices.into_values().collect(),
         invalid_replies,
     })
+}
+
+fn unregistered_request(command: u16) -> Result<[u8; HEADER_LEN], EipError> {
+    let mut request = [0; HEADER_LEN];
+    request[..2].copy_from_slice(&command.to_le_bytes());
+    // Keep the first context word zero so ListIdentity requests use the standard delay.
+    getrandom::fill(&mut request[14..20]).map_err(|e| EipError::Protocol(e.to_string()))?;
+    Ok(request)
 }
 
 fn parse_reply(raw: &[u8], source: SocketAddrV4, context: [u8; 8]) -> Option<Vec<Device>> {

@@ -895,6 +895,34 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode list-services on localhost"]
+    fn explore_lists_the_selected_endpoints_services() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "List services");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Advertised EtherNet/IP services",
+            "Communications · Protocol version 1 · Flags 0x8120",
+            "CIP over TCP · Yes",
+            "Cyclic I/O over UDP · Yes",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Unrecognized item · 0x9001");
+        let labels = draw(&mut device, &ctx, size);
+        assert!(labels.iter().any(|(text, _)| text == "A5 16 2C"));
+        assert_eq!(device.snapshot(), saved);
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode profile-assemblies on localhost"]
     fn explore_checks_profile_sizes_through_the_configured_io_route() {
         let ctx = egui::Context::default();

@@ -505,6 +505,43 @@ def check_profile_assemblies(exe, root):
     print("Profile assembly sizes passed direct, routed ranges, shared instances, and malformed size checks.")
 
 
+def check_list_services(exe, root):
+    adapter = "127.0.0.2"
+    for mode, error in (
+        ("list-services", None),
+        ("list-services-tcp", None),
+        ("list-services-malformed", "Invalid ListServices item list"),
+        ("list-services-rejected", "EIP encapsulation status 0x00000001"),
+        ("list-services-header", "Invalid ListServices encapsulation reply"),
+    ):
+        result, peer = with_adapter(
+            root, mode, [exe, "list-services", adapter, LOCAL], mode, fixture_args=("--address", adapter),
+        )
+        request = bytes.fromhex(peer["request_hex"])
+        assert len(request) == 24 and request[:12] == bytes.fromhex("04 00 00 00 00 00 00 00 00 00 00 00")
+        assert request[20:] == bytes(4) and peer["source_ip"] == LOCAL
+        if error is not None:
+            assert result.returncode == 1 and not result.stdout and error in result.stderr
+            (root / f"{mode}.txt").write_text(result.stderr, encoding="utf-8")
+            continue
+        assert result.returncode == 0 and not result.stderr, (result.stdout, result.stderr)
+        (root / f"{mode}.json").write_text(result.stdout, encoding="utf-8")
+        report = json.loads(result.stdout)
+        assert (report["adapter_ip"], report["local_ip"]) == (adapter, LOCAL)
+        communications, unknown = report["services"]
+        both = mode == "list-services"
+        assert communications["type_id"] == 0x0100 and len(bytes.fromhex(communications["data_hex"])) == 20
+        assert communications["communications"] == {
+            "name": "Communications", "protocol_version": 1,
+            "capability_flags": 0x8120 if both else 0x0020,
+            "cip_over_tcp": True, "cyclic_io_over_udp": both,
+        }
+        assert unknown == {"type_id": 0x9001, "data_hex": "A5 16 2C"}
+    invalid = subprocess.run([exe, "list-services", "255.255.255.255", LOCAL], capture_output=True, timeout=5)
+    assert invalid.returncode == 1 and b"Enter unicast" in invalid.stderr
+    print("ListServices passed both capability cases, unrelated context, and malformed or rejected replies.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
@@ -705,6 +742,7 @@ def main():
     check_qos_info(exe, root)
     check_assembly_info(exe, root)
     check_profile_assemblies(exe, root)
+    check_list_services(exe, root)
 
     saved = root / "saved.toml"
     source = PROFILE.read_text(encoding="utf-8")

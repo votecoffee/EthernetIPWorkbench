@@ -802,3 +802,9 @@ Pinned Windows OpENer reported 32 bytes for input assembly 100 and 10 bytes for 
 The Windows loopback fixtures verified fixed and variable application payload sizes, read a shared assembly instance once for both profile roles, and retained raw or rejected size replies. In the routed case, the reported five-byte input fit the three-to-six-byte range and the four-byte output exceeded the configured three-byte maximum. The headless Explore test used the profile route `1/3` while the single-read editor used `1/7`. Reported values and the optional configuration attribute rejection were visible without changing the profile.
 
 Pinned Windows OpENer matched the 32-byte input and zero-byte heartbeat in the input-only profile. It also matched a separate owner profile with a 32-byte output and ten-byte configuration payload. The check used explicit reads. Physical comparison remains open. [Pinned OpENer Assembly Object implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipassembly.c)
+
+## EtherNet/IP ListServices
+
+The Windows loopback fixture verified the sessionless 24-byte request, selected local IPv4 address, TCP and UDP capability flags, and retention of the complete flags word and an unrecognized item. The query ignored a reply with an unrelated sender context. The CLI distinguished an encapsulation rejection, an invalid encapsulation header, and a truncated item. The headless Explore test showed the flags and raw unrecognized item without changing the profile.
+
+Pinned Windows OpENer returned one Communications item over UDP with protocol version 1 and flags `0x0120`. Both capability flags decoded as advertised. Physical-device verification remains open. [Pinned OpENer ListServices implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/enet_encap/encap.c)
