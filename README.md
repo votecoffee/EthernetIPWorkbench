@@ -79,9 +79,11 @@ Select **Read class info** beside the class field to inspect its revision, insta
 
 Choose a **Port Object** preset in Explore, then select **Read port info**. Instance 0 shows the port directory. A specific instance shows the reported port number, node address, and routing capabilities. The CLI `port-info` command exports the same fields. [Port Object inspection](docs/OPERATIONS.md#inspect-a-cip-port)
 
-Choose **Common attributes → TCP/IP Interface · Status**, then select **Read interface info** to see the reported IP address, mask, gateway, DNS servers, startup method, hostname, and Physical Link Object path. The CLI `tcpip-info` command exports these fields and their raw replies. [TCP/IP Interface inspection](docs/OPERATIONS.md#inspect-a-tcpip-interface)
+Choose **Network objects → TCP/IP Interface · Status**, then select **Read interface info** to see the reported IP address, mask, gateway, DNS servers, startup method, hostname, and Physical Link Object path. The CLI `tcpip-info` command exports these fields and their raw replies. [TCP/IP Interface inspection](docs/OPERATIONS.md#inspect-a-tcpip-interface)
 
-Choose **Common attributes → Ethernet Link · Speed**, then select **Read link info** for the selected port's reported speed, link state, duplex, MAC address, and available counters. The CLI `link-info` command exports the same results. [Ethernet Link diagnostics](docs/OPERATIONS.md#inspect-ethernet-link-diagnostics)
+Choose **Network objects → Ethernet Link · Speed**, then select **Read link info** for the selected port's reported speed, link state, duplex, MAC address, and available counters. The CLI `link-info` command exports the same results. [Ethernet Link diagnostics](docs/OPERATIONS.md#inspect-ethernet-link-diagnostics)
+
+Choose **Network objects → Quality of Service · Explicit DSCP**, then select **Read QoS settings** for the selected target's configured DSCP values and 802.1Q tag setting where supported. The CLI `qos-info` command exports the same results. [QoS inspection](docs/OPERATIONS.md#inspect-quality-of-service-settings)
 
 Choose **Connection Manager** in Explore, then select **Read connection counters** to inspect the target's cumulative open, close, rejection, and timeout totals. The CLI `manager-info` command exports the same results. [Connection Manager counters](docs/OPERATIONS.md#inspect-connection-manager-counters)
 

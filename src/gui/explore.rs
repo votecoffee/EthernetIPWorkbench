@@ -2,9 +2,9 @@ use super::*;
 use assembly_scanner::{
     discovery,
     explicit::{
-        self, AttributeWrite, Class3Size, ClassInfo, LinkInfo, ManagerInfo, PortInfo, ReadPath,
-        Reader, Route, SavedRead, SavedReadMode, SavedReadReport, TcpIpInfo, WriteCurrentCheck,
-        WriteInspection, WriteOutcome, WriteReport,
+        self, AttributeWrite, Class3Size, ClassInfo, LinkInfo, ManagerInfo, PortInfo, QosInfo,
+        ReadPath, Reader, Route, SavedRead, SavedReadMode, SavedReadReport, TcpIpInfo,
+        WriteCurrentCheck, WriteInspection, WriteOutcome, WriteReport,
     },
 };
 use std::sync::Arc;
@@ -14,7 +14,7 @@ mod class_info;
 mod receipt;
 mod write;
 
-const PRESETS: [(&str, u32, u32); 9] = [
+const COMMON_PRESETS: [(&str, u32, u32); 7] = [
     ("Identity · Vendor ID", 1, 1),
     ("Identity · Device type", 1, 2),
     ("Identity · Product code", 1, 3),
@@ -22,8 +22,15 @@ const PRESETS: [(&str, u32, u32); 9] = [
     ("Identity · Status", 1, 5),
     ("Identity · Serial number", 1, 6),
     ("Identity · Product name", 1, 7),
-    ("TCP/IP Interface · Status", 0xf5, 1),
-    ("Ethernet Link · Speed", 0xf6, 1),
+];
+const NETWORK_PRESETS: [(&str, u32, u32); 3] = [
+    (
+        "TCP/IP Interface · Status",
+        explicit::TCPIP_INTERFACE_CLASS,
+        1,
+    ),
+    ("Ethernet Link · Speed", explicit::ETHERNET_LINK_CLASS, 1),
+    ("Quality of Service · Explicit DSCP", explicit::QOS_CLASS, 8),
 ];
 
 enum Response {
@@ -34,6 +41,7 @@ enum Response {
     TcpIpInfo(TcpIpInfo),
     LinkInfo(LinkInfo),
     ManagerInfo(ManagerInfo),
+    QosInfo(QosInfo),
     Batch(SavedReadReport),
     SavedReport(PathBuf),
     OpenedWriteDraft(Box<write::Draft>),
@@ -68,6 +76,7 @@ pub(super) struct Explorer {
     tcpip_info: Option<TcpIpInfo>,
     link_info: Option<LinkInfo>,
     manager_info: Option<ManagerInfo>,
+    qos_info: Option<QosInfo>,
     batch_mode: SavedReadMode,
     saved_batch: Option<Arc<SavedReadReport>>,
     saved_report: Option<PathBuf>,
@@ -98,6 +107,7 @@ impl Default for Explorer {
             tcpip_info: None,
             link_info: None,
             manager_info: None,
+            qos_info: None,
             batch_mode: SavedReadMode::default(),
             saved_batch: None,
             saved_report: None,
@@ -142,6 +152,7 @@ impl Explorer {
             Ok(Ok(Response::TcpIpInfo(info))) => self.tcpip_info = Some(info),
             Ok(Ok(Response::LinkInfo(info))) => self.link_info = Some(info),
             Ok(Ok(Response::ManagerInfo(info))) => self.manager_info = Some(info),
+            Ok(Ok(Response::QosInfo(info))) => self.qos_info = Some(info),
             Ok(Ok(Response::Batch(batch))) => self.saved_batch = Some(Arc::new(batch)),
             Ok(Ok(Response::SavedReport(path))) => self.saved_report = Some(path),
             Ok(Ok(Response::OpenedWriteDraft(draft))) => self.write_draft = Some(*draft),
@@ -221,6 +232,24 @@ impl Explorer {
         self.attribute = path
             .attribute
             .map_or("all".into(), |id| format!("0x{id:X}"));
+    }
+
+    fn load_preset(&mut self, name: &str, class: u32, instance: u32, attribute: u32) {
+        self.load(ReadPath {
+            class,
+            instance,
+            attribute: Some(attribute),
+        });
+        self.name = name.into();
+        self.selection = None;
+    }
+
+    fn instance_one_presets(&mut self, ui: &mut Ui, presets: &[(&str, u32, u32)]) {
+        for &(name, class, attribute) in presets {
+            if ui.selectable_label(false, name).clicked() {
+                self.load_preset(name, class, 1, attribute);
+            }
+        }
     }
 }
 
@@ -307,27 +336,19 @@ impl Device {
             egui::ComboBox::from_id_salt("cip-presets")
                 .selected_text("Common attributes")
                 .show_ui(ui, |ui| {
-                    for (label, class, attribute) in PRESETS {
-                        if ui.selectable_label(false, label).clicked() {
-                            explorer.load(ReadPath {
-                                class,
-                                instance: 1,
-                                attribute: Some(attribute),
-                            });
-                            explorer.name = label.into();
-                            explorer.selection = None;
-                        }
-                    }
+                    explorer.instance_one_presets(ui, &COMMON_PRESETS);
                     if ui.selectable_label(false, "Assembly · Data").clicked() {
-                        explorer.load(ReadPath {
-                            class: 4,
-                            instance: u32::from(self.settings.input_instance),
-                            attribute: Some(3),
-                        });
-                        explorer.name = "Input assembly data".into();
-                        explorer.selection = None;
+                        explorer.load_preset(
+                            "Input assembly data",
+                            4,
+                            u32::from(self.settings.input_instance),
+                            3,
+                        );
                     }
                 });
+            egui::ComboBox::from_id_salt("network-object-presets")
+                .selected_text("Network objects")
+                .show_ui(ui, |ui| explorer.instance_one_presets(ui, &NETWORK_PRESETS));
             egui::ComboBox::from_id_salt("port-object-presets")
                 .selected_text("Port Object")
                 .show_ui(ui, |ui| {
@@ -335,24 +356,22 @@ impl Device {
                         [("Directory", 0, 8), ("Port instance", 1, 2)]
                     {
                         if ui.selectable_label(false, label).clicked() {
-                            explorer.load(ReadPath {
-                                class: explicit::PORT_OBJECT_CLASS,
+                            explorer.load_preset(
+                                &format!("Port Object {label}"),
+                                explicit::PORT_OBJECT_CLASS,
                                 instance,
-                                attribute: Some(attribute),
-                            });
-                            explorer.name = format!("Port Object {label}");
-                            explorer.selection = None;
+                                attribute,
+                            );
                         }
                     }
                 });
             if ui.button("Connection Manager").clicked() {
-                explorer.load(ReadPath {
-                    class: explicit::CONNECTION_MANAGER_CLASS,
-                    instance: 1,
-                    attribute: Some(1),
-                });
-                explorer.name = "Connection Manager open requests".into();
-                explorer.selection = None;
+                explorer.load_preset(
+                    "Connection Manager open requests",
+                    explicit::CONNECTION_MANAGER_CLASS,
+                    1,
+                    1,
+                );
             }
         });
         ui.horizontal_wrapped(|ui| {
@@ -488,6 +507,9 @@ impl Device {
         }
         if let Some(info) = &explorer.manager_info {
             class_info::show_manager(ui, info);
+        }
+        if let Some(info) = &explorer.qos_info {
+            class_info::show_qos(ui, info);
         }
         ui.collapsing("Saved reads", |ui| {
             if batch::controls(

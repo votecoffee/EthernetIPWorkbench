@@ -350,6 +350,22 @@ def check_manager_info(cli, adapter, root):
     print("OpENer reported all eight Connection Manager counters as unsupported.")
 
 
+def check_qos_info(cli, adapter, root):
+    root.mkdir()
+    with run_adapter(adapter, root):
+        result = subprocess.run([cli, "qos-info", ADAPTER, "127.0.0.1", "1"],
+                                capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+    (root / "result.json").write_bytes(result.stdout)
+    assert result.returncode == 0 and not result.stderr, (result.stdout, result.stderr)
+    report = json.loads(result.stdout)
+    assert (report["class"], report["instance"]) == (0x48, 1)
+    replies = report["results"]
+    assert [entry["path"]["attribute"] for entry in replies] == list(range(1, 9))
+    assert all(entry["status"] == "cip_rejected" and entry["general_status"] == 0x14 for entry in replies[:3])
+    assert [entry["decoded"] for entry in replies[3:]] == ["55", "47", "43", "31", "27"]
+    print("OpENer returned the configured DSCP settings and rejected its three unsupported attributes.")
+
+
 def check_explicit_write(cli, adapter, root, identity, *, connected=False):
     root.mkdir()
     pin = ":".join(str(identity[field]) for field in ("vendor", "device_type", "code", "serial"))
@@ -636,6 +652,7 @@ def main():
         check_tcpip_info(cli, adapter, root / "tcpip-info")
         check_link_info(cli, adapter, root / "link-info")
         check_manager_info(cli, adapter, root / "manager-info")
+        check_qos_info(cli, adapter, root / "qos-info")
         check_explicit_write(cli, adapter, root / "explicit-write", identity)
         check_explicit_write(cli, adapter, root / "class3-write", identity, connected=True)
         check_connected_reads(cli, adapter, root / "connected-reads", identity)

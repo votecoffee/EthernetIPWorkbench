@@ -74,7 +74,7 @@ The report preserves raw replies and shows individual decode errors and CIP stat
 
 ### Inspect a TCP/IP interface
 
-In **Explore → Common attributes**, choose **TCP/IP Interface · Status**. Enter the interface instance if it differs from the preset's instance 1, then select **Read interface info**. Leave **CIP route** blank for a direct read or enter a known route to read the interface reported by the routed target.
+In **Explore → Network objects**, choose **TCP/IP Interface · Status**. Enter the interface instance if it differs from the preset's instance 1, then select **Read interface info**. Leave **CIP route** blank for a direct read or enter a known route to read the interface reported by the routed target.
 
 ~~~powershell
 .\target\release\eipmaster-cli.exe tcpip-info 192.0.2.10 192.0.2.11 1
@@ -85,7 +85,7 @@ The inspection sends six Get_Attribute_Single requests in one registered session
 
 ### Inspect Ethernet Link diagnostics
 
-In **Explore → Common attributes**, choose **Ethernet Link · Speed**, enter the Ethernet Link Object instance, and select **Read link info**. Use the device documentation or the Physical Link Object path from TCP/IP Interface inspection to identify the instance. The path `20 F6 24 01` points to Ethernet Link instance 1. Leave **CIP route** blank for a direct read or enter the documented route to the target.
+In **Explore → Network objects**, choose **Ethernet Link · Speed**, enter the Ethernet Link Object instance, and select **Read link info**. Use the device documentation or the Physical Link Object path from TCP/IP Interface inspection to identify the instance. The path `20 F6 24 01` points to Ethernet Link instance 1. Leave **CIP route** blank for a direct read or enter the documented route to the target.
 
 ~~~powershell
 .\target\release\eipmaster-cli.exe link-info 192.0.2.10 192.0.2.11 1
@@ -93,6 +93,17 @@ In **Explore → Common attributes**, choose **Ethernet Link · Speed**, enter t
 ~~~
 
 The inspection reads five attributes on one registered session using Get_Attribute_Single. It reports speed, the full flags word with link state, active duplex and negotiation status code, and the MAC address. Supported ports also show cumulative 32-bit interface and media counters, including discards, FCS errors, and collisions. Their values can wrap. Each result retains the raw reply or CIP rejection. Inspecting these attributes leaves the device counters intact. [Schneider Electric EtherNet/IP device objects](https://product-help.schneider-electric.com/Machine%20Expert/V1.2/en/lmcprg/lmcprg/Ethernet_Configuration/Ethernet_Configuration-17.htm) · [Pinned OpENer Ethernet Link counter layout](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipethernetlink.h)
+
+### Inspect Quality of Service settings
+
+In **Explore → Network objects**, choose **Quality of Service · Explicit DSCP** and select **Read QoS settings**. Use instance 1 unless the device documents another nonzero instance. An optional CIP route addresses the device at the end of a known path.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe qos-info 192.0.2.10 192.0.2.11 1
+.\target\release\eipmaster-cli.exe qos-info 192.0.2.10 192.0.2.11 1 --route 1/3
+~~~
+
+One registered session reads the 802.1Q tag enable setting and the configured DSCP values for PTP event and general messages, the four cyclic priorities, and explicit traffic with Get_Attribute_Single. DSCP values are reported as code points from 0 to 63. Each attribute retains its raw reply or CIP rejection. Compare a packet trace with the report when verifying what the device or switch puts on the wire. [Schneider Electric QoS Object reference](https://productinfo.se.com/tesys_tera_ecg/viewer?docidentity=QoSObject-9CA56F93&extension=xml&lang=en&manualidentity=EthernetCommunicationGuideTeSysActi-82F1CBFF)
 
 ### Inspect Connection Manager counters
 

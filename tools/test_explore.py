@@ -370,6 +370,46 @@ def check_manager_info(exe, root):
     print("Connection Manager counters passed direct, routed optional, malformed and router-rejected replies.")
 
 
+def check_qos_info(exe, root):
+    for case, mode, route, exit_code in (
+        ("direct", "qos-info", None, 0),
+        ("routed-optional", "qos-info-optional", "1/3", 0),
+        ("malformed", "qos-info-malformed", None, 1),
+    ):
+        command = [exe, "qos-info", LOCAL, LOCAL, "1"]
+        if route:
+            command.extend(("--route", route))
+        result, peer = with_adapter(root, f"qos-info-{case}", command, mode)
+        assert result.returncode == exit_code and not result.stderr, (result.stdout, result.stderr)
+        report = json.loads(result.stdout)
+        (root / f"qos-info-{case}.json").write_text(result.stdout, encoding="utf-8")
+        assert (report["class"], report["instance"], report.get("route")) == (0x48, 1, route)
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert peer["qos_attributes"] == list(range(1, 9))
+        assert peer["route_hex"] == ("0103" if route else "")
+        rows = report["results"]
+        assert [row["path"] for row in rows] == [
+            {"class": 0x48, "instance": 1, "attribute": attr} for attr in range(1, 9)
+        ]
+        expected = ["Enabled", "59", "47", "63", "46", "43", "0", "27"]
+        if route:
+            assert all(row["reply_from"] == "target" for row in rows)
+            assert all((row["general_status"], row["extended_status"]) == (0x14, [0x0302]) for row in rows[:3])
+            expected[:3] = [None] * 3
+        if case == "malformed":
+            for index, wire, message in (
+                (0, "02", "requires 0 or 1"),
+                (3, "40", "requires a value from 0 to 63"),
+                (4, "2E 00", "one-byte USINT"),
+            ):
+                assert rows[index]["data_hex"] == wire and message in rows[index]["decode_error"]
+                expected[index] = None
+        assert [row.get("decoded") for row in rows] == expected
+    result = subprocess.run([exe, "qos-info", LOCAL, LOCAL, "0"], capture_output=True, timeout=5)
+    assert result.returncode != 0 and b"nonzero instance" in result.stderr
+    print("QoS settings passed direct, routed optional, and malformed replies.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
@@ -567,6 +607,7 @@ def main():
     check_tcpip_info(exe, root)
     check_link_info(exe, root)
     check_manager_info(exe, root)
+    check_qos_info(exe, root)
 
     saved = root / "saved.toml"
     source = PROFILE.read_text(encoding="utf-8")

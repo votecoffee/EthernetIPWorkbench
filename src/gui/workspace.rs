@@ -895,6 +895,42 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode qos-info-optional on localhost"]
+    fn explore_reads_qos_settings_over_a_route() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[("Serial through bridge", 6, Some("1/3"))]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "Network objects");
+        click(
+            &mut device,
+            &ctx,
+            size,
+            "Quality of Service · Explicit DSCP",
+        );
+        click(&mut device, &ctx, size, "Read QoS settings");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Quality of Service instance 1",
+            "Route 1/3",
+            "802.1Q tag enable · CIP rejection",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Urgent DSCP · Reply");
+        let labels = draw(&mut device, &ctx, size);
+        assert!(labels.iter().any(|(text, _)| text == "63"));
+        assert_eq!(device.snapshot(), saved);
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode manager-info-optional on localhost"]
     fn explore_reads_connection_manager_counters_over_a_route() {
         let ctx = egui::Context::default();
@@ -934,7 +970,7 @@ mod tests {
         let saved = device.snapshot();
         click(&mut device, &ctx, size, "Saved reads");
         click(&mut device, &ctx, size, "Serial through bridge");
-        click(&mut device, &ctx, size, "Common attributes");
+        click(&mut device, &ctx, size, "Network objects");
         click(&mut device, &ctx, size, "Ethernet Link · Speed");
         click(&mut device, &ctx, size, "Read link info");
         wait_for_explore(&mut device);
@@ -969,7 +1005,7 @@ mod tests {
         let saved = device.snapshot();
         click(&mut device, &ctx, size, "Saved reads");
         click(&mut device, &ctx, size, "Serial through bridge");
-        click(&mut device, &ctx, size, "Common attributes");
+        click(&mut device, &ctx, size, "Network objects");
         click(&mut device, &ctx, size, "TCP/IP Interface · Status");
         click(&mut device, &ctx, size, "Read interface info");
         wait_for_explore(&mut device);

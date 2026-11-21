@@ -24,6 +24,7 @@ mod link_info;
 mod manager_info;
 mod multiple;
 mod port_info;
+mod qos_info;
 mod report;
 mod route;
 mod tcpip_info;
@@ -43,6 +44,7 @@ pub use link_info::{ETHERNET_LINK_CLASS, LinkInfo, read_link_info};
 pub use manager_info::{CONNECTION_MANAGER_CLASS, ManagerInfo, read_manager_info};
 pub use multiple::run_saved_reads_packet;
 pub use port_info::{PORT_OBJECT_CLASS, PortInfo, read_port_info};
+pub use qos_info::{QOS_CLASS, QosInfo, read_qos_info};
 pub use report::read_reply_document;
 pub use route::{Route, RoutedReadError};
 pub use tcpip_info::{TCPIP_INTERFACE_CLASS, TcpIpInfo, read_tcpip_info};
@@ -135,6 +137,13 @@ impl ReadPath {
                 && self.instance != 0
                 && let Some(attribute) = self.attribute
                 && let Some(decoded) = manager_info::decode(attribute, bytes)
+            {
+                return decoded.map(Some);
+            }
+            if self.class == QOS_CLASS
+                && self.instance != 0
+                && let Some(attribute) = self.attribute
+                && let Some(decoded) = qos_info::decode(attribute, bytes)
             {
                 return decoded.map(Some);
             }

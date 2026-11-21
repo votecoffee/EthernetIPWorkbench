@@ -27,6 +27,11 @@ impl Explorer {
                 "Read the selected Connection Manager's open, close, reject and timeout counters.",
                 Self::read_manager_info,
             ),
+            Ok(explicit::QOS_CLASS) => (
+                "Read QoS settings",
+                "Read 802.1Q tagging and DSCP settings reported by the selected QoS instance.",
+                Self::read_qos_info,
+            ),
             _ => return,
         };
         if ui
@@ -105,6 +110,16 @@ impl Explorer {
             Err(error) => self.notice = Some(error),
         }
     }
+
+    fn read_qos_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
+        self.qos_info = None;
+        match self.inspection_request(adapter, local, &self.instance) {
+            Ok((adapter, local, instance, route)) => self.start(move || {
+                explicit::read_qos_info(adapter, local, instance, route).map(Response::QosInfo)
+            }),
+            Err(error) => self.notice = Some(error),
+        }
+    }
 }
 
 pub(super) fn show(ui: &mut Ui, info: &ClassInfo) {
@@ -157,6 +172,16 @@ pub(super) fn show_manager(ui: &mut Ui, info: &ManagerInfo) {
         ui,
         format!("Connection Manager instance {}", info.instance),
         "manager-info-results",
+        info.route.as_ref(),
+        &info.batch,
+    );
+}
+
+pub(super) fn show_qos(ui: &mut Ui, info: &QosInfo) {
+    show_inspection(
+        ui,
+        format!("Quality of Service instance {}", info.instance),
+        "qos-info-results",
         info.route.as_ref(),
         &info.batch,
     );

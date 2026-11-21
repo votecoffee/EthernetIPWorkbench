@@ -172,6 +172,17 @@ impl super::ManagerInfo {
     }
 }
 
+impl super::QosInfo {
+    pub fn report_json(&self) -> Result<String, String> {
+        instance_json(
+            &self.batch,
+            super::QOS_CLASS,
+            self.instance,
+            self.route.as_ref(),
+        )
+    }
+}
+
 fn instance_json(
     batch: &SavedReadBatch,
     class: u32,
