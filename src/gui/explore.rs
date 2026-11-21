@@ -37,6 +37,7 @@ enum Response {
     Read(ReadReply),
     AttributeList(AttributeListReport),
     ConnectionData(ConnectionDataReport),
+    ActiveConnectionRecord(Result<ConnectionDataReport, String>),
     ClassInfo(ClassInfo),
     InstancePage(InstancePage),
     ObjectList(ObjectList),
@@ -83,6 +84,7 @@ pub(super) struct Explorer {
     attribute_list: Option<AttributeListReport>,
     connection_data_query: String,
     connection_data: Option<ConnectionDataReport>,
+    active_connection_record: Option<connection_data::ActiveRecord>,
     class_info: Option<ClassInfo>,
     instance_page: Option<InstancePage>,
     object_list: Option<ObjectList>,
@@ -126,6 +128,7 @@ impl Default for Explorer {
             attribute_list: None,
             connection_data_query: String::new(),
             connection_data: None,
+            active_connection_record: None,
             class_info: None,
             instance_page: None,
             object_list: None,
@@ -159,16 +162,25 @@ impl Explorer {
     }
 
     fn start(&mut self, job: impl FnOnce() -> Result<Response, String> + Send + 'static) {
+        if let Err(error) = self.spawn(job) {
+            self.notice = Some(error);
+        }
+    }
+
+    fn spawn(
+        &mut self,
+        job: impl FnOnce() -> Result<Response, String> + Send + 'static,
+    ) -> Result<(), String> {
         let (send, receive) = mpsc::channel();
         self.notice = None;
-        match std::thread::Builder::new()
+        std::thread::Builder::new()
             .name("eip-explore".into())
             .spawn(move || {
                 let _ = send.send(job());
-            }) {
-            Ok(_) => self.work = Some(receive),
-            Err(error) => self.notice = Some(error.to_string()),
-        }
+            })
+            .map_err(|error| error.to_string())?;
+        self.work = Some(receive);
+        Ok(())
     }
 
     pub(super) fn poll(&mut self) {
@@ -179,6 +191,11 @@ impl Explorer {
             Ok(Ok(Response::Read(reply))) => self.read_result = Some(reply),
             Ok(Ok(Response::AttributeList(report))) => self.attribute_list = Some(report),
             Ok(Ok(Response::ConnectionData(report))) => self.connection_data = Some(report),
+            Ok(Ok(Response::ActiveConnectionRecord(result))) => {
+                if let Some(record) = &mut self.active_connection_record {
+                    record.result = Some(result);
+                }
+            }
             Ok(Ok(Response::ClassInfo(info))) => self.class_info = Some(info),
             Ok(Ok(Response::InstancePage(page))) => self.instance_page = Some(page),
             Ok(Ok(Response::ObjectList(list))) => self.object_list = Some(list),
@@ -233,7 +250,14 @@ impl Explorer {
             }
             Ok(Err(error)) => self.notice = Some(error),
             Err(mpsc::TryRecvError::Disconnected) => {
-                self.notice = Some("Explore request ended without a response".into())
+                let error = "Explicit request ended without a response".to_string();
+                if let Some(record) = &mut self.active_connection_record
+                    && record.result.is_none()
+                {
+                    record.result = Some(Err(error));
+                } else {
+                    self.notice = Some(error);
+                }
             }
             Err(mpsc::TryRecvError::Empty) => return,
         }

@@ -84,6 +84,20 @@ impl Device {
                     io.ot_connection_id, io.to_connection_id
                 ));
             }
+            if let Some(triad) = self.status.forward_open_triad {
+                let can_read = self
+                    .connection
+                    .as_ref()
+                    .is_some_and(|connection| !connection.finished())
+                    && matches!(self.status.state, "Waiting for input" | "Receiving");
+                self.explorer.show_active_connection_record(
+                    ui,
+                    active,
+                    triad,
+                    self.generation,
+                    can_read,
+                );
+            }
             let timeout = active.connection_timeout(self.status.actual.map(|(_, input)| input));
             if let (Some(factor), Some(us)) = (timeout.factor, timeout.receive_watchdog_us) {
                 ui.small(format!(

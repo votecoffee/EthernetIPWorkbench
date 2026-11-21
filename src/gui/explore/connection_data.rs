@@ -1,6 +1,67 @@
-use super::{AMBER, ConnectionDataReport, Explorer, Ipv4Addr, Response, Ui, egui, explicit};
+use super::{
+    AMBER, ConnectionDataReport, Explorer, Ipv4Addr, Response, Settings, Ui, egui, explicit,
+};
+use explicit::{ConnectionDataQuery, ConnectionTriad};
+
+pub(super) struct ActiveRecord {
+    pub generation: u64,
+    pub result: Option<Result<ConnectionDataReport, String>>,
+}
 
 impl Explorer {
+    pub(in crate::gui) fn show_active_connection_record(
+        &mut self,
+        ui: &mut Ui,
+        active: &Settings,
+        triad: ConnectionTriad,
+        generation: u64,
+        can_read: bool,
+    ) {
+        ui.collapsing("Adapter connection record", |ui| {
+            ui.small(format!("Forward_Open selector {triad}"));
+            ui.horizontal_wrapped(|ui| {
+                if ui.button("Copy lookup selector").clicked() {
+                    ui.ctx().copy_text(triad.to_string());
+                }
+                if ui
+                    .add_enabled(
+                        can_read && !self.busy(),
+                        egui::Button::new("Read active connection record"),
+                    )
+                    .on_hover_text("Read the adapter's record over a separate explicit session.")
+                    .clicked()
+                {
+                    let (adapter, local) = (active.device_ip, active.local_ip);
+                    let query = ConnectionDataQuery::Triad(triad);
+                    let start = active.parsed_io_route().and_then(|route| {
+                        self.spawn(move || {
+                            Ok(Response::ActiveConnectionRecord(
+                                explicit::read_connection_data(adapter, local, query, route),
+                            ))
+                        })
+                    });
+                    self.active_connection_record = Some(ActiveRecord {
+                        generation,
+                        result: start.err().map(Err),
+                    });
+                }
+            });
+            if let Some(record) = &self.active_connection_record
+                && record.generation == generation
+            {
+                match &record.result {
+                    Some(Ok(report)) => show_report(ui, report),
+                    Some(Err(error)) => {
+                        ui.colored_label(AMBER, error);
+                    }
+                    None => {
+                        ui.small("Reading adapter connection record…");
+                    }
+                }
+            }
+        });
+    }
+
     pub(super) fn show_connection_data(
         &mut self,
         ui: &mut Ui,

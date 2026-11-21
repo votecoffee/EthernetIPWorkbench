@@ -187,6 +187,7 @@ def check_qualification(exe, root):
             assert capture == tomllib.loads((out / trial["name"] / "capture.toml").read_text(encoding="utf-8"))
             assert capture["identity"]["serial"] == serial and adapter["forward_close"]
             assert capture["cyclic_io"] == adapter["cyclic_io"]
+            assert capture["forward_open_triad"] == adapter["open_request_triad"]
             rpi = 8000 if index == 0 else 1000
             assert capture["requested_ot_us"] == capture["requested_to_us"] == rpi
             assert adapter["ot_requested_us"] == adapter["to_requested_us"] == rpi
@@ -498,12 +499,14 @@ def main():
     assert "forward_close" not in report
     assert "startup_timing" not in report
     assert "cyclic_io" not in report
+    assert "forward_open_triad" not in report
 
     rejected, adapter = with_adapter(root, "reject", [*capture, root / "reject", "1", "0:12:1"], "reject")
     report = tomllib.loads(rejected.stdout)
     assert rejected.returncode == 1 and report["cip_error"] and "ot_requested_us" in adapter
     assert set(report["startup_timing"]) == {"forward_open_exchange_us"}
     assert "cyclic_io" not in report
+    assert "open_request_triad" in adapter and "forward_open_triad" not in report
 
     delayed, adapter = with_adapter(
         root, "delayed-start", [*capture, root / "delayed-start", "1", "0:12:1"], "delayed-start"

@@ -1,7 +1,7 @@
 use assembly_scanner::{
     capture::{Capture, FieldSummary, MAX_CAPTURE_SECONDS, Options, Slot},
     discovery, eds,
-    explicit::{self, ReadPath, Route, SavedReadMode},
+    explicit::{self, ConnectionTriad, ReadPath, Route, SavedReadMode},
     integration::{self, Integration},
     model::{ConnectionTimeout, Settings, parse_hex},
     preflight,
@@ -693,6 +693,8 @@ struct Report {
     network_error: Option<String>,
     disk_error: Option<String>,
     identity: Option<Identity>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    forward_open_triad: Option<ConnectionTriad>,
     cyclic_io: Option<CyclicIo>,
     startup_timing: Option<StartupTiming>,
     receive_spacing: Spacing,
@@ -739,6 +741,8 @@ struct AttemptReport {
     identity_error: Option<String>,
     cip_error: Option<String>,
     network_error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    forward_open_triad: Option<ConnectionTriad>,
     cyclic_io: Option<CyclicIo>,
     startup_timing: Option<StartupTiming>,
     receive_spacing: Spacing,
@@ -764,6 +768,7 @@ impl AttemptReport {
             identity_error: status.identity_error.clone(),
             cip_error: status.cip_error.clone(),
             network_error: status.network_error.clone(),
+            forward_open_triad: status.forward_open_triad,
             cyclic_io: status.cyclic_io,
             startup_timing: status.startup_timing(diagnostics.send_timing),
             receive_spacing: status.spacing,
@@ -901,6 +906,7 @@ fn capture(
         network_error: status.network_error.clone(),
         disk_error: sink.error.lock().unwrap().clone(),
         identity: status.identity.clone(),
+        forward_open_triad: status.forward_open_triad,
         cyclic_io: status.cyclic_io,
         startup_timing: status.startup_timing(send_timing),
         receive_spacing: status.spacing,

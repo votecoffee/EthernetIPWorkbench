@@ -8,6 +8,7 @@ use crate::{
     },
     settings_file,
 };
+use assembly_scanner::explicit::ConnectionTriad;
 use chrono::{SecondsFormat, Utc};
 use serde::Serialize;
 use std::{net::Ipv4Addr, path::PathBuf};
@@ -73,6 +74,8 @@ struct ConnectionReport {
     forward_close: Option<CloseOutcome>,
     sent: u64,
     skipped_deadlines: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    forward_open_triad: Option<ConnectionTriad>,
     cyclic_io: Option<CyclicIo>,
     startup_timing: Option<StartupTiming>,
     receive_spacing: Spacing,
@@ -162,6 +165,7 @@ impl Device {
             forward_close: status.forward_close.clone(),
             sent: self.tx,
             skipped_deadlines: self.skipped,
+            forward_open_triad: status.forward_open_triad,
             cyclic_io: status.cyclic_io,
             startup_timing: status.startup_timing(self.send_timing),
             receive_spacing: status.spacing,

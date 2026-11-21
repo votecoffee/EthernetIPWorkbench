@@ -20,6 +20,16 @@ pub struct ConnectionTriad {
     pub originator_serial: u32,
 }
 
+impl fmt::Display for ConnectionTriad {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "0x{:04X}:{}:0x{:08X}",
+            self.connection_serial, self.originator_vendor, self.originator_serial,
+        )
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "by", rename_all = "snake_case")]
 pub enum ConnectionDataQuery {

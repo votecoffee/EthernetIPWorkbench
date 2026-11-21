@@ -850,3 +850,9 @@ Pinned Windows OpENer returned the Identity Object's vendor ID, revision, and se
 The Windows loopback fixture checked Get_Connection_Data by number and routed Search_Connection_Data by triad. It encoded distinct connection IDs, timeout multiplier codes, RPIs, and APIs for both directions. The CLI retained the raw bytes of a short record and a record with a mismatched triad. It also distinguished a bridge rejection from a target service rejection. Headless Explore displayed the routed record and preserved the saved requests.
 
 Pinned Windows OpENer returned the same active input-only connection and connection IDs for both lookups. After Forward_Close, it rejected a lookup of the same triad with CIP status `0x05`. The 30,000 µs Forward_Open intervals differ from the two diagnostic replies' API field values of 19 and 29. OpENer sends its running transmission timer in that field. Treat these readings as target-reported diagnostics during physical acceptance. [Pinned OpENer reply encoder](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipconnectionmanager.c#L867)
+
+### Lookup from a running scan
+
+Headless Diagnostics used the active endpoint for two successive input-only scans against pinned Windows OpENer. Each lookup returned the running scan's connection ID after the test staged a different adapter address and route. Input continued during lookup and both scans confirmed Forward_Close. The new generation displayed its own selector before its record was read.
+
+The localhost capture and serve tests compared HTTP and saved attempt identifiers with the fixture's Forward_Open requests across a reconnect. The previous generation preserved its original triad after timeout and close. A separate headless GUI test matched the live HTTP triad against the saved run report. Physical target and bridge acceptance remains open.

@@ -50,6 +50,7 @@ fn connection_json(feed: &Feed, tracked: &TrackedConnection) -> Value {
         "requested_to_us": diagnostics.requested_to_us,
         "actual_ot_us": actual_ot_us,
         "actual_to_us": actual_to_us,
+        "forward_open_triad": status.forward_open_triad,
         "input_age_us": tracked.source.input_age().map(|age| age.as_micros() as u64),
         "accepted": status.valid,
         "sequence_gaps": status.gaps,

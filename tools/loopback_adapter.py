@@ -835,7 +835,11 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                         assert socket.inet_ntoa(address) == ("0.0.0.0" if multicast else scanner_ip)
                     assert body[18] <= 7 and body[19:22] == bytes(3)
                     report.update(ot_requested_us=ot_rpi, to_requested_us=to_rpi,
-                                  timeout_multiplier_code=body[18])
+                                  timeout_multiplier_code=body[18], open_request_triad={
+                                      "connection_serial": serial,
+                                      "originator_vendor": vendor,
+                                      "originator_serial": origin,
+                                  })
                     if mode == "reject":
                         response = rr_reply(bytes.fromhex("D4 00 01 01 09 01"))
                     else:

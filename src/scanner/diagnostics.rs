@@ -1,4 +1,5 @@
 use super::{Identity, Value};
+use crate::explicit::ConnectionTriad;
 use std::{
     fmt,
     net::SocketAddr,
@@ -185,6 +186,8 @@ pub struct Status {
     pub network_error: Option<String>,
     pub cip_error: Option<String>,
     pub actual: Option<(u32, u32)>,
+    /// Identifiers echoed by an accepted Forward_Open for this session generation.
+    pub forward_open_triad: Option<ConnectionTriad>,
     pub cyclic_io: Option<CyclicIo>,
     pub forward_open_exchange_us: Option<u64>,
     pub first_udp_after_open_us: Option<u64>,

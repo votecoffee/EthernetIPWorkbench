@@ -1,6 +1,6 @@
 use crate::{
     capture::Slot,
-    explicit::{Route, Session, identity},
+    explicit::{ConnectionTriad, Route, Session, identity},
     integration::Publisher,
     model::{self, Settings, Value},
 };
@@ -706,8 +706,15 @@ fn run(
                 "Forward_Open returned invalid connection identifiers or intervals",
             ));
         }
-        shared.status.lock().unwrap().actual =
-            Some((reply.o_to_t_actual_rpi_us, reply.t_to_o_actual_rpi_us));
+        {
+            let mut status = shared.status.lock().unwrap();
+            status.actual = Some((reply.o_to_t_actual_rpi_us, reply.t_to_o_actual_rpi_us));
+            status.forward_open_triad = Some(ConnectionTriad {
+                connection_serial: reply.connection_serial,
+                originator_vendor: reply.originator_vendor,
+                originator_serial: reply.originator_serial,
+            });
+        }
         let peer = cpf::resolve_peer_udp(
             &envelope,
             OT_SOCKET,

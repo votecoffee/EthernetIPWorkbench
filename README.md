@@ -101,6 +101,8 @@ Choose **Connection Manager** in Explore, then select **Read connection counters
 
 Open **Connection data** under the same preset to inspect one active connection on a supporting target. Enter its connection number or the three identifiers from Forward_Open. The CLI `connection-data` command returns the same record as JSON. [Connection data](docs/OPERATIONS.md#inspect-one-active-connection)
 
+For a running Workbench connection, **Diagnostics → Adapter connection record → Read active connection record** uses that scan's identifiers automatically. **Copy lookup selector** prepares the selector for the CLI.
+
 Choose **Common attributes → Assembly · Data**, then select **Read assembly info** to inspect the selected instance's declared size and the actual explicit data bytes. The CLI `assembly-info` command reports both lengths and any difference. [Assembly inspection](docs/OPERATIONS.md#inspect-an-assembly)
 
 Select **Check profile assembly sizes** in Explore, or run `check-assemblies <settings.toml>`, to compare the adapter's reported sizes with the profile's application payload lengths before connecting. [Profile assembly size check](docs/OPERATIONS.md#check-profile-assembly-sizes)
@@ -336,7 +338,7 @@ Omit any transport to leave it disabled. The sample index starts at 1 for each s
 
 **HTTP API** binds to `127.0.0.1` and accepts read-only requests from local processes. `GET /v1/status` returns the current generation and integration counters. `GET /v1/latest` returns the latest sample and its age. `GET /v1/samples?after=123` returns up to 64 retained samples after index 123. Continue with the last index received. The newest 1,024 dispatched samples are retained. Compare indexes and `oldest_sample_index` to detect missed history, and reset the cursor when `stream_start_utc_us` changes. Each sample includes raw `payload_hex`, both packet sequence fields, and a `values` object with decoded values as strings. All named input fields are exported, independently of CSV column selection.
 
-`GET /v1/connection` reports the identity, state, requested and negotiated intervals, observed timing, watchdog, and close outcome for the latest Class 1 generation. The response also retains the preceding generation through a reconnect. [Connection diagnostics contract](docs/OPERATIONS.md#inspect-a-live-class-1-connection)
+`GET /v1/connection` reports the identity, state, Forward_Open triad, requested and negotiated intervals, observed timing, watchdog, and close outcome for the latest Class 1 generation. The response also retains the preceding generation through a reconnect. [Connection diagnostics contract](docs/OPERATIONS.md#inspect-a-live-class-1-connection)
 
 The HTTP feed serves up to four readers concurrently and keeps a bounded queue for bursts. Clients can retry a busy response with their usual backoff. [HTTP reader limits](docs/OPERATIONS.md#use-concurrent-http-readers)
 

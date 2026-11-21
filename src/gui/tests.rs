@@ -266,7 +266,7 @@ fn remove_capture_directory(directory: PathBuf) {
 }
 
 #[track_caller]
-fn poll_until(device: &mut Device, ready: impl Fn(&Device) -> bool) {
+pub(super) fn poll_until(device: &mut Device, ready: impl Fn(&Device) -> bool) {
     let deadline = Instant::now() + Duration::from_secs(6);
     loop {
         device.poll();
@@ -854,6 +854,11 @@ fn run_report_uses_the_final_loopback_connection() {
         Some(96_000)
     );
     assert!(connection["input_age_us"].is_u64());
+    let triad = device.status.forward_open_triad.unwrap();
+    assert_eq!(
+        connection["forward_open_triad"],
+        serde_json::to_value(triad).unwrap()
+    );
     device.disconnect();
     poll_until(&mut device, |device| !device.link_busy());
     device.stop_capture();
@@ -881,6 +886,10 @@ fn run_report_uses_the_final_loopback_connection() {
     assert_eq!(link["requested_to_us"].as_integer(), Some(1000));
     assert_eq!(link["actual_ot_us"].as_integer(), Some(1250));
     assert_eq!(link["actual_to_us"].as_integer(), Some(1500));
+    assert_eq!(
+        link["forward_open_triad"],
+        toml::Value::try_from(triad).unwrap()
+    );
     let io = &link["cyclic_io"];
     let local: std::net::SocketAddr = io["local_udp"].as_str().unwrap().parse().unwrap();
     assert!(local.ip().is_loopback() && local.port() != 0);

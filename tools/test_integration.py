@@ -334,6 +334,13 @@ period_ms = 25
                     process.wait(timeout=5)
 
     report = tomllib.loads(stdout)
+    peer = json.loads((root / "adapter.json").read_text(encoding="utf-8"))
+    first_triad, second_triad = [run["open_request_triad"] for run in peer["attempts"]]
+    assert first_triad != second_triad
+    assert first_connection["connection"]["forward_open_triad"] == first_triad
+    assert second_connection["connection"]["forward_open_triad"] == second_triad
+    assert second_connection["previous_connection"]["forward_open_triad"] == first_triad
+    assert [run["forward_open_triad"] for run in report["attempts"]] == [first_triad, second_triad]
     stats = report["integration"]
     assert stats["received"] == report["accepted"]
     assert stats["queue_drops"] == 0
@@ -348,6 +355,7 @@ period_ms = 25
         assert not (root / "captures").exists() and not list(root.rglob("*.csv"))
         print(f"Served {report['accepted']} valid packets without a CSV writer. Export counters {stats}.")
     else:
+        assert report["forward_open_triad"] == second_triad
         check_capture_window(report, list(rows(parts_for(Path(report["csv_prefix"])))))
         assert report["buffer_overruns"] == 0
         print(f"CSV wrote {report['written']} rows. Export counters {stats}.")

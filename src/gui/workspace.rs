@@ -1354,6 +1354,72 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires the pinned Windows OpENer loopback adapter on 127.0.0.2"]
+    fn diagnostics_looks_up_the_active_connection_across_generations() {
+        use crate::gui::tests::poll_until;
+
+        let profile = Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/opener-loopback.toml");
+        let (settings, _) = settings_file::load_profile(&profile).unwrap();
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = Device::new(1, None);
+        let mut last_triad = None;
+        for generation in 1..=2 {
+            device.settings = settings.clone();
+            device.device = settings.device_ip.to_string();
+            device.local = settings.local_ip.to_string();
+            device.connect(&[]);
+            poll_until(&mut device, |device| device.status.valid >= 2);
+            assert_eq!(device.generation, generation);
+            let triad = device.status.forward_open_triad.unwrap();
+            assert_ne!(Some(triad), last_triad);
+            last_triad = Some(triad);
+            let cyclic = device.status.cyclic_io.unwrap();
+            let accepted = device.status.valid;
+
+            // Stage a different endpoint and route after opening. The read must use the active settings.
+            device.device = "127.0.0.3".into();
+            device.settings.io_route = "1/42".into();
+            let saved = device.snapshot();
+            device.tab = Tab::Diagnostics;
+            if generation == 1 {
+                click(&mut device, &ctx, size, "Adapter connection record");
+            }
+            let labels = draw(&mut device, &ctx, size);
+            assert!(
+                !labels
+                    .iter()
+                    .any(|(text, _)| text == "Connection reply bytes")
+            );
+            assert!(
+                labels
+                    .iter()
+                    .any(|(text, _)| text == &format!("Forward_Open selector {triad}"))
+            );
+            click(&mut device, &ctx, size, "Read active connection record");
+            wait_for_explore(&mut device);
+            let labels = draw(&mut device, &ctx, size);
+            let input_id = format!(
+                "Originator ID 0x{:08X} · Target ID 0x{:08X}",
+                cyclic.to_connection_id, cyclic.to_connection_id
+            );
+            assert!(labels.iter().any(|(text, _)| text == &input_id));
+            assert!(
+                labels
+                    .iter()
+                    .any(|(text, _)| text == "Connection reply bytes")
+            );
+            assert_eq!(device.snapshot(), saved);
+            poll_until(&mut device, |device| device.status.valid > accepted);
+            device.disconnect();
+            poll_until(&mut device, |device| !device.link_busy());
+            assert!(device.status.forward_close.as_ref().unwrap().is_confirmed());
+            assert_eq!(device.status.forward_open_triad, Some(triad));
+        }
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode connection-data on localhost"]
     fn explore_finds_connection_data_by_triad_over_a_route() {
         let ctx = egui::Context::default();

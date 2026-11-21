@@ -57,6 +57,7 @@ def check_routed_input(exe, root, source):
         assert capture["io_route"] == route and capture["identity"]["serial"] == serial
         assert capture["duration_reached"] and capture["forward_close"] == {"outcome": "confirmed"}
         assert capture["actual_ot_us"] == capture["actual_to_us"] == 8000
+        assert capture["forward_open_triad"] == peer["open_request_triad"]
         assert capture["sequence_gaps"] == capture["buffer_overruns"] == peer["ot_invalid"] == 0
         assert capture["cyclic_io"]["output_destination"].startswith(bridge + ":")
         assert capture["cyclic_io"]["first_input_source"].startswith(bridge + ":")
