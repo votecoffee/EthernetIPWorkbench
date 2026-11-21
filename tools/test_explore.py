@@ -13,6 +13,8 @@ from loopback_adapter import sockaddr
 from test_cli import NO_WINDOW, PROFILE, with_adapter
 
 LOCAL = "127.0.0.1"
+EXTENDED_PORT_ROUTE = "1/2/300/192.0.2.100/15/7"
+EXTENDED_PORT_PATH = "01021f0b2c013139322e302e322e313030000f0f0007"
 
 
 def check_routed_input(exe, root, source):
@@ -28,6 +30,9 @@ def check_routed_input(exe, root, source):
                      + setup.replace("input_size = 4", "input_size = 600").replace("offset = 0", "offset = 596")
                      + "\n[electronic_key]\nvendor = 1\ndevice_type = 12\nproduct = 1\nmajor = 1\nminor = 0\n",
                      encoding="utf-8")
+    extended_profile = root / "routed-large-extended-port.toml"
+    extended_profile.write_text(large.read_text(encoding="utf-8").replace(multi_hop, EXTENDED_PORT_ROUTE),
+                                encoding="utf-8")
     identity, peer = with_adapter(root, "routed-identity", [exe, "identity", bridge, LOCAL, "--route", "1/3"],
                                   "routed-io", fixture_args=bridge_args)
     identity = tomllib.loads(identity.stdout)
@@ -40,6 +45,8 @@ def check_routed_input(exe, root, source):
         ("routed-io", standard, "1/3", "0103" + common_path, 0),
         ("routed-io-large", large, multi_hop, (b"\x01\x02\x12\x09127.0.0.3\x00\x01\x00".hex()
                                                + "340401000c0001000100" + common_path), 1),
+        ("routed-io-large-extended-port", extended_profile, EXTENDED_PORT_ROUTE,
+         EXTENDED_PORT_PATH + "340401000c0001000100" + common_path, 1),
     ):
         output = root / mode
         result, peer = with_adapter(root, mode, [exe, "capture", profile, output, "1", f"{vendor}:12:1:{serial}"],
@@ -391,6 +398,11 @@ def main():
                        "1/2/2/192.0.2.100/1/0", mode="routed")
     assert bytes.fromhex(json.loads(routed)["data_hex"])[15:] == b"Loopback Adapter"
     assert bytes.fromhex(peer["route_hex"]) == b"\x01\x02\x12\x0B192.0.2.100\x00\x01\x00"
+    extended_read, peer = run("routed-extended-port", *route_cmd[1:], "6", "--route",
+                              EXTENDED_PORT_ROUTE, mode="routed")
+    report = json.loads(extended_read)
+    assert report["route"] == EXTENDED_PORT_ROUTE and report["decoded"] == "0x12345678"
+    assert peer["route_hex"] == EXTENDED_PORT_PATH
     for case, route, attr, layer, status, extended in (
         ("route-rejected", "1/7", "6", "router", 1, 0x0311),
         ("routed-target-rejected", "1/3", "0x7f", "target", 0x14, 0x0302),
@@ -402,7 +414,7 @@ def main():
         assert error["extended_status"] == [extended]
     malformed, _ = with_adapter(root, "route-no-target", [*route_cmd, "6", "--route", "1/5"], "routed")
     assert malformed.returncode == 1 and "omitted the target service" in malformed.stderr
-    for route in ("1", "1/999", "1/3/", "15/1", "2/239.0.0.1", "1/1/" * 8 + "1/1"):
+    for route in ("1", "1/999", "1/3/", "0/1", "65536/1", "2/239.0.0.1", "1/1/" * 8 + "1/1"):
         result = subprocess.run([*route_cmd, "6", "--route", route], capture_output=True,
                                 text=True, timeout=4, creationflags=NO_WINDOW)
         assert result.returncode == 1 and any(
@@ -549,6 +561,9 @@ def main():
         saved_request(name, attribute, 'route = "1/3"\n') for name, attribute in
         (("Product name", 7), ("Unsupported attribute", 127), ("Serial number", 6))
     ), encoding="utf-8")
+    routed_extended = root / "class3-routed-extended.toml"
+    routed_extended.write_text(routed_sequential.read_text(encoding="utf-8").replace("1/3", EXTENDED_PORT_ROUTE),
+                               encoding="utf-8")
     routed_connected_packet = root / "class3-routed-packet.toml"
     multi_hop = "1/2/2/192.0.2.100/1/0"
     routed_connected_packet.write_text((root / "routed-packet-partial.toml").read_text(encoding="utf-8")
@@ -557,6 +572,8 @@ def main():
     for label, mode, profile, flags, route, path, request_count, exit_code, expected_statuses in (
         ("sequential", "class3-routed", routed_sequential, ["--connected"], "1/3",
          "010320022401", 3, 1, ["success", "cip_rejected", "success"]),
+        ("extended", "class3-routed-extended-port", routed_extended, ["--connected"], EXTENDED_PORT_ROUTE,
+         EXTENDED_PORT_PATH + "20022401", 3, 1, ["success", "cip_rejected", "success"]),
         ("success", "class3-routed-packet", root / "routed-packet-success.toml", connected_args, multi_hop,
          multi_hop_path, 1, 0, ["success"] * 3),
         ("mixed", "class3-routed-packet", routed_connected_packet, connected_args, multi_hop,

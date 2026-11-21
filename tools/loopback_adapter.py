@@ -21,9 +21,10 @@ ROUTED_OWNER_CYCLIC_MODES = {
     "routed-io-owner-unexpected-peer": "owner",
 }
 ROUTED_KEYED_MODES = ("routed-io-large", "routed-io-large-owner", "routed-io-multicast-large",
-                      "routed-io-large-default-unicast")
+                      "routed-io-large-default-unicast", "routed-io-large-extended-port")
 LARGE_INPUT_MODES = ("large-keyed", "routed-io-large", "routed-io-multicast-large",
-                     "routed-io-large-default-unicast")
+                     "routed-io-large-default-unicast", "routed-io-large-extended-port")
+EXTENDED_ROUTE = b"\x01\x02\x1f\x0b\x2c\x01192.0.2.100\x00\x0f\x0f\x00\x07"
 MULTICAST_GROUP = "239.255.92.44"
 
 
@@ -216,7 +217,10 @@ def routed_reply(cip, attrs, report):
     if route == b"\x01\x02\x12\x0B192.0.2.100\x00\x01\x00":
         assert message == bytes.fromhex("01 02 20 01 24 01")
         return bytes.fromhex("81 00 00 00") + b"".join(attrs)
-    assert route == b"\x01\x03"
+    if route == EXTENDED_ROUTE:
+        report["request_cip_hex"] = cip.hex()
+    else:
+        assert route == b"\x01\x03"
     if message == bytes.fromhex("0E 03 20 01 24 01 30 7F"):
         return bytes.fromhex("8E 00 14 01 02 03")
     assert message == bytes.fromhex("0E 03 20 01 24 01 30 06")
@@ -392,6 +396,8 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
     if mode.startswith("class3-routed"):
         route = (b"\x01\x02\x12\x0B192.0.2.100\x00\x01\x00"
                  if connected_packet or connected_write else b"\x01\x03")
+    if mode.endswith("-extended-port"):
+        route = EXTENDED_ROUTE
     path = route + path
     name = b"Loopback Routed Target" if route else b"Loopback Adapter"
     attrs = [b"", struct.pack("<H", 1 if keyed else 0),
@@ -545,6 +551,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
                             "routed-io-large": 0x4400025A,
                             "routed-io-multicast-large": 0x2400025A,
                             "routed-io-large-default-unicast": 0x4400025A,
+                            "routed-io-large-extended-port": 0x4400025A,
                         }[cyclic_mode]
                         expected_output = 0x4600025A if cyclic_mode == "large-variable-output" else 0x44000002
                         assert ot_params == expected_output and to_params == expected_input
@@ -674,14 +681,16 @@ def main():
         "explicit-write-current", "explicit-write-current-mismatch", "explicit-write-current-rejected",
         "explicit-write-current-no-reply", "explicit-write-current-router", "explicit-write-gui-current",
         "class3-packet", "class3-packet-close-reject",
-        "class3-routed", "class3-routed-open-reject", "class3-routed-packet", "class3-routed-packet-unsupported",
+        "class3-routed", "class3-routed-extended-port", "class3-routed-open-reject",
+        "class3-routed-packet", "class3-routed-packet-unsupported",
         "class3-sized", "class3-large-packet", "class3-routed-large-packet", "class3-large-open-reject",
         "class3-write", "class3-routed-large-write", "class3-write-open-reject",
         "class3-write-close-reject", "class3-write-bad-sequence", "class3-write-gui",
         "class3-write-gui-unconfirmed",
         "class3-write-current-matches", "class3-write-current-matches-close-reject",
         "class3-write-inspect-gui",
-        "routed-io", "routed-io-large", "routed-io-rejected-route", "routed-io-unexpected-peer",
+        "routed-io", "routed-io-large", "routed-io-large-extended-port",
+        "routed-io-rejected-route", "routed-io-unexpected-peer",
         "variable-output", "large-variable-output",
         "multicast", "multicast-missing", "multicast-unicast",
         "routed-io-multicast", "routed-io-multicast-large",

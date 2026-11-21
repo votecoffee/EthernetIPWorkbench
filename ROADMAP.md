@@ -68,7 +68,7 @@ The C# examples demonstrate HTTP and shared-memory latest values, retained HTTP 
 - Direct Class 3 connected reads and Forward_Close have independent OpENer coverage through the CLI and Rust API. Verify on a physical adapter.
 - Sequential and Multiple Service Packet reads can run over a routed Class 3 connection when the batch shares one path. Explore and CLI report the connection route and Forward_Close separately from read or packet outcomes. Verify routed operation through a physical bridge and compatible target.
 - Class 3 supports saved connection sizes up to 4,002 bytes and uses Large Forward_Open above 511 bytes. Localhost tests cover direct and routed messages beyond the standard size. Verify target and bridge limits on a physical path.
-- Routed explicit reads support backplane and IPv4 links in Explore, CLI and the Rust API. Verify them through a physical bridge.
+- CIP routes in Explore, the CLI and the Rust API support byte and IPv4 links with decimal port IDs up to 65535. Windows loopback covers extended port identifiers in Unconnected Send, Class 3, and Class 1. Verify the documented routes through a physical bridge.
 - Variable-size T→O supports standard and Large Forward_Open, offline decoding, CSV and all three export feeds. Verify it on a physical adapter that produces variable-size assemblies.
 - Multicast T→O uses the adapter's group, port and connection ID with unicast O→T. Verify group membership and capture through a physical bench switch.
 - Listen-only profiles use the documented heartbeat assembly and read an existing multicast producer without taking output ownership. Verify against a physical adapter with a controlling multicast connection.

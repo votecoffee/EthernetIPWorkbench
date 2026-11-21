@@ -8,14 +8,14 @@ pub(super) const UNCONNECTED_SEND: u8 = 0x52;
 const MAX_HOPS: usize = 8;
 
 /// A validated list of port/link pairs, for example `1/3` for backplane slot 3.
-/// Each port is numbered 1–14. A link is a byte or a unicast IPv4 address.
+/// Each port is numbered 1–65535. A link is a byte or a unicast IPv4 address.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct Route(Vec<Hop>);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Hop {
-    port: u8,
+    port: u16,
     link: Link,
 }
 
@@ -37,10 +37,10 @@ impl FromStr for Route {
             }
             let port = port
                 .trim()
-                .parse::<u8>()
+                .parse::<u16>()
                 .ok()
-                .filter(|n| (1..=14).contains(n))
-                .ok_or("Enter a CIP port number from 1 to 14")?;
+                .filter(|&n| n != 0)
+                .ok_or("Enter a CIP port number from 1 to 65535")?;
             let link = parts
                 .next()
                 .ok_or("A CIP route needs a link after each port")?
@@ -92,14 +92,9 @@ impl Route {
         let mut path = Vec::new();
         for hop in &self.0 {
             match hop.link {
-                Link::Node(node) => path.extend([hop.port, node]),
+                Link::Node(node) => append_port_segment(&mut path, hop.port, &[node]),
                 Link::Ipv4(ip) => {
-                    let address = ip.to_string();
-                    path.extend([hop.port | 0x10, address.len() as u8]);
-                    path.extend(address.bytes());
-                    if address.len() % 2 != 0 {
-                        path.push(0);
-                    }
+                    append_port_segment(&mut path, hop.port, ip.to_string().as_bytes())
                 }
             }
         }
@@ -119,6 +114,48 @@ impl Route {
         request.extend([(path.len() / 2) as u8, 0]);
         request.extend(path);
         request
+    }
+}
+
+fn append_port_segment(path: &mut Vec<u8>, port: u16, link: &[u8]) {
+    const EXTENDED_PORT: u16 = 0x0f;
+    const EXTENDED_LINK: u8 = 0x10;
+
+    let long_link = link.len() != 1;
+    let flags = if long_link { EXTENDED_LINK } else { 0 };
+    path.push(port.min(EXTENDED_PORT) as u8 | flags);
+    if long_link {
+        path.push(link.len() as u8);
+    }
+    if port >= EXTENDED_PORT {
+        path.extend(port.to_le_bytes());
+    }
+    path.extend_from_slice(link);
+    if path.len() % 2 != 0 {
+        path.push(0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extended_ports_encode_both_link_forms_and_preserve_alignment() {
+        for (text, wire) in [
+            ("14/255", &b"\x0e\xff"[..]),
+            ("15/4", &b"\x0f\x0f\x00\x04"[..]),
+            ("256/127.0.0.3", &b"\x1f\x09\x00\x01127.0.0.3\x00"[..]),
+            ("65535/127.0.1.23", &b"\x1f\x0a\xff\xff127.0.1.23"[..]),
+            (
+                "1/2/300/192.0.2.100/15/7",
+                &b"\x01\x02\x1f\x0b\x2c\x01192.0.2.100\x00\x0f\x0f\x00\x07"[..],
+            ),
+        ] {
+            let route: Route = text.parse().unwrap();
+            assert_eq!(route.to_string(), text);
+            assert_eq!(route.port_segments(), wire);
+        }
     }
 }
 
