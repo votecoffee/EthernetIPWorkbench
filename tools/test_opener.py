@@ -358,10 +358,15 @@ def check_class_info(cli, adapter, root):
     assert [entry["path"]["attribute"] for entry in replies] == list(range(1, 8))
     assert all(entry["path"]["instance"] == 0 for entry in replies)
     assert int(replies[1]["decoded"]) >= int(replies[2]["decoded"]) > 0
-    for entry in replies[3:5]:
+    for field, entry in zip(("optional_instance_attributes", "optional_services"), replies[3:5]):
         if entry["status"] == "cip_rejected":
             assert entry["general_status"] in (0x08, 0x14)
-    print("OpENer reported Assembly class metadata and separate optional attribute outcomes.")
+            assert report[field] is None
+        else:
+            raw = bytes.fromhex(entry["data_hex"])
+            count, = struct.unpack_from("<H", raw)
+            assert report[field] == list(struct.unpack(f"<{count}H", raw[2:]))
+    print("OpENer reported Assembly class metadata and separate optional lists or rejections.")
 
 
 def check_tcpip_info(cli, adapter, root):

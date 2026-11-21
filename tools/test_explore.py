@@ -184,6 +184,7 @@ def check_class_info(exe, root):
         ("routed", "class-info", "1/3", 0),
         ("router-rejected", "class-info", "1/7", 1),
         ("bad-list", "class-info-malformed", None, 1),
+        ("empty-lists", "class-info-empty", None, 0),
     ):
         command = [exe, "class-info", LOCAL, LOCAL, "0x01"]
         if route:
@@ -199,6 +200,12 @@ def check_class_info(exe, root):
         ]
         assert peer["class_attributes"] == list(range(1, 8))
         assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert report["optional_instance_attributes"] == {
+            "router-rejected": None, "bad-list": None, "empty-lists": [],
+        }.get(case, [3, 0x100])
+        assert report["optional_services"] == {
+            "router-rejected": None, "routed": None, "empty-lists": [],
+        }.get(case, [1, 14])
         if case == "router-rejected":
             assert peer["route_hex"] == "0107"
             assert all(row["reply_from"] == "router" and row["extended_status"] == [0x0311]
@@ -209,6 +216,8 @@ def check_class_info(exe, root):
             assert replies[3]["status"] == "success"
             assert replies[3]["decoded"] is None and replies[3]["data_hex"] == "02 00 03 00"
             assert "declares 2 IDs" in replies[3]["decode_error"]
+        elif case == "empty-lists":
+            assert replies[3]["decoded"] == "[]"
         else:
             assert replies[3]["decoded"] == "[0x0003, 0x0100]"
         if route:
@@ -216,6 +225,8 @@ def check_class_info(exe, root):
             assert all(row["bridge"] == LOCAL and row["reply_from"] == "target" for row in replies)
             assert replies[4]["status"] == "cip_rejected" and replies[4]["general_status"] == 0x14
             assert replies[4]["extended_status"] == [0x0302]
+        elif case == "empty-lists":
+            assert replies[4]["decoded"] == "[]"
         else:
             assert replies[4]["decoded"] == "[0x0001, 0x000E]"
 

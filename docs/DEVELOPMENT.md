@@ -18,6 +18,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/encapsulation.rs | TCP connection bound to the selected NIC and deadline-based EtherNet/IP frame reads |
 | src/discovery/services.rs and src/gui/explore/services.rs | Unicast UDP and TCP ListServices and the advertised capabilities view |
 | src/explicit/class_info.rs and src/gui/explore/class_info.rs | Common class attribute inspection, decoding and the Explore details view |
+| src/explicit/attributes.rs and src/gui/explore/attributes.rs | Common attribute names and same-target advertised choices in Explore |
 | src/explicit/object_list.rs and src/gui/explore/object_list.rs | Message Router Object List and class selection in Explore |
 | src/explicit/instances.rs and src/gui/explore/instances.rs | Bounded CIP instance paging and instance selection |
 | src/explicit/port_info.rs | Read-only CIP Port Object directory and instance inspection |
@@ -176,6 +177,8 @@ Run `explore_discovers_an_adapter_over_tcp` with the `list-identity-stream` fixt
 Run `explore_selects_a_class_from_a_routed_object_list` with the `object-list` fixture mode to verify the routed list and selection of a vendor class. The OpENer harness with `--explore` checks the unsupported-attribute response independently.
 
 Run `explore_pages_through_a_routed_instance_list` with the `instance-list-gui` fixture mode to verify two pages, a 16-bit cursor above 255, and selection of an instance. The OpENer harness with `--explore` checks the unsupported-service outcome independently.
+
+Run `explore_browses_known_and_advertised_instance_attributes` with the `class-info` fixture mode. It verifies selection of an advertised 16-bit attribute and removal of the advertised choices when the route changes. The CLI Explore suite verifies typed optional lists against raw class replies.
 
 Run the ignored tests `explore_requires_fresh_review_after_editing_a_staged_write` and `explore_previews_typed_bytes_and_clears_review_on_format_change` with separate localhost fixtures in `explicit-write-gui` mode. They verify review invalidation, the encoded preview, and the matched readback.
 

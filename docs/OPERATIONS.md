@@ -99,6 +99,14 @@ In **Explore**, enter a class ID or select a common attribute to fill in its cla
 
 The routed command takes the first bridge's address. The JSON keeps each reply's raw bytes, decoded value or decode error, and CIP status. The inspection returns exit code 0 when at least one field decodes and the only rejections are target statuses `0x08` or `0x14` for unsupported services or attributes. A router rejection, exchange failure, undecodable reply, or lack of a decoded value returns exit code 1.
 
+### Browse CIP attributes
+
+In **Explore**, choose **Browse attributes** after setting the class and instance. The picker names common attributes for supported object families. For a nonzero instance, **Read class info** also loads optional attribute IDs advertised for that class, endpoint, NIC, and route. Overlapping choices show the common name with an **Advertised** marker.
+
+Selecting a choice fills the attribute and request name. Use **Read** to query the chosen value or **Save / update read** to keep the request. The device reply determines support for the selected instance.
+
+The CLI `class-info` JSON exposes the class revision and other replies alongside numeric `optional_instance_attributes` and `optional_services` arrays. An empty array records a valid list with no entries. A `null` value records an unavailable or malformed list. The individual result shows the raw bytes, error or CIP status. [Danfoss common class attribute example](https://assets.danfoss.com/documents/366937/BC361183001812en-000201.pdf)
+
 ### Inspect a CIP port
 
 In **Explore → Port Object**, choose **Directory** or **Port instance**. Enter the instance you want and select **Read port info**. Both the GUI and CLI use one registered session with bounded Get_Attribute_Single requests. Leave **CIP route** blank to inspect the directly addressed device, or enter an existing route to inspect the device at its end.

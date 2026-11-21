@@ -6,7 +6,7 @@ use std::net::Ipv4Addr;
 pub const ASSEMBLY_CLASS: u32 = 0x04;
 const DATA_ATTRIBUTE: u32 = 3;
 pub(super) const SIZE_ATTRIBUTE: u32 = 4;
-const ATTRIBUTES: &[(u32, &str)] = &[
+pub(super) const ATTRIBUTES: &[(u32, &str)] = &[
     (SIZE_ATTRIBUTE, "Declared size"),
     (DATA_ATTRIBUTE, "Assembly data"),
 ];

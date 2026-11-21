@@ -4,7 +4,7 @@ use super::{Route, SavedReadBatch, batch::read_object_attributes};
 use std::net::Ipv4Addr;
 
 pub const CONNECTION_MANAGER_CLASS: u32 = 0x06;
-const COUNTERS: &[(u32, &str)] = &[
+pub(super) const COUNTERS: &[(u32, &str)] = &[
     (1, "Open requests"),
     (2, "Open format rejects"),
     (3, "Open resource rejects"),

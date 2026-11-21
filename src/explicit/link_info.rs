@@ -4,7 +4,7 @@ use super::{Route, SavedReadBatch, batch::read_object_attributes};
 use std::net::Ipv4Addr;
 
 pub const ETHERNET_LINK_CLASS: u32 = 0xf6;
-const ATTRIBUTES: &[(u32, &str)] = &[
+pub(super) const ATTRIBUTES: &[(u32, &str)] = &[
     (1, "Interface speed"),
     (2, "Interface flags"),
     (3, "MAC address"),

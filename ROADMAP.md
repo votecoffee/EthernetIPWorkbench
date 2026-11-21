@@ -80,6 +80,7 @@ The C# examples demonstrate HTTP and shared-memory latest values, retained HTTP 
 - Explore and `discover` support UDP broadcast and unicast ListIdentity, plus TCP ListIdentity for a known address. Compare the reported peer and advertised endpoint on the intended bench topology.
 - Explore and `list-objects` read the optional Message Router Object List on direct and routed targets. Verify the reported classes on physical devices that implement the attribute.
 - Explore and `list-instances` page through the 16-bit instance IDs a selected class reports via Find_Next_Object_Instance. Verify the optional service and pagination on supporting physical devices.
+- Explore's attribute picker combines common attribute names with the target's advertised optional instance attributes. Confirm the reported optional lists and selected instance reads on physical devices.
 - Variable-size T→O supports standard and Large Forward_Open, offline decoding, CSV and all three export feeds. Verify it on a physical adapter that produces variable-size assemblies.
 - Multicast T→O uses the adapter's group, port and connection ID with unicast O→T. Verify group membership and capture through a physical bench switch.
 - Listen-only profiles use the documented heartbeat assembly and read an existing multicast producer without taking output ownership. Verify against a physical adapter with a controlling multicast connection.

@@ -121,6 +121,8 @@ impl ClassInfo {
     pub fn report_json(&self) -> Result<String, String> {
         let mut document = self.batch.report_document()?;
         document["class"] = json!(self.class);
+        document["optional_instance_attributes"] = json!(self.optional_instance_attributes());
+        document["optional_services"] = json!(self.optional_services());
         if let Some(route) = &self.route {
             document["route"] = json!(route);
         }

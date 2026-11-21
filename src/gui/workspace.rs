@@ -852,6 +852,45 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode class-info on localhost"]
+    fn explore_browses_known_and_advertised_instance_attributes() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[
+            ("Serial through bridge", 6, Some("1/3")),
+            ("Serial direct", 6, None),
+        ]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "Read class info");
+        wait_for_explore(&mut device);
+        click(&mut device, &ctx, size, "Browse attributes");
+        let labels = draw(&mut device, &ctx, size);
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text == "0x3 · Product code · Advertised")
+        );
+        click(&mut device, &ctx, size, "0x100 · Advertised");
+        let labels = draw(&mut device, &ctx, size);
+        for expected in ["0x100", "Attribute 0x100", "1/3"] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Serial direct");
+        click(&mut device, &ctx, size, "Browse attributes");
+        let labels = draw(&mut device, &ctx, size);
+        assert!(labels.iter().any(|(text, _)| text == "0x3 · Product code"));
+        assert!(!labels.iter().any(|(text, _)| text == "0x100 · Advertised"));
+        click(&mut device, &ctx, size, "0x3 · Product code");
+        assert_eq!(device.snapshot(), saved);
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode class-info"]
     fn explore_reads_class_details_without_changing_the_saved_requests() {
         let ctx = egui::Context::default();

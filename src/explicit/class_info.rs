@@ -1,14 +1,16 @@
-use super::{ReadPath, Route, SavedRead, SavedReadBatch, le16, run_saved_reads};
+use super::{Route, SavedReadBatch, SavedReadOutcome, batch::read_object_attributes, le16};
 use std::net::Ipv4Addr;
 
-const ATTRIBUTES: [&str; 7] = [
-    "Class revision",
-    "Maximum instance ID",
-    "Instance count",
-    "Optional instance attributes",
-    "Optional services",
-    "Maximum class attribute ID",
-    "Maximum instance attribute ID",
+const OPTIONAL_INSTANCE_ATTRIBUTES: u32 = 4;
+const OPTIONAL_SERVICES: u32 = 5;
+pub(super) const ATTRIBUTES: &[(u32, &str)] = &[
+    (1, "Class revision"),
+    (2, "Maximum instance ID"),
+    (3, "Instance count"),
+    (OPTIONAL_INSTANCE_ATTRIBUTES, "Optional instance attributes"),
+    (OPTIONAL_SERVICES, "Optional services"),
+    (6, "Maximum class attribute ID"),
+    (7, "Maximum instance attribute ID"),
 ];
 
 pub struct ClassInfo {
@@ -23,6 +25,30 @@ impl ClassInfo {
     pub fn is_usable(&self) -> bool {
         self.batch.is_usable_inspection()
     }
+
+    /// IDs advertised by class attribute 4, when the target reports a valid list.
+    pub fn optional_instance_attributes(&self) -> Option<Vec<u16>> {
+        self.id_list(OPTIONAL_INSTANCE_ATTRIBUTES)
+    }
+
+    /// Service IDs advertised by class attribute 5, when the target reports a valid list.
+    pub fn optional_services(&self) -> Option<Vec<u16>> {
+        self.id_list(OPTIONAL_SERVICES)
+    }
+
+    fn id_list(&self, attribute: u32) -> Option<Vec<u16>> {
+        self.batch
+            .results
+            .iter()
+            .find_map(|entry| match &entry.outcome {
+                SavedReadOutcome::Reply(bytes)
+                    if entry.request.path.attribute == Some(attribute) =>
+                {
+                    decode_ids(bytes, "Class attribute ID list").ok()
+                }
+                _ => None,
+            })
+    }
 }
 
 /// Read common attributes of the selected class (instance zero) on one explicit session.
@@ -33,21 +59,7 @@ pub fn read_class_info(
     class: u32,
     route: Option<Route>,
 ) -> Result<ClassInfo, String> {
-    let reads = ATTRIBUTES
-        .iter()
-        .enumerate()
-        .map(|(index, name)| SavedRead {
-            name: (*name).into(),
-            path: ReadPath {
-                class,
-                instance: 0,
-                attribute: Some(index as u32 + 1),
-            },
-            route: route.clone(),
-            selection: None,
-        })
-        .collect();
-    let batch = run_saved_reads(adapter, local, reads)?;
+    let batch = read_object_attributes(adapter, local, class, 0, route.as_ref(), ATTRIBUTES)?;
     Ok(ClassInfo {
         class,
         route,
@@ -56,7 +68,7 @@ pub fn read_class_info(
 }
 
 pub(super) fn decode(attribute: u32, bytes: &[u8]) -> Result<String, String> {
-    if matches!(attribute, 4 | 5) {
+    if matches!(attribute, OPTIONAL_INSTANCE_ATTRIBUTES | OPTIONAL_SERVICES) {
         return decode_ids(bytes, "Class attribute ID list").map(|ids| format_ids(&ids));
     }
     if bytes.len() != 2 {

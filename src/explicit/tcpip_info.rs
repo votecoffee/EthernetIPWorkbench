@@ -4,7 +4,7 @@ use super::{Route, SavedReadBatch, batch::read_object_attributes, le32, route::l
 use std::net::Ipv4Addr;
 
 pub const TCPIP_INTERFACE_CLASS: u32 = 0xf5;
-const ATTRIBUTES: &[(u32, &str)] = &[
+pub(super) const ATTRIBUTES: &[(u32, &str)] = &[
     (1, "Interface status"),
     (2, "Configuration capability"),
     (3, "Configuration control"),

@@ -4,7 +4,7 @@ use super::{Route, SavedReadBatch, batch::read_object_attributes};
 use std::net::Ipv4Addr;
 
 pub const QOS_CLASS: u32 = 0x48;
-const ATTRIBUTES: &[(u32, &str)] = &[
+pub(super) const ATTRIBUTES: &[(u32, &str)] = &[
     (1, "802.1Q tag enable"),
     (2, "PTP event DSCP"),
     (3, "PTP general DSCP"),

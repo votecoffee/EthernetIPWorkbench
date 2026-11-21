@@ -79,6 +79,8 @@ For a documented field within a reply, enable **Decode reply field** and enter i
 
 Select **Read class info** beside the class field to inspect its revision, instance limits, and optional attributes and services advertised by the device. Expand a result for raw bytes or CIP status. The CLI `class-info` command provides the same inspection as JSON. [Class inspection](docs/OPERATIONS.md#inspect-a-cip-class)
 
+Choose **Browse attributes** to fill the attribute field from common choices or optional instance attributes advertised by the target. Then choose **Read** or save the address as a request. [Attribute browsing](docs/OPERATIONS.md#browse-cip-attributes)
+
 Select **List objects** to browse the classes advertised by a device's optional Message Router Object List. Selecting a class fills the read form for class inspection. The CLI `list-objects` command returns the same class IDs and raw reply. [Object List inspection](docs/OPERATIONS.md#browse-the-cip-object-list)
 
 Select **Find instances** to browse instance IDs for the selected class when the target supports Find_Next_Object_Instance. Select a returned instance to fill the read form, or use **Next instances** to advance the cursor. The CLI `list-instances` command reads one page. [CIP instance browsing](docs/OPERATIONS.md#browse-cip-instances)

@@ -10,6 +10,7 @@ use assembly_scanner::{
 };
 use std::sync::Arc;
 
+mod attributes;
 mod batch;
 mod class_info;
 mod instances;
@@ -18,15 +19,6 @@ mod receipt;
 mod services;
 mod write;
 
-const COMMON_PRESETS: [(&str, u32, u32); 7] = [
-    ("Identity · Vendor ID", 1, 1),
-    ("Identity · Device type", 1, 2),
-    ("Identity · Product code", 1, 3),
-    ("Identity · Revision", 1, 4),
-    ("Identity · Status", 1, 5),
-    ("Identity · Serial number", 1, 6),
-    ("Identity · Product name", 1, 7),
-];
 const NETWORK_PRESETS: [(&str, u32, u32); 3] = [
     (
         "TCP/IP Interface · Status",
@@ -421,7 +413,12 @@ impl Device {
             egui::ComboBox::from_id_salt("cip-presets")
                 .selected_text("Common attributes")
                 .show_ui(ui, |ui| {
-                    explorer.instance_one_presets(ui, &COMMON_PRESETS);
+                    for &(id, name) in explicit::known_attributes(1, 1) {
+                        let label = format!("Identity · {name}");
+                        if ui.selectable_label(false, &label).clicked() {
+                            explorer.load_preset(&label, 1, 1, id);
+                        }
+                    }
                     if ui.selectable_label(false, "Assembly · Data").clicked() {
                         explorer.load_preset(
                             "Input assembly data",
@@ -515,6 +512,7 @@ impl Device {
                 ui.label(label);
                 ui.add(egui::TextEdit::singleline(field).desired_width(80.0));
             }
+            explorer.browse_attributes(ui, &self.device, local.as_ref().ok().copied());
             if ui
                 .add_enabled(!explorer.busy(), egui::Button::new("Read class info"))
                 .on_hover_text("Read the selected class's common attributes at instance zero.")

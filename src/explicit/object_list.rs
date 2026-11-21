@@ -8,7 +8,7 @@ use std::net::Ipv4Addr;
 pub(super) const MESSAGE_ROUTER_CLASS: u32 = 2;
 pub(super) const MESSAGE_ROUTER_INSTANCE: u32 = 1;
 pub(super) const OBJECT_LIST_ATTRIBUTE: u32 = 1;
-const ATTRIBUTES: &[(u32, &str)] = &[(OBJECT_LIST_ATTRIBUTE, "Object List")];
+pub(super) const ATTRIBUTES: &[(u32, &str)] = &[(OBJECT_LIST_ATTRIBUTE, "Object List")];
 
 pub struct ObjectList {
     pub route: Option<Route>,

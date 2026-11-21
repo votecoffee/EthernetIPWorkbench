@@ -10,7 +10,7 @@ const DIRECTORY: &[(u32, &str)] = &[
     (8, "Entry port instance"),
     (9, "All ports"),
 ];
-const INSTANCE: &[(u32, &str)] = &[
+pub(super) const INSTANCE: &[(u32, &str)] = &[
     (1, "Port type"),
     (2, "Port number"),
     (3, "Link Object path"),

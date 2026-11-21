@@ -828,3 +828,9 @@ Pinned Windows OpENer rejected the optional Object List with CIP status `0x14` a
 The Windows loopback fixture verified Find_Next_Object_Instance requests for vendor class `0x1234` using a one-byte page limit. The test decoded a sparse list, advanced from cursor 300 using a 16-bit instance segment, and recognized both a terminal zero ID and an empty page. It retained malformed reply bytes and distinguished a repeated cursor, a target service rejection, and a bridge rejection. The headless Explore test paged through the same route, selected instance 600, and preserved the saved reads.
 
 Pinned Windows OpENer rejected the optional Assembly service with CIP status `0x08`. Positive enumeration and continuation were verified with the synthetic fixture. Physical-device verification remains open. [ODVA instance discovery example](https://www.odva.org/wp-content/uploads/2023/10/2023-ODVA-Conference_Majcher_Enabling-Data-Scientist-Use-Cases.pdf)
+
+## CIP attribute picker and class metadata
+
+The Windows localhost tests verified numeric optional instance-attribute and service arrays from class replies. Valid empty, unsupported, routed rejection, and malformed lists retained their individual outcomes. The headless Explore test selected the advertised attribute `0x0100` through route `1/3`, displayed a common attribute with its advertised marker, and confirmed that direct reads offered the common attribute without the routed device's advertised IDs. Selection filled the read form and preserved the saved requests.
+
+Pinned Windows OpENer confirmed the Assembly class metadata result and the separate optional-list outcomes. The selection workflow was verified using the synthetic routed fixture. Physical-device verification remains open. [Danfoss common class attribute example](https://assets.danfoss.com/documents/366937/BC361183001812en-000201.pdf)

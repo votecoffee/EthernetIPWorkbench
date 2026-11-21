@@ -250,6 +250,8 @@ def class_info_reply(cip, mode, report):
         return bytes.fromhex("8E 00 14 01 02 03")
     if mode == "class-info-malformed" and attribute == 4:
         return bytes.fromhex("8E 00 00 00 02 00 03 00")
+    if mode == "class-info-empty" and attribute in (4, 5):
+        return bytes.fromhex("8E 00 00 00 00 00")
     values = ("02 00", "01 00", "01 00", "02 00 03 00 00 01",
               "02 00 01 00 0E 00", "07 00", "00 01")
     return bytes.fromhex("8E 00 00 00 " + values[attribute - 1])
@@ -937,7 +939,7 @@ def main():
         "identity-then-owner", "routed-owner", "routed-large-owner",
         "routed-owner-replacement", "routed-owner-unexpected-peer",
         "explicit", "saved-reads", "multiple-service", "large-keyed", "routed", "variable-input", "large-variable-input",
-        "class-info", "class-info-malformed", "port-info", "port-info-optional", "port-info-malformed",
+        "class-info", "class-info-malformed", "class-info-empty", "port-info", "port-info-optional", "port-info-malformed",
         "tcpip-info", "tcpip-info-optional", "tcpip-info-malformed",
         "link-info", "link-info-optional", "link-info-malformed",
         "manager-info", "manager-info-optional", "manager-info-malformed",
