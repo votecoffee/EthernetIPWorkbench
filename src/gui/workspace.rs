@@ -1219,6 +1219,42 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode time-sync-optional on localhost"]
+    fn explore_reads_cip_sync_from_the_selected_route() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1250.0);
+        let mut device = explore_device(&[("Serial through bridge", 6, Some("1/3"))]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "Network objects");
+        click(&mut device, &ctx, size, "CIP Sync · Clock status");
+        click(&mut device, &ctx, size, "Read clock status");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "CIP Sync instance 1 · Reported synchronized",
+            "Route 1/3",
+            "Maximum offset from master · CIP rejection",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Grandmaster clock · Reply");
+        let labels = draw(&mut device, &ctx, size);
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text.starts_with("02:11:22:FF:FE:33:44:55"))
+        );
+        assert_eq!(device.snapshot(), saved);
+        assert!(device.connection.is_none());
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode dlr-info-optional on localhost"]
     fn explore_reads_ring_fault_and_supervisor_details_through_a_route() {
         let ctx = egui::Context::default();

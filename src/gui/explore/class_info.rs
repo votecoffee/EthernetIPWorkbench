@@ -64,6 +64,11 @@ impl Explorer {
                     Self::read_dlr_info,
                 )
             }
+            Ok(explicit::TIME_SYNC_CLASS) => (
+                "Read clock status",
+                "Read the selected device's reported CIP Sync status and grandmaster details.",
+                Self::read_time_sync,
+            ),
             Ok(explicit::CONNECTION_MANAGER_CLASS) => (
                 "Read connection counters",
                 "Read the selected Connection Manager's open, close, reject and timeout counters.",
@@ -436,7 +441,7 @@ pub(super) fn show_profile_assemblies(ui: &mut Ui, report: &ProfileAssemblyCheck
         });
 }
 
-fn show_inspection(
+pub(super) fn show_inspection(
     ui: &mut Ui,
     title: String,
     id: &str,

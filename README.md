@@ -103,6 +103,8 @@ Choose **Network objects → LLDP neighbors** to look up the local port, MAC add
 
 Choose **Network objects → Device Level Ring · Status** to read the target's ring topology, network status, and active supervisor. Enable **Include supervisor details** to read fault counters and the last active nodes on supporting targets. The CLI offers the same inspection through `dlr-info`. [Device Level Ring diagnostics](docs/OPERATIONS.md#inspect-device-level-ring-status)
 
+Choose **Network objects → CIP Sync · Clock status** to read the device's PTP state, grandmaster identity, and reported clock offsets. Use `time-sync-info` for the same report from the CLI. [CIP Sync diagnostics](docs/OPERATIONS.md#inspect-cip-sync-clock-status)
+
 Choose **Network objects → Quality of Service · Explicit DSCP**, then select **Read QoS settings** for the selected target's configured DSCP values and 802.1Q tag setting where supported. The CLI `qos-info` command exports the same results. [QoS inspection](docs/OPERATIONS.md#inspect-quality-of-service-settings)
 
 Choose **Connection Manager** in Explore, then select **Read connection counters** to inspect the target's cumulative open, close, rejection, and timeout totals. The CLI `manager-info` command exports the same results. [Connection Manager counters](docs/OPERATIONS.md#inspect-connection-manager-counters)

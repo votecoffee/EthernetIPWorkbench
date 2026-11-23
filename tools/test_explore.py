@@ -658,6 +658,70 @@ def check_dlr_info(exe, root):
     print("DLR inspection passed direct and routed reads, fault endpoints, unavailable fields, and malformed replies.")
 
 
+def check_time_sync(exe, root):
+    attrs = [1, 2, 8, 18, 5, 6, 7, 12, 27]
+    for case, mode, route, code in (
+        ("direct", "time-sync", None, 0), ("routed", "time-sync-optional", "1/3", 0),
+        ("empty", "time-sync-empty", None, 0), ("malformed", "time-sync-malformed", None, 1),
+    ):
+        command = [exe, "time-sync-info", LOCAL, LOCAL, "1"]
+        if route:
+            command.extend(("--route", route))
+        result, peer = with_adapter(root, f"time-sync-{case}", command, mode, encoding="utf-8")
+        assert result.returncode == code and not result.stderr, (result.stdout, result.stderr)
+        (root / f"time-sync-{case}.json").write_text(result.stdout, encoding="utf-8")
+        report = json.loads(result.stdout)
+        assert (report["class"], report["instance"], report.get("route")) == (0x43, 1, route)
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert peer["route_hex"] == ("0103" if route else "")
+        assert peer["time_sync_attributes"] == attrs
+        rows = {row["path"]["attribute"]: row for row in report["results"]}
+        assert list(rows) == attrs
+        clock = report["time_sync"]
+        assert clock["mean_path_delay_to_master_ns"] == 43210
+        assert clock["steps_removed"] == (0 if case == "empty" else 258)
+        if case == "malformed":
+            for field, attribute, size, error in (
+                ("synchronized", 2, 1, "one-byte BOOL"),
+                ("offset_from_master_ns", 5, 7, "eight-byte LINT"),
+                ("grandmaster", 8, 23, "24 bytes"),
+                ("port_states", 12, 10, "count 3"),
+            ):
+                assert clock[field] is None and error in rows[attribute]["decode_error"]
+                assert len(bytes.fromhex(rows[attribute]["data_hex"])) == size
+            continue
+        if case == "empty":
+            assert clock["synchronized"] is False and clock["ptp_enabled"] is False
+            assert clock["offset_from_master_ns"] == 0 and clock["domain_number"] == 0
+            assert clock["grandmaster"]["clock_identity"] is None and clock["port_states"] == []
+            assert rows[12]["data_hex"] == "00 00"
+            continue
+        assert clock["synchronized"] is True and clock["ptp_enabled"] is True
+        assert clock["domain_number"] == 24 and clock["offset_from_master_ns"] == -123456789012
+        assert rows[5]["decoded"] == "-123456789012 ns"
+        assert clock["grandmaster"] == {
+            "clock_identity": "02:11:22:FF:FE:33:44:55", "clock_class": 6, "time_accuracy_code": 0x22,
+            "offset_scaled_log_variance": 0x1234, "current_utc_offset_raw": 37,
+            "time_property_flags": 0x800C, "time_source_code": 0x20, "priority1": 64, "priority2": 128,
+        }
+        assert clock["port_states"] == [
+            {"port_number": 1, "state_code": 9},
+            {"port_number": 2, "state_code": 6},
+            {"port_number": 257, "state_code": 0x0400},
+        ]
+        assert rows[12]["decoded"].splitlines()[-1].endswith("Unknown (1024)")
+        if route:
+            assert clock["max_offset_from_master_ns"] is None
+            assert (rows[6]["reply_from"], rows[6]["general_status"], rows[6]["extended_status"]) == (
+                "target", 0x14, [0x0302],
+            )
+        else:
+            assert clock["max_offset_from_master_ns"] == 0x8100000000000280
+    result = subprocess.run([exe, "time-sync-info", LOCAL, LOCAL, "0"], capture_output=True, timeout=5)
+    assert result.returncode == 1 and b"requires a nonzero instance" in result.stderr
+    print("CIP Sync inspection passed direct and routed reads, clock and port decoding, and unavailable or malformed fields.")
+
+
 def check_connection_data(exe, root):
     for case, mode, route, triad, status in (
         ("number", "connection-data", None, False, None),
@@ -1274,6 +1338,7 @@ def main():
     check_link_port_details(exe, root)
     check_lldp_neighbor(exe, root)
     check_dlr_info(exe, root)
+    check_time_sync(exe, root)
     check_manager_info(exe, root)
     check_connection_data(exe, root)
     check_qos_info(exe, root)

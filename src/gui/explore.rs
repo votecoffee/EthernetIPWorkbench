@@ -5,8 +5,8 @@ use assembly_scanner::{
         self, AssemblyInfo, AttributeListReport, AttributeWrite, Class3Size, ClassInfo,
         ConnectionDataReport, DlrReport, InstancePage, LinkInfo, LldpNeighborReport, ManagerInfo,
         ObjectList, PortInfo, ProfileAssemblyCheck, QosInfo, ReadPath, Reader, Route, SavedRead,
-        SavedReadMode, SavedReadReport, TcpIpInfo, WriteCurrentCheck, WriteInspection,
-        WriteOutcome, WriteReport,
+        SavedReadMode, SavedReadReport, TcpIpInfo, TimeSyncReport, WriteCurrentCheck,
+        WriteInspection, WriteOutcome, WriteReport,
     },
 };
 use std::sync::Arc;
@@ -20,9 +20,10 @@ mod instances;
 mod object_list;
 mod receipt;
 mod services;
+mod time_sync;
 mod write;
 
-const NETWORK_PRESETS: [(&str, u32, u32); 5] = [
+const NETWORK_PRESETS: [(&str, u32, u32); 6] = [
     (
         "TCP/IP Interface · Status",
         explicit::TCPIP_INTERFACE_CLASS,
@@ -31,6 +32,7 @@ const NETWORK_PRESETS: [(&str, u32, u32); 5] = [
     ("Ethernet Link · Speed", explicit::ETHERNET_LINK_CLASS, 1),
     ("LLDP neighbors", explicit::LLDP_DATA_TABLE_CLASS, 1),
     ("Device Level Ring · Status", explicit::DLR_CLASS, 2),
+    ("CIP Sync · Clock status", explicit::TIME_SYNC_CLASS, 2),
     ("Quality of Service · Explicit DSCP", explicit::QOS_CLASS, 8),
 ];
 
@@ -49,6 +51,7 @@ enum Response {
     LinkInfo(LinkInfo),
     LldpNeighbor(LldpNeighborReport),
     DlrInfo(DlrReport),
+    TimeSync(TimeSyncReport),
     ManagerInfo(ManagerInfo),
     QosInfo(QosInfo),
     AssemblyInfo(AssemblyInfo),
@@ -101,6 +104,7 @@ pub(super) struct Explorer {
     lldp_neighbor: Option<LldpNeighborReport>,
     dlr_info: Option<DlrReport>,
     dlr_supervisor_details: bool,
+    time_sync: Option<TimeSyncReport>,
     manager_info: Option<ManagerInfo>,
     qos_info: Option<QosInfo>,
     assembly_info: Option<AssemblyInfo>,
@@ -149,6 +153,7 @@ impl Default for Explorer {
             lldp_neighbor: None,
             dlr_info: None,
             dlr_supervisor_details: false,
+            time_sync: None,
             manager_info: None,
             qos_info: None,
             assembly_info: None,
@@ -217,6 +222,7 @@ impl Explorer {
             Ok(Ok(Response::LinkInfo(info))) => self.link_info = Some(info),
             Ok(Ok(Response::LldpNeighbor(info))) => self.lldp_neighbor = Some(info),
             Ok(Ok(Response::DlrInfo(info))) => self.dlr_info = Some(info),
+            Ok(Ok(Response::TimeSync(info))) => self.time_sync = Some(info),
             Ok(Ok(Response::ManagerInfo(info))) => self.manager_info = Some(info),
             Ok(Ok(Response::QosInfo(info))) => self.qos_info = Some(info),
             Ok(Ok(Response::AssemblyInfo(info))) => self.assembly_info = Some(info),
@@ -725,6 +731,9 @@ impl Device {
         }
         if let Some(info) = &explorer.dlr_info {
             class_info::show_dlr(ui, info);
+        }
+        if let Some(info) = &explorer.time_sync {
+            time_sync::show(ui, info);
         }
         if let Some(info) = &explorer.manager_info {
             class_info::show_manager(ui, info);

@@ -217,6 +217,19 @@ The inspection reads network topology and status, the active supervisor address,
 
 The CLI reports structured values under `dlr`. Review the per-attribute result for any unreported, unsupported, or malformed field. A zero count is a reported value. A successful address reply with zero IP and MAC fields shows **No address reported** and retains the original bytes. The inspection uses Get_Attribute_Single on one registered session and leaves the ring settings and counters intact.
 
+### Inspect CIP Sync clock status
+
+In **Explore → Network objects**, choose **CIP Sync · Clock status** and select **Read clock status**. The preset uses Time Sync Object class `0x43`, instance 1. Enter a documented CIP route to inspect the device at the end of that route.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe time-sync-info 192.0.2.10 192.0.2.11 1
+.\target\release\eipmaster-cli.exe time-sync-info 192.0.2.10 192.0.2.11 1 --route 1/3
+~~~
+
+Compare the reported synchronization state, PTP domain, and grandmaster identity across the devices of interest. The report includes the device's offset and mean path delay in nanoseconds, maximum offset, PTP port states, and steps removed. The grandmaster fields retain the original UTC offset word and time-property flags for review. The inspection reads each attribute once on one registered session, so the values may reflect different instants. The capture timestamps continue to use the scanner's receive clock. [Rockwell Automation grandmaster verification](https://www.rockwellautomation.com/en-id/docs/technical/i-o/current/5034-pointmax/_online/5034-um004-ditamap/io-link-master-module/cip-sync-time.html) · [Micro-Epsilon Time Sync attributes](https://www.micro-epsilon.com.cn/fileadmin/download/manuals/man--optoNCDT-1900-IE-EtherNet-IP--en.pdf#page=82)
+
+The CLI report puts decoded fields under `time_sync` and retains every raw reply, CIP rejection, and decode error. A reported `false` synchronization flag or an empty port list is a decoded value. A missing or malformed field appears as `null` in the summary. The inspection leaves device clock settings intact.
+
 ### Inspect Quality of Service settings
 
 In **Explore → Network objects**, choose **Quality of Service · Explicit DSCP** and select **Read QoS settings**. Use instance 1 unless the device documents another nonzero instance. An optional CIP route addresses the device at the end of a known path.

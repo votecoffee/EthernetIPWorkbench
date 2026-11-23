@@ -37,6 +37,7 @@ mod qos_info;
 mod report;
 mod route;
 mod tcpip_info;
+mod time_sync;
 mod write;
 mod write_draft;
 mod write_receipt;
@@ -81,6 +82,9 @@ pub use tcpip_info::{
     AddressConflictDiagnostics, AddressConflictRecord, Ipv4Arp, MulticastConfiguration,
     TCPIP_INTERFACE_CLASS, TcpIpDiagnostics, TcpIpInfo, read_tcpip_address_conflicts,
     read_tcpip_diagnostics, read_tcpip_info,
+};
+pub use time_sync::{
+    GrandmasterClock, PtpPortState, TIME_SYNC_CLASS, TimeSyncReport, TimeSyncStatus, read_time_sync,
 };
 pub use write::{
     AttributeWrite, CurrentValueCheck, ReadbackOutcome, WriteCurrentCheck, WriteInspection,
@@ -156,6 +160,7 @@ impl ReadPath {
                     (ETHERNET_LINK_CLASS, 1..) => link_info::decode(attribute, bytes),
                     (LLDP_DATA_TABLE_CLASS, 1..) => lldp_neighbor::decode(attribute, bytes),
                     (DLR_CLASS, 1..) => dlr_info::decode(attribute, bytes),
+                    (TIME_SYNC_CLASS, 1..) => time_sync::decode(attribute, bytes),
                     (CONNECTION_MANAGER_CLASS, 1..) => manager_info::decode(attribute, bytes),
                     (QOS_CLASS, 1..) => qos_info::decode(attribute, bytes),
                     (ASSEMBLY_CLASS, 1..) => assembly_info::decode(attribute, bytes),

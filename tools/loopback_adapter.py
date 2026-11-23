@@ -497,6 +497,30 @@ def dlr_info_reply(cip, mode, report):
     return bytes.fromhex("8E 00 00 00") + values[attribute]
 
 
+def time_sync_reply(cip, mode, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    assert route in (b"", b"\x01\x03")
+    assert len(message) == 8 and message[:7] == bytes.fromhex("0E 03 20 43 24 01 30")
+    attribute = message[-1]
+    report.setdefault("time_sync_attributes", []).append(attribute)
+    report["route_hex"] = route.hex()
+    if mode == "time-sync-optional" and attribute == 6:
+        return bytes.fromhex("8E 00 14 01 02 03")
+    values = {
+        1: b"\x01", 2: b"\x01", 5: struct.pack("<q", -123456789012),
+        6: struct.pack("<Q", 0x8100000000000280), 7: struct.pack("<q", 43210),
+        8: bytes.fromhex("02 11 22 FF FE 33 44 55") + struct.pack("<8H", 6, 0x22, 0x1234, 37, 0x800C, 0x20, 64, 128),
+        12: struct.pack("<7H", 3, 1, 9, 2, 6, 257, 0x0400),
+        18: b"\x18", 27: struct.pack("<H", 258),
+    }
+    if mode == "time-sync-empty":
+        values.update({1: bytes(1), 2: bytes(1), 5: bytes(8), 8: bytes(24), 12: bytes(2),
+                       18: bytes(1), 27: bytes(2)})
+    if mode == "time-sync-malformed":
+        values.update({2: b"\x02", 5: values[5][:-1], 8: values[8][:-1], 12: values[12][:-4]})
+    return bytes.fromhex("8E 00 00 00") + values[attribute]
+
+
 def qos_info_reply(cip, mode, report):
     route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
     assert len(message) == 8 and message[:7] == bytes.fromhex("0E 03 20 48 24 01 30")
@@ -718,6 +742,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
         "link-info": link_info_reply,
         "lldp-neighbor": lldp_neighbor_reply,
         "dlr-info": dlr_info_reply,
+        "time-sync": time_sync_reply,
         "manager-info": manager_info_reply,
         "connection-data": connection_data_reply,
         "qos-info": qos_info_reply,
@@ -1122,6 +1147,7 @@ def main():
         "lldp-neighbor", "lldp-neighbor-empty", "lldp-neighbor-optional", "lldp-neighbor-malformed",
         "lldp-neighbor-gui",
         "dlr-info", "dlr-info-optional", "dlr-info-empty", "dlr-info-malformed",
+        "time-sync", "time-sync-optional", "time-sync-empty", "time-sync-malformed",
         "manager-info", "manager-info-optional", "manager-info-malformed",
         "connection-data", "connection-data-malformed", "connection-data-mismatch",
         "connection-data-unsupported", "connection-data-not-found",

@@ -530,6 +530,21 @@ def check_dlr_info(cli, adapter, root):
     print("DLR-enabled OpENer reported linear topology, normal status, and unsupported supervisor details.")
 
 
+def check_time_sync_unavailable(cli, adapter, root):
+    root.mkdir()
+    with run_adapter(adapter, root):
+        result = subprocess.run([cli, "time-sync-info", ADAPTER, "127.0.0.1", "1"],
+                                capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+    (root / "result.json").write_bytes(result.stdout)
+    assert result.returncode == 1 and not result.stderr, (result.stdout, result.stderr)
+    report = json.loads(result.stdout)
+    assert (report["class"], report["instance"]) == (0x43, 1)
+    assert [row["path"]["attribute"] for row in report["results"]] == [1, 2, 8, 18, 5, 6, 7, 12, 27]
+    assert all(row["status"] == "cip_rejected" and row["general_status"] == 0x05 for row in report["results"])
+    assert all(value is None for value in report["time_sync"].values())
+    print("OpENer returned CIP status 0x05 for all Time Sync attributes.")
+
+
 def check_manager_info(cli, adapter, root):
     root.mkdir()
     with run_adapter(adapter, root):
@@ -941,6 +956,7 @@ def main():
         check_link_info(cli, adapter, root / "link-info")
         check_link_port_details(cli, adapter, root / "link-port-details")
         check_lldp_neighbor(cli, adapter, root / "lldp-neighbor")
+        check_time_sync_unavailable(cli, adapter, root / "time-sync")
         check_manager_info(cli, adapter, root / "manager-info")
         check_connection_data(cli, adapter, root / "connection-data")
         check_qos_info(cli, adapter, root / "qos-info")

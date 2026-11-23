@@ -57,6 +57,7 @@ Usage:
   eipmaster-cli link-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--port-details] [--route <port/link/...>]
   eipmaster-cli lldp-neighbor <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli dlr-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--supervisor-details] [--route <port/link/...>]
+  eipmaster-cli time-sync-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli manager-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli connection-data <adapter-or-bridge-ipv4> <local-ipv4> <number|connection-serial:vendor:originator-serial> [--route <port/link/...>]
   eipmaster-cli qos-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
@@ -316,6 +317,17 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                 explicit::parse_id(&instance.to_string_lossy())?,
                 route,
                 supervisor_details,
+            )?;
+            println!("{}", report.report_json()?);
+            Ok(report.is_usable())
+        }
+        [command, adapter, local, instance, options @ ..] if command == "time-sync-info" => {
+            let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;
+            let report = explicit::read_time_sync(
+                adapter,
+                local,
+                explicit::parse_id(&instance.to_string_lossy())?,
+                route,
             )?;
             println!("{}", report.report_json()?);
             Ok(report.is_usable())

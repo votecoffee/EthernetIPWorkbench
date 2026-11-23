@@ -805,6 +805,12 @@ The Windows loopback fixture verified direct status reads and routed supervisor 
 
 The Windows OpENer fixture initialized the pinned stack's basic DLR object through the loopback launcher. Independent replies reported linear topology, normal status, no supervisor address, and capability flags `0x00000082`. Its six optional supervisor reads returned CIP status `0x14`. Supervisor data and ring faults were exercised by the synthetic fixture. Physical ring and supervisor acceptance remains open. [Pinned OpENer DLR implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipdlr.c)
 
+## CIP Sync clock status
+
+The Windows loopback fixture verified nine Time Sync attribute reads on one registered session over direct and routed paths. The replies exercised negative offsets, 64-bit maximum offsets, grandmaster identity and property words, and a counted port-state list with an unknown state code. The fixture also confirmed that a false synchronization flag and zero ports remain valid values. Malformed fields retained the raw bytes and decode errors. The headless Explore check displayed the routed grandmaster and the separate optional attribute rejection.
+
+The independent Windows OpENer adapter returned CIP status `0x05` for all nine reads because its Time Sync Object was unavailable. The CLI kept those rejections and exited with code 1. Positive CIP Sync replies were verified with the synthetic fixture. Acceptance on a physical CIP Sync participant remains open. [Rockwell Automation Time Sync Object example](https://www.rockwellautomation.com/en-id/docs/technical/i-o/current/5034-pointmax/_online/5034-um004-ditamap/io-link-master-module/cip-sync-time.html)
+
 ## CIP Connection Manager counters
 
 The Windows loopback fixture verified eight Get_Attribute_Single reads on one registered session for each inspection. It decoded both zero and 65,535, retained raw bytes for a reply with an invalid width, and kept the target's unsupported-attribute status separate from router failures. A later timeout counter still decoded after the malformed close counter. The headless Explore checks verified the routed view, counter display, and optional rejection alongside the existing Port Object, TCP/IP Interface, and Ethernet Link workflows.
