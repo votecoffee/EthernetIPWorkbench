@@ -58,7 +58,10 @@ pub use connection_data::{
     ConnectionTriad, read_connection_data,
 };
 pub use instances::{INSTANCE_PAGE_SIZE, InstanceIds, InstancePage, find_instances_page};
-pub use link_info::{ETHERNET_LINK_CLASS, LinkInfo, read_link_info};
+pub use link_info::{
+    ETHERNET_LINK_CLASS, LinkCapabilities, LinkControl, LinkInfo, LinkPortDetails, LinkSpeedDuplex,
+    read_link_info, read_link_port_details,
+};
 pub use manager_info::{CONNECTION_MANAGER_CLASS, ManagerInfo, read_manager_info};
 pub use multiple::run_saved_reads_packet;
 pub use object_list::{ObjectList, read_object_list};

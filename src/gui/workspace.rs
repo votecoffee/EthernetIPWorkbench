@@ -1320,6 +1320,72 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode link-info-details-optional on localhost"]
+    fn explore_reads_ethernet_port_details_through_the_selected_route() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1100.0);
+        let mut device = explore_device(&[("Serial through bridge", 6, Some("1/3"))]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "Network objects");
+        click(&mut device, &ctx, size, "Ethernet Link · Speed");
+        click(
+            &mut device,
+            &ctx,
+            size,
+            "Include port settings and capabilities",
+        );
+        click(&mut device, &ctx, size, "Read link info");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Route 1/3",
+            "Ethernet Link instance 1 · Port 1",
+            "Administrative state · CIP rejection",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        let (_, row) = labels
+            .iter()
+            .find(|(text, _)| text == "Media counters · Reply")
+            .unwrap();
+        let scroll_to_end = |device: &mut Device| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                events: vec![
+                    egui::Event::PointerMoved(row.center()),
+                    egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Point,
+                        delta: egui::vec2(0.0, -240.0),
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| device.show(ctx, &[]));
+            for _ in 0..8 {
+                draw(device, &ctx, size);
+            }
+        };
+        scroll_to_end(&mut device);
+        click(&mut device, &ctx, size, "Interface capabilities · Reply");
+        scroll_to_end(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text.contains("1000 Mb/s full duplex"))
+        );
+        assert_eq!(device.snapshot(), saved);
+        assert!(device.connection.is_none());
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode tcpip-info-optional on localhost"]
     fn explore_inspects_a_routed_tcpip_interface_without_changing_saved_requests() {
         let ctx = egui::Context::default();

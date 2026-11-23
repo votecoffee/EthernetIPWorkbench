@@ -368,20 +368,34 @@ def link_info_reply(cip, mode, report):
     assert len(message) == 8 and message[:5] == bytes.fromhex("0E 03 20 F6 24")
     instance, tag, attribute = message[5:]
     assert (instance, route) in ((1, b""), (1, b"\x01\x03"), (2, b"\x01\x03"))
-    assert tag == 0x30 and 1 <= attribute <= 5
+    details = mode.startswith("link-info-details")
+    assert tag == 0x30 and 1 <= attribute <= (11 if details else 5)
     report.setdefault("link_reads", []).append([instance, attribute])
     report["route_hex"] = route.hex()
-    if mode == "link-info-optional" and attribute == 5:
+    if (mode == "link-info-optional" and attribute == 5
+            or mode == "link-info-details-optional" and attribute == 9):
         return bytes.fromhex("8E 00 14 01 02 03")
     flags = 0x80000077 if instance == 1 else 0x02
     interface = struct.pack("<11I", 0xFFFFFFFF, *range(1, 10), 0x80000002)
     if mode == "link-info-malformed":
         interface = interface[:-1]
-    data = (
+    values = (
         struct.pack("<I", 1000 if instance == 1 else 0), struct.pack("<I", flags),
         bytes.fromhex("02 AB CD 10 20 30"), interface, struct.pack("<12I", *range(20, 32)),
-    )[attribute - 1]
-    return bytes.fromhex("8E 00 00 00") + data
+    )
+    if details:
+        caps = struct.pack("<IB", 0x8000000F, 3)
+        caps += b"".join(struct.pack("<HB", speed, duplex) for speed, duplex in ((10, 0), (100, 1), (1000, 1)))
+        port_label = b"\x06Port 1" if instance == 1 else b"\x05\x00Fiber\x00"
+        if mode == "link-info-details-malformed":
+            port_label, caps = b"\x06Port", caps[:-1]
+        values += (
+            struct.pack("<HH", 0x0003 if instance == 1 else 0x0002, 1000),
+            bytes((2 if instance == 1 else 3,)),
+            bytes((1 if instance == 1 else 2,)),
+            b"\x01", port_label, caps,
+        )
+    return bytes.fromhex("8E 00 00 00") + values[attribute - 1]
 
 
 def connection_data_reply(cip, mode, report):
@@ -1045,6 +1059,7 @@ def main():
         "acd-info-unknown-arp",
         "tcpip-info", "tcpip-info-optional", "tcpip-info-malformed",
         "link-info", "link-info-optional", "link-info-malformed",
+        "link-info-details", "link-info-details-optional", "link-info-details-malformed",
         "manager-info", "manager-info-optional", "manager-info-malformed",
         "connection-data", "connection-data-malformed", "connection-data-mismatch",
         "connection-data-unsupported", "connection-data-not-found",

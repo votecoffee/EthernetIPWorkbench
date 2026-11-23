@@ -3,13 +3,23 @@
 use super::{Route, SavedReadBatch, batch::read_object_attributes};
 use std::net::Ipv4Addr;
 
+mod port_details;
+pub use port_details::{LinkCapabilities, LinkControl, LinkPortDetails, LinkSpeedDuplex};
+
 pub const ETHERNET_LINK_CLASS: u32 = 0xf6;
+const BASIC_ATTRIBUTE_COUNT: usize = 5;
 pub(super) const ATTRIBUTES: &[(u32, &str)] = &[
     (1, "Interface speed"),
     (2, "Interface flags"),
     (3, "MAC address"),
     (4, "Interface counters"),
     (5, "Media counters"),
+    port_details::CONTROL_ATTRIBUTE,
+    port_details::TYPE_ATTRIBUTE,
+    port_details::STATE_ATTRIBUTE,
+    port_details::ADMIN_ATTRIBUTE,
+    port_details::LABEL_ATTRIBUTE,
+    port_details::CAPABILITY_ATTRIBUTE,
 ];
 const INTERFACE_COUNTERS: &[&str] = &[
     "Input octets",
@@ -59,6 +69,32 @@ pub fn read_link_info(
     instance: u32,
     route: Option<Route>,
 ) -> Result<LinkInfo, String> {
+    read_info(
+        adapter,
+        local,
+        instance,
+        route,
+        &ATTRIBUTES[..BASIC_ATTRIBUTE_COUNT],
+    )
+}
+
+/// Include the reported port control, state, label and capabilities in the link inspection.
+pub fn read_link_port_details(
+    adapter: Ipv4Addr,
+    local: Ipv4Addr,
+    instance: u32,
+    route: Option<Route>,
+) -> Result<LinkInfo, String> {
+    read_info(adapter, local, instance, route, ATTRIBUTES)
+}
+
+fn read_info(
+    adapter: Ipv4Addr,
+    local: Ipv4Addr,
+    instance: u32,
+    route: Option<Route>,
+    attributes: &[(u32, &str)],
+) -> Result<LinkInfo, String> {
     if instance == 0 {
         return Err("Ethernet Link inspection requires a nonzero instance".into());
     }
@@ -68,7 +104,7 @@ pub fn read_link_info(
         ETHERNET_LINK_CLASS,
         instance,
         route.as_ref(),
-        ATTRIBUTES,
+        attributes,
     )?;
     Ok(LinkInfo {
         instance,
@@ -91,7 +127,7 @@ pub(super) fn decode(attribute: u32, bytes: &[u8]) -> Option<Result<String, Stri
             .map_err(|_| "MAC address requires six bytes".into()),
         4 => counters(bytes, INTERFACE_COUNTERS),
         5 => counters(bytes, MEDIA_COUNTERS),
-        _ => return None,
+        _ => return port_details::decode(attribute, bytes),
     })
 }
 

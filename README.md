@@ -97,6 +97,8 @@ Select **Read address conflicts** or run `acd-info` to check IPv4 address confli
 
 Choose **Network objects → Ethernet Link · Speed**, then select **Read link info** for the selected port's reported speed, link state, duplex, MAC address, and available counters. The CLI `link-info` command exports the same results. [Ethernet Link diagnostics](docs/OPERATIONS.md#inspect-ethernet-link-diagnostics)
 
+Enable **Include port settings and capabilities**, or pass `link-info --port-details`, for the port label, operating and administrative state, speed and duplex settings, and supported modes. [Ethernet port details](docs/OPERATIONS.md#inspect-ethernet-port-settings)
+
 Choose **Network objects → Quality of Service · Explicit DSCP**, then select **Read QoS settings** for the selected target's configured DSCP values and 802.1Q tag setting where supported. The CLI `qos-info` command exports the same results. [QoS inspection](docs/OPERATIONS.md#inspect-quality-of-service-settings)
 
 Choose **Connection Manager** in Explore, then select **Read connection counters** to inspect the target's cumulative open, close, rejection, and timeout totals. The CLI `manager-info` command exports the same results. [Connection Manager counters](docs/OPERATIONS.md#inspect-connection-manager-counters)

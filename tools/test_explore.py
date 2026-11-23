@@ -448,6 +448,7 @@ def check_link_info(exe, root):
         report = json.loads(result.stdout)
         (root / f"link-info-{name}.json").write_text(result.stdout, encoding="utf-8")
         assert (report["class"], report["instance"], report.get("route")) == (0xF6, instance, route)
+        assert "port_details" not in report
         assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
         assert peer["link_reads"] == [[instance, attr] for attr in range(1, 6)]
         assert peer["route_hex"] == ("0103" if route else "")
@@ -476,6 +477,57 @@ def check_link_info(exe, root):
     result = subprocess.run([exe, "link-info", LOCAL, LOCAL, "0"], capture_output=True, timeout=5)
     assert result.returncode != 0 and b"nonzero instance" in result.stderr
     print("Ethernet Link diagnostics passed direct, routed optional, and malformed replies.")
+
+
+def check_link_port_details(exe, root):
+    for case, mode, instance, route, code in (
+        ("direct", "link-info-details", 1, None, 0),
+        ("routed", "link-info-details-optional", 2, "1/3", 0),
+        ("malformed", "link-info-details-malformed", 1, None, 1),
+    ):
+        options = ("--route", route, "--port-details") if route else ("--port-details",)
+        command = [exe, "link-info", LOCAL, LOCAL, str(instance), *options]
+        result, peer = with_adapter(root, f"link-port-details-{case}", command, mode, encoding="utf-8")
+        assert result.returncode == code and not result.stderr, (result.stdout, result.stderr)
+        (root / f"link-port-details-{case}.json").write_text(result.stdout, encoding="utf-8")
+        report = json.loads(result.stdout)
+        assert (report["class"], report["instance"], report.get("route")) == (0xF6, instance, route)
+        assert peer["link_reads"] == [[instance, attr] for attr in range(1, 12)]
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert peer["route_hex"] == ("0103" if route else "")
+        rows = report["results"]
+        assert [row["path"]["attribute"] for row in rows] == list(range(1, 12))
+        details = report["port_details"]
+        assert details["interface_type"] == (3 if route else 2)
+        assert details["operational_state"] == (2 if route else 1)
+        assert details["administrative_state"] == (None if route else 1)
+        assert details["control"] == {
+            "control_bits": 2 if route else 3, "auto_negotiate": not route,
+            "forced_full_duplex": True if route else None, "forced_speed_mbps": 1000 if route else None,
+        }
+        if route:
+            assert (rows[8]["reply_from"], rows[8]["general_status"], rows[8]["extended_status"]) == (
+                "target", 0x14, [0x0302],
+            )
+            assert rows[5]["decoded"] == "0x0002 · Forced 1000 Mb/s full duplex"
+        else:
+            assert rows[5]["data_hex"] == "03 00 E8 03" and "Auto-negotiation enabled" in rows[5]["decoded"]
+        if case == "malformed":
+            assert details["label"] is None and details["capabilities"] is None
+            assert rows[9]["data_hex"] == "06 50 6F 72 74"
+            assert "Interface label length" in rows[9]["decode_error"]
+            assert len(bytes.fromhex(rows[10]["data_hex"])) == 13
+            assert "declare 3 speed/duplex entries" in rows[10]["decode_error"]
+        else:
+            assert details["label"] == ("Fiber" if route else "Port 1")
+            assert details["capabilities"] == {
+                "flags": 0x8000000F, "manual_setting_requires_reset": True, "auto_negotiate": True,
+                "auto_mdix": True, "manual_speed_duplex": True,
+                "speed_duplex_options": [
+                    {"speed_mbps": speed, "duplex_code": duplex} for speed, duplex in ((10, 0), (100, 1), (1000, 1))
+                ],
+            }
+    print("Ethernet Link port details passed direct and routed reads, two label formats, and malformed replies.")
 
 
 def check_connection_data(exe, root):
@@ -1091,6 +1143,7 @@ def main():
     check_tcpip_diagnostics(exe, root)
     check_acd_info(exe, root)
     check_link_info(exe, root)
+    check_link_port_details(exe, root)
     check_manager_info(exe, root)
     check_connection_data(exe, root)
     check_qos_info(exe, root)

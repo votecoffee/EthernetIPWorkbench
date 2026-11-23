@@ -37,11 +37,17 @@ impl Explorer {
                     Self::read_tcpip_info,
                 )
             }
-            Ok(explicit::ETHERNET_LINK_CLASS) => (
-                "Read link info",
-                "Read the selected Ethernet Link instance's status and counters.",
-                Self::read_link_info,
-            ),
+            Ok(explicit::ETHERNET_LINK_CLASS) => {
+                ui.checkbox(
+                    &mut self.link_port_details,
+                    "Include port settings and capabilities",
+                );
+                (
+                    "Read link info",
+                    "Read the selected Ethernet Link instance's status and counters.",
+                    Self::read_link_info,
+                )
+            }
             Ok(explicit::CONNECTION_MANAGER_CLASS) => (
                 "Read connection counters",
                 "Read the selected Connection Manager's open, close, reject and timeout counters.",
@@ -131,10 +137,15 @@ impl Explorer {
 
     fn read_link_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
         self.link_info = None;
+        let read = if self.link_port_details {
+            explicit::read_link_port_details
+        } else {
+            explicit::read_link_info
+        };
         match self.inspection_request(adapter, local, &self.instance) {
-            Ok((adapter, local, instance, route)) => self.start(move || {
-                explicit::read_link_info(adapter, local, instance, route).map(Response::LinkInfo)
-            }),
+            Ok((adapter, local, instance, route)) => {
+                self.start(move || read(adapter, local, instance, route).map(Response::LinkInfo))
+            }
             Err(error) => self.notice = Some(error),
         }
     }
@@ -251,9 +262,16 @@ pub(super) fn show_tcpip(ui: &mut Ui, info: &TcpIpInfo) {
 }
 
 pub(super) fn show_link(ui: &mut Ui, info: &LinkInfo) {
+    let mut title = format!("Ethernet Link instance {}", info.instance);
+    if let Some(label) = info.port_details().and_then(|details| details.label)
+        && !label.is_empty()
+    {
+        title.push_str(" · ");
+        title.push_str(&label);
+    }
     show_inspection(
         ui,
-        format!("Ethernet Link instance {}", info.instance),
+        title,
         "link-info-results",
         info.route.as_ref(),
         &info.batch,

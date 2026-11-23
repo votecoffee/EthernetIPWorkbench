@@ -460,6 +460,28 @@ def check_link_info(cli, adapter, root):
     print("OpENer Ethernet Link speed, flags, MAC address and optional counter rejections passed.")
 
 
+def check_link_port_details(cli, adapter, root):
+    root.mkdir()
+    with run_adapter(adapter, root):
+        result = subprocess.run([cli, "link-info", ADAPTER, "127.0.0.1", "1", "--port-details"],
+                                capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+    (root / "result.json").write_bytes(result.stdout)
+    assert result.returncode == 0 and not result.stderr, (result.stdout, result.stderr)
+    report = json.loads(result.stdout)
+    assert (report["class"], report["instance"]) == (0xF6, 1)
+    assert [row["path"]["attribute"] for row in report["results"]] == list(range(1, 12))
+    details = report["port_details"]
+    assert details["interface_type"] == 2 and details["operational_state"] is None
+    assert details["administrative_state"] is None
+    assert details["capabilities"] == {
+        "flags": 2, "manual_setting_requires_reset": False, "auto_negotiate": True,
+        "auto_mdix": False, "manual_speed_duplex": False,
+        "speed_duplex_options": [{"speed_mbps": 100, "duplex_code": 1}],
+    }
+    assert [row["general_status"] for row in report["results"][7:9]] == [0x14, 0x14]
+    print("OpENer returned twisted-pair type and advertised 100 Mb/s full duplex.")
+
+
 def check_manager_info(cli, adapter, root):
     root.mkdir()
     with run_adapter(adapter, root):
@@ -866,6 +888,7 @@ def main():
         check_tcpip_diagnostics(cli, adapter, root / "tcpip-diagnostics")
         check_acd_info(cli, adapter, root / "acd-info")
         check_link_info(cli, adapter, root / "link-info")
+        check_link_port_details(cli, adapter, root / "link-port-details")
         check_manager_info(cli, adapter, root / "manager-info")
         check_connection_data(cli, adapter, root / "connection-data")
         check_qos_info(cli, adapter, root / "qos-info")

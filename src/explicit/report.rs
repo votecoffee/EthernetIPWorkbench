@@ -240,12 +240,16 @@ impl super::TcpIpInfo {
 
 impl super::LinkInfo {
     pub fn report_json(&self) -> Result<String, String> {
-        instance_json(
+        let mut document = instance_document(
             &self.batch,
             super::ETHERNET_LINK_CLASS,
             self.instance,
             self.route.as_ref(),
-        )
+        )?;
+        if let Some(details) = self.port_details() {
+            document["port_details"] = json!(details);
+        }
+        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
     }
 }
 

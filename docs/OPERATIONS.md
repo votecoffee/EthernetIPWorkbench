@@ -179,6 +179,17 @@ In **Explore → Network objects**, choose **Ethernet Link · Speed**, enter the
 
 The inspection reads five attributes on one registered session using Get_Attribute_Single. It reports speed, the full flags word with link state, active duplex and negotiation status code, and the MAC address. Supported ports also show cumulative 32-bit interface and media counters, including discards, FCS errors, and collisions. Their values can wrap. Each result retains the raw reply or CIP rejection. Inspecting these attributes leaves the device counters intact. [Schneider Electric EtherNet/IP device objects](https://product-help.schneider-electric.com/Machine%20Expert/V1.2/en/lmcprg/lmcprg/Ethernet_Configuration/Ethernet_Configuration-17.htm) · [Pinned OpENer Ethernet Link counter layout](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipethernetlink.h)
 
+#### Inspect Ethernet port settings
+
+Enable **Include port settings and capabilities** before selecting **Read link info**. The registered session also reads Ethernet Link attributes 6–11. The CLI puts the decoded values under `port_details` and preserves the raw results and CIP statuses.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe link-info 192.0.2.10 192.0.2.11 1 --port-details
+.\target\release\eipmaster-cli.exe link-info 192.0.2.10 192.0.2.11 2 --port-details --route 1/3
+~~~
+
+Compare the live speed and duplex with the configured automatic or forced mode. Forced speed and duplex apply when auto-negotiation is disabled. The report keeps the operational and administrative states separate and accepts the documented one-byte and two-byte label lengths. Capabilities describe the interface's supported features and advertised speed/duplex pairs. Unavailable values are `null`, with the underlying rejection or decode error retained in the per-attribute result. [Hilscher Ethernet Link attribute definitions](https://www.hilscher.com/fileadmin/cms_upload/de/Resources/pdf/EtherNetIP_Adapter_Protocol_API_20_EN.pdf#page=68) · [Hirschmann Ethernet Link attribute definitions](https://www.doc.hirschmann.com/pdf/Manual-IO_LioN-X_EtherNetIP_IO-Link-Master_DE_3V1_2025-09-09.pdf#page=139) · [Pinned OpENer capabilities encoder](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipethernetlink.c#L477)
+
 ### Inspect Quality of Service settings
 
 In **Explore → Network objects**, choose **Quality of Service · Explicit DSCP** and select **Read QoS settings**. Use instance 1 unless the device documents another nonzero instance. An optional CIP route addresses the device at the end of a known path.

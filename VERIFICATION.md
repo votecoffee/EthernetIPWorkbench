@@ -789,6 +789,10 @@ The Windows loopback fixture checked five Get_Attribute_Single requests in one r
 
 The pinned Windows OpENer adapter reported 100 Mb/s, link up with full duplex, and the fixture MAC address. It rejected both optional counter reads with CIP status `0x14`. The counter-block decoding is covered by the synthetic fixture. Physical port and counter acceptance remains open. [Pinned OpENer Ethernet Link implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipethernetlink.c)
 
+The extended localhost test checked all eleven attributes on one registered session. It verified auto-negotiation with unused forced fields, forced 1,000 Mb/s full duplex, one-byte and two-byte label lengths, a routed administrative-state rejection, and a truncated capability array. The headless Explore test displayed the port label and advertised speed/duplex pairs through route `1/3`.
+
+Pinned Windows OpENer returned twisted-pair type and one advertised option at 100 Mb/s full duplex. It rejected the operating and administrative state attributes with CIP status `0x14`. Physical port settings and capability reporting remain open for bench verification. [Pinned OpENer capabilities encoder](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipethernetlink.c#L477)
+
 ## CIP Connection Manager counters
 
 The Windows loopback fixture verified eight Get_Attribute_Single reads on one registered session for each inspection. It decoded both zero and 65,535, retained raw bytes for a reply with an invalid width, and kept the target's unsupported-attribute status separate from router failures. A later timeout counter still decoded after the malformed close counter. The headless Explore checks verified the routed view, counter display, and optional rejection alongside the existing Port Object, TCP/IP Interface, and Ethernet Link workflows.

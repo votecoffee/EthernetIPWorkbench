@@ -16,7 +16,7 @@ PROFILE = FIXTURE.parent.parent / "samples" / "loopback.toml"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
-def with_adapter(root, case, command, mode="normal", *, fixture_args=(), timeout=15):
+def with_adapter(root, case, command, mode="normal", *, fixture_args=(), timeout=15, encoding=None):
     report = root / f"{case}-adapter.json"
     adapter = subprocess.Popen(
         [sys.executable, FIXTURE, report, "--mode", mode, *fixture_args], stdout=subprocess.PIPE, text=True,
@@ -25,7 +25,8 @@ def with_adapter(root, case, command, mode="normal", *, fixture_args=(), timeout
     try:
         if adapter.stdout.readline().strip() != "Ready on loopback":
             raise RuntimeError("Loopback adapter failed to start")
-        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, creationflags=NO_WINDOW)
+        result = subprocess.run(command, capture_output=True, text=True, encoding=encoding,
+                                timeout=timeout, creationflags=NO_WINDOW)
         if adapter.wait(timeout=5) != 0:
             raise RuntimeError("Loopback adapter failed")
         return result, json.loads(report.read_text(encoding="utf-8"))

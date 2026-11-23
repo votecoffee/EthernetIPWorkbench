@@ -269,7 +269,7 @@ fn decode_configuration(bytes: &[u8]) -> Result<String, String> {
     ))
 }
 
-fn cip_string(bytes: &[u8], name: &str) -> Result<String, String> {
+pub(super) fn cip_string(bytes: &[u8], name: &str) -> Result<String, String> {
     let (length, text) = bytes
         .split_first_chunk()
         .ok_or_else(|| format!("{name} is missing its STRING length"))?;
