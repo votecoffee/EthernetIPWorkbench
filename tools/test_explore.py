@@ -598,6 +598,66 @@ def check_lldp_neighbor(exe, root):
     print("LLDP neighbor inspection passed instance listing, direct and routed reads, empty fields, and malformed replies.")
 
 
+def check_dlr_info(exe, root):
+    for case, route, details, code in (
+        ("basic", None, False, 0), ("routed", "1/3", True, 0),
+        ("details", None, True, 0), ("empty", None, False, 0), ("malformed", None, False, 1),
+    ):
+        instance = 2 if route else 1
+        command = [exe, "dlr-info", LOCAL, LOCAL, str(instance)]
+        if route:
+            command.extend(("--route", route))
+        if details:
+            command.append("--supervisor-details")
+        mode = {
+            "routed": "dlr-info-optional", "empty": "dlr-info-empty", "malformed": "dlr-info-malformed",
+        }.get(case, "dlr-info")
+        result, peer = with_adapter(root, f"dlr-info-{case}", command, mode, encoding="utf-8")
+        assert result.returncode == code and not result.stderr, (result.stdout, result.stderr)
+        (root / f"dlr-info-{case}.json").write_text(result.stdout, encoding="utf-8")
+        report = json.loads(result.stdout)
+        assert (report["class"], report["instance"], report.get("route")) == (0x47, instance, route)
+        attrs = [1, 2, 10, 12] + ([3, 5, 6, 7, 8, 11] if details else [])
+        assert peer["dlr_attributes"] == attrs and peer["dlr_instance"] == instance
+        assert peer["route_hex"] == ("0103" if route else "")
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        rows = {row["path"]["attribute"]: row for row in report["results"]}
+        assert list(rows) == attrs
+        dlr = report["dlr"]
+        assert dlr["capability_flags"] == 0x800000A2
+        assert "supervisor capable" in rows[12]["decoded"]
+        if case == "malformed":
+            assert dlr["network_status_code"] is None and dlr["active_supervisor"] is None
+            assert rows[2]["data_hex"] == "04 00" and "one-byte USINT" in rows[2]["decode_error"]
+            assert len(bytes.fromhex(rows[10]["data_hex"])) == 9 and "six-byte MAC" in rows[10]["decode_error"]
+            continue
+        if case == "empty":
+            assert dlr["network_status_code"] == 5 and rows[2]["decoded"] == "Unknown (5)"
+            assert dlr["topology_code"] == 0
+            assert dlr["active_supervisor"] == {"ipv4": None, "mac_address": None}
+            assert rows[10]["decoded"] == "No address reported"
+            continue
+        assert dlr["topology_code"] == 1 and dlr["network_status_code"] == 1
+        assert rows[2]["decoded"] == "Ring fault (1)"
+        assert dlr["active_supervisor"] == {"ipv4": "192.0.2.5", "mac_address": "02:11:22:33:44:55"}
+        if details:
+            assert dlr["supervisor_status_code"] == 1 and dlr["fault_count"] == 0x1234
+            assert dlr["participant_count"] == 0 and dlr["active_supervisor_precedence"] == 240
+            assert dlr["last_active_port_1"] == {"ipv4": "192.0.2.10", "mac_address": None}
+            if route:
+                assert dlr["last_active_port_2"] is None
+                assert (rows[7]["reply_from"], rows[7]["general_status"], rows[7]["extended_status"]) == (
+                    "target", 0x14, [0x0302],
+                )
+            else:
+                assert dlr["last_active_port_2"] == {"ipv4": None, "mac_address": "02:00:00:00:00:07"}
+        else:
+            assert dlr["fault_count"] is None and dlr["participant_count"] is None
+    result = subprocess.run([exe, "dlr-info", LOCAL, LOCAL, "0"], capture_output=True, timeout=5)
+    assert result.returncode == 1 and b"requires a nonzero instance" in result.stderr
+    print("DLR inspection passed direct and routed reads, fault endpoints, unavailable fields, and malformed replies.")
+
+
 def check_connection_data(exe, root):
     for case, mode, route, triad, status in (
         ("number", "connection-data", None, False, None),
@@ -1213,6 +1273,7 @@ def main():
     check_link_info(exe, root)
     check_link_port_details(exe, root)
     check_lldp_neighbor(exe, root)
+    check_dlr_info(exe, root)
     check_manager_info(exe, root)
     check_connection_data(exe, root)
     check_qos_info(exe, root)

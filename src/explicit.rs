@@ -24,6 +24,7 @@ mod batch;
 mod class_info;
 mod connected;
 mod connection_data;
+mod dlr_info;
 mod instances;
 mod link_info;
 mod lldp_neighbor;
@@ -58,6 +59,7 @@ pub use connection_data::{
     ConnectionData, ConnectionDataQuery, ConnectionDataReport, ConnectionDirection,
     ConnectionTriad, read_connection_data,
 };
+pub use dlr_info::{DLR_CLASS, DlrNodeAddress, DlrReport, DlrStatus, read_dlr_info};
 pub use instances::{INSTANCE_PAGE_SIZE, InstanceIds, InstancePage, find_instances_page};
 pub use link_info::{
     ETHERNET_LINK_CLASS, LinkCapabilities, LinkControl, LinkInfo, LinkPortDetails, LinkSpeedDuplex,
@@ -153,6 +155,7 @@ impl ReadPath {
                     (TCPIP_INTERFACE_CLASS, 1..) => tcpip_info::decode(attribute, bytes),
                     (ETHERNET_LINK_CLASS, 1..) => link_info::decode(attribute, bytes),
                     (LLDP_DATA_TABLE_CLASS, 1..) => lldp_neighbor::decode(attribute, bytes),
+                    (DLR_CLASS, 1..) => dlr_info::decode(attribute, bytes),
                     (CONNECTION_MANAGER_CLASS, 1..) => manager_info::decode(attribute, bytes),
                     (QOS_CLASS, 1..) => qos_info::decode(attribute, bytes),
                     (ASSEMBLY_CLASS, 1..) => assembly_info::decode(attribute, bytes),

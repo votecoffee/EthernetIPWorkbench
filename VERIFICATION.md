@@ -799,6 +799,12 @@ The Windows loopback fixture listed instances 7 and 300, then checked all nine G
 
 The independent Windows OpENer adapter rejected all nine reads with CIP status `0x05`. The CLI retained those rejections and exited with code 1. A positive test on LLDP-capable bench hardware remains open.
 
+## CIP Device Level Ring status
+
+The Windows loopback fixture verified direct status reads and routed supervisor details on one registered TCP session per command. It checked the reported ring fault, fault count, unsigned capability flags, little-endian IPv4 addresses, MAC-only nodes, zero counts, and a target rejection for the port 2 fault endpoint. Truncated replies kept their raw bytes and failed the inspection. The headless Explore test displayed the routed ring fault and supervisor address without changing the saved profile.
+
+The Windows OpENer fixture initialized the pinned stack's basic DLR object through the loopback launcher. Independent replies reported linear topology, normal status, no supervisor address, and capability flags `0x00000082`. Its six optional supervisor reads returned CIP status `0x14`. Supervisor data and ring faults were exercised by the synthetic fixture. Physical ring and supervisor acceptance remains open. [Pinned OpENer DLR implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipdlr.c)
+
 ## CIP Connection Manager counters
 
 The Windows loopback fixture verified eight Get_Attribute_Single reads on one registered session for each inspection. It decoded both zero and 65,535, retained raw bytes for a reply with an invalid width, and kept the target's unsupported-attribute status separate from router failures. A later timeout counter still decoded after the malformed close counter. The headless Explore checks verified the routed view, counter display, and optional rejection alongside the existing Port Object, TCP/IP Interface, and Ethernet Link workflows.

@@ -28,6 +28,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/explicit/link_info.rs | Read-only Ethernet Link Object status and counters |
 | src/explicit/link_info/port_details.rs | Port control, type, state, label and speed/duplex capabilities |
 | src/explicit/lldp_neighbor.rs | Read-only inspection of one CIP LLDP Data Table entry |
+| src/explicit/dlr_info.rs | Device Level Ring status, supervisor addresses, and optional fault details |
 | src/explicit/qos_info.rs | Read-only QoS Object tagging and DSCP settings |
 | src/explicit/manager_info.rs | Read-only Connection Manager Object counters |
 | src/explicit/connection_data.rs and src/gui/explore/connection_data.rs | Single Connection Manager record lookup by number or Forward_Open triad |
@@ -180,6 +181,8 @@ Run `explore_reads_connection_manager_counters_over_a_route` with the `manager-i
 Run `explore_finds_connection_data_by_triad_over_a_route` with `connection-data` to verify the Explore lookup. The CLI fixture checks the exact requests for both selectors. The OpENer harness with `--explore` opens an input-only connection and reads its record using both selectors before closing.
 
 Run `gui::workspace::tests::diagnostics_looks_up_the_active_connection_across_generations` with `--ignored --exact` while the pinned Windows OpENer fixture is running on 127.0.0.2. It checks the Diagnostics lookup by verified triad even after edits to the next connection's settings. The CLI and HTTP reconnect fixture compares each `forward_open_triad` to the identifiers it received on the wire.
+
+Run `explore_reads_ring_fault_and_supervisor_details_through_a_route` with `dlr-info-optional` to verify the ring status display, supervisor address, and an optional read rejection. The CLI fixture checks a non-default routed instance and the byte order of the node address. Pass `--dlr` to `tools/test_opener.py` to initialize the independent stack's basic DLR object from the Windows loopback launcher and check both inspection modes. The launcher calls the pinned stack's unmodified `CipDlrInit` because that revision's global DLR build option fails on Windows.
 
 Run `explore_reads_qos_settings_over_a_route` with the `qos-info-optional` fixture mode to verify QoS settings and rejections in Explore's Network objects workflow. The OpENer harness with `--explore` checks the configured values for its five readable attributes.
 

@@ -62,7 +62,7 @@ def adapt_shared_io_for_windows_fixture(ports):
     replace_once(connection, old, b"  /* The Windows loopback fixture owns the shared UDP socket. */")
 
 
-def build_adapter(checkout, root, *, shared_io_fixture=False, tcp_port=44818):
+def build_adapter(checkout, root, *, shared_io_fixture=False, tcp_port=44818, dlr=False):
     archive = subprocess.check_output(
         ["git", "-C", checkout, "archive", "--format=zip", UPSTREAM],
         creationflags=subprocess.CREATE_NO_WINDOW,
@@ -72,7 +72,12 @@ def build_adapter(checkout, root, *, shared_io_fixture=False, tcp_port=44818):
         bundle.extractall(source)
     ports = source / "source/src/ports"
     main = HERE / "fixtures/opener_loopback.c"
-    (ports / "WIN32/main.c").write_bytes(main.read_bytes())
+    launcher = main.read_bytes()
+    if dlr:
+        # The pinned revision's global DLR option does not compile on Windows.
+        # Initialize its unmodified DLR object from the loopback launcher.
+        launcher = b"#define WORKBENCH_DLR_FIXTURE 1\n" + launcher
+    (ports / "WIN32/main.c").write_bytes(launcher)
 
     handler = ports / "generic_networkhandler.c"
     data = handler.read_bytes()
@@ -497,6 +502,34 @@ def check_lldp_neighbor(cli, adapter, root):
     print("OpENer returned CIP status 0x05 for all LLDP Data Table attributes.")
 
 
+def check_dlr_info(cli, adapter, root):
+    root.mkdir()
+    with run_adapter(adapter, root):
+        for details in (False, True):
+            command = [cli, "dlr-info", ADAPTER, "127.0.0.1", "1"]
+            if details:
+                command.append("--supervisor-details")
+            result = subprocess.run(command, capture_output=True, timeout=10,
+                                    creationflags=subprocess.CREATE_NO_WINDOW)
+            (root / ("supervisor.json" if details else "result.json")).write_bytes(result.stdout)
+            assert result.returncode == 0 and not result.stderr, (result.stdout, result.stderr)
+            report = json.loads(result.stdout)
+            assert (report["class"], report["instance"]) == (0x47, 1)
+            dlr = report["dlr"]
+            assert dlr["topology_code"] == 0 and dlr["network_status_code"] == 0
+            assert dlr["active_supervisor"] == {"ipv4": None, "mac_address": None}
+            assert dlr["capability_flags"] == 0x82
+            attrs = [1, 2, 10, 12] + ([3, 5, 6, 7, 8, 11] if details else [])
+            rows = report["results"]
+            assert [row["path"]["attribute"] for row in rows] == attrs
+            assert [row["decoded"] for row in rows[:3]] == [
+                "Linear (0)", "Normal (0)", "No address reported",
+            ]
+            assert all(row["status"] == "cip_rejected" and row["general_status"] == 0x14
+                       for row in rows[4:])
+    print("DLR-enabled OpENer reported linear topology, normal status, and unsupported supervisor details.")
+
+
 def check_manager_info(cli, adapter, root):
     root.mkdir()
     with run_adapter(adapter, root):
@@ -861,6 +894,7 @@ def main():
     parser.add_argument("directory", type=Path, help="New directory for the adapter build and capture")
     parser.add_argument("--seconds", type=int, default=60)
     parser.add_argument("--explore", action="store_true", help="Also test discovery, explicit reads and keyed Large Forward_Open")
+    parser.add_argument("--dlr", action="store_true", help="Initialize OpENer's basic DLR object and check its diagnostics")
     parser.add_argument("--multicast", action="store_true", help="Also capture OpENer multicast T->O")
     parser.add_argument("--default-unicast", action="store_true", help="Also capture with the implicit UDP 2222 input port")
     parser.add_argument("--listen-only", action="store_true", help="Also attach a listener to a controlling multicast session")
@@ -871,7 +905,7 @@ def main():
     root = args.directory.resolve()
     root.mkdir(parents=True)
     cli = args.exe.resolve()
-    adapter, eds = build_adapter(args.checkout.resolve(), root, shared_io_fixture=args.listen_only)
+    adapter, eds = build_adapter(args.checkout.resolve(), root, shared_io_fixture=args.listen_only, dlr=args.dlr)
     imported = call(cli, root, "eds", "eds", eds)
     profile = next(p for p in imported["profiles"] if p["id"] == "Connection2")
     assert profile["supported"] and profile["fields"]["Ownership"] == "Input-only"
@@ -891,6 +925,8 @@ def main():
     assert report["identity"] == identity
     assert "ForwardClose: ConnSerNo" in log.read_text(encoding="utf-8", errors="replace")
     check_capture(report, args.seconds)
+    if args.dlr:
+        check_dlr_info(cli, adapter, root / "dlr-info")
     if args.explore:
         check_identity_discovery_tcp(cli, adapter, root / "list-identity-tcp")
         check_list_services(cli, adapter, root / "list-services")

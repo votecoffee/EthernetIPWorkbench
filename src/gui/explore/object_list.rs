@@ -44,6 +44,7 @@ fn class_name(class: u32) -> &'static str {
         2 => "Message Router",
         explicit::ASSEMBLY_CLASS => "Assembly",
         explicit::CONNECTION_MANAGER_CLASS => "Connection Manager",
+        explicit::DLR_CLASS => "Device Level Ring",
         explicit::QOS_CLASS => "Quality of Service",
         explicit::PORT_OBJECT_CLASS => "Port Object",
         explicit::TCPIP_INTERFACE_CLASS => "TCP/IP Interface",

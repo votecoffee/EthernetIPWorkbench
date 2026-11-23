@@ -6,6 +6,9 @@
 #include "ciptcpipinterface.h"
 #include "doublylinkedlist.h"
 #include "cipconnectionobject.h"
+#if defined(WORKBENCH_DLR_FIXTURE)
+#include "cipdlr.h"
+#endif
 
 extern EipUint8 g_assembly_data064[32];
 
@@ -23,6 +26,12 @@ int main(void) {
                              CipConnectionObjectListArrayFree);
   SetDeviceSerialNumber(123456789);
   CipStackInit(0x1122);
+#if defined(WORKBENCH_DLR_FIXTURE)
+  if (kEipStatusOk != CipDlrInit()) {
+    ShutdownCipStack();
+    return 1;
+  }
+#endif
   uint8_t mac[6] = {2, 0, 0, 0, 0, 2};
   CipEthernetLinkSetMac(mac);
   g_tcpip.interface_configuration.ip_address = htonl(0x7f000002u);

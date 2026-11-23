@@ -53,6 +53,17 @@ impl Explorer {
                 "Read one neighbor recorded in the target's LLDP table.",
                 Self::read_lldp_neighbor,
             ),
+            Ok(explicit::DLR_CLASS) => {
+                ui.checkbox(
+                    &mut self.dlr_supervisor_details,
+                    "Include supervisor details",
+                );
+                (
+                    "Read ring status",
+                    "Read Device Level Ring diagnostics from the selected instance.",
+                    Self::read_dlr_info,
+                )
+            }
             Ok(explicit::CONNECTION_MANAGER_CLASS) => (
                 "Read connection counters",
                 "Read the selected Connection Manager's open, close, reject and timeout counters.",
@@ -161,6 +172,18 @@ impl Explorer {
             Ok((adapter, local, instance, route)) => self.start(move || {
                 explicit::read_lldp_neighbor(adapter, local, instance, route)
                     .map(Response::LldpNeighbor)
+            }),
+            Err(error) => self.notice = Some(error),
+        }
+    }
+
+    fn read_dlr_info(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
+        self.dlr_info = None;
+        let supervisor_details = self.dlr_supervisor_details;
+        match self.inspection_request(adapter, local, &self.instance) {
+            Ok((adapter, local, instance, route)) => self.start(move || {
+                explicit::read_dlr_info(adapter, local, instance, route, supervisor_details)
+                    .map(Response::DlrInfo)
             }),
             Err(error) => self.notice = Some(error),
         }
@@ -306,6 +329,21 @@ pub(super) fn show_lldp_neighbor(ui: &mut Ui, info: &LldpNeighborReport) {
         ui,
         title,
         "lldp-neighbor-results",
+        info.route.as_ref(),
+        &info.batch,
+    );
+}
+
+pub(super) fn show_dlr(ui: &mut Ui, info: &DlrReport) {
+    let mut title = format!("Device Level Ring instance {}", info.instance);
+    if let Some(status) = info.network_status_label() {
+        title.push_str(" · ");
+        title.push_str(status);
+    }
+    show_inspection(
+        ui,
+        title,
+        "dlr-info-results",
         info.route.as_ref(),
         &info.batch,
     );

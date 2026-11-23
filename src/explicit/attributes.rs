@@ -1,9 +1,10 @@
 //! Attribute names shared by the browser and fixed object inspections.
 
 use super::{
-    ASSEMBLY_CLASS, CONNECTION_MANAGER_CLASS, ETHERNET_LINK_CLASS, LLDP_DATA_TABLE_CLASS,
-    PORT_OBJECT_CLASS, QOS_CLASS, TCPIP_INTERFACE_CLASS, assembly_info, class_info, link_info,
-    lldp_neighbor, manager_info, object_list, port_info, qos_info, tcpip_info,
+    ASSEMBLY_CLASS, CONNECTION_MANAGER_CLASS, DLR_CLASS, ETHERNET_LINK_CLASS,
+    LLDP_DATA_TABLE_CLASS, PORT_OBJECT_CLASS, QOS_CLASS, TCPIP_INTERFACE_CLASS, assembly_info,
+    class_info, dlr_info, link_info, lldp_neighbor, manager_info, object_list, port_info, qos_info,
+    tcpip_info,
 };
 
 const IDENTITY_ATTRIBUTES: &[(u32, &str)] = &[
@@ -29,6 +30,7 @@ pub fn known_attributes(class: u32, instance: u32) -> &'static [(u32, &'static s
         (TCPIP_INTERFACE_CLASS, _) => tcpip_info::ATTRIBUTES,
         (ETHERNET_LINK_CLASS, _) => link_info::ATTRIBUTES,
         (LLDP_DATA_TABLE_CLASS, _) => lldp_neighbor::ATTRIBUTES,
+        (DLR_CLASS, _) => dlr_info::ATTRIBUTES,
         _ => &[],
     }
 }

@@ -56,6 +56,7 @@ Usage:
   eipmaster-cli acd-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli link-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--port-details] [--route <port/link/...>]
   eipmaster-cli lldp-neighbor <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
+  eipmaster-cli dlr-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--supervisor-details] [--route <port/link/...>]
   eipmaster-cli manager-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli connection-data <adapter-or-bridge-ipv4> <local-ipv4> <number|connection-serial:vendor:originator-serial> [--route <port/link/...>]
   eipmaster-cli qos-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
@@ -298,6 +299,23 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                 local,
                 explicit::parse_id(&instance.to_string_lossy())?,
                 route,
+            )?;
+            println!("{}", report.report_json()?);
+            Ok(report.is_usable())
+        }
+        [command, adapter, local, instance, options @ ..] if command == "dlr-info" => {
+            let (supervisor_details, endpoint_options) = match options {
+                [option, rest @ ..] if option == "--supervisor-details" => (true, rest),
+                [rest @ .., option] if option == "--supervisor-details" => (true, rest),
+                _ => (false, options),
+            };
+            let (adapter, local, route) = explicit_endpoint(adapter, local, endpoint_options)?;
+            let report = explicit::read_dlr_info(
+                adapter,
+                local,
+                explicit::parse_id(&instance.to_string_lossy())?,
+                route,
+                supervisor_details,
             )?;
             println!("{}", report.report_json()?);
             Ok(report.is_usable())

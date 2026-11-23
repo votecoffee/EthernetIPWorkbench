@@ -204,6 +204,19 @@ The report reads the target's recorded neighbor entry using nine Get_Attribute_S
 
 The CLI emits JSON with the decoded `neighbor` and each raw reply, CIP rejection, or decode error. An empty `management_ipv4` array means the target reported zero addresses. A `null` there means the attribute was unavailable or could not be decoded. The command exits with code 1 when it receives no usable reply or encounters a malformed or failed read.
 
+### Inspect Device Level Ring status
+
+In **Explore → Network objects**, choose **Device Level Ring · Status**, select the documented instance, and click **Read ring status**. The preset starts at instance 1. Enter the documented CIP route for a target reached through a bridge.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe dlr-info 192.0.2.10 192.0.2.11 1
+.\target\release\eipmaster-cli.exe dlr-info 192.0.2.10 192.0.2.11 2 --supervisor-details --route 1/3
+~~~
+
+The inspection reads network topology and status, the active supervisor address, and capability flags from class `0x47`. Select **Include supervisor details** for the reported supervisor state, fault count, last active node on each supervisor port, participant count, and active supervisor precedence. Compare the reported fault endpoints with the ring diagram and the active supervisor's diagnostics. The addresses are observations reported by the target. [Rockwell Automation DLR diagnostics guide](https://literature.rockwellautomation.com/idc/groups/literature/documents/at/enet-at007_-en-p.pdf#page=90)
+
+The CLI reports structured values under `dlr`. Review the per-attribute result for any unreported, unsupported, or malformed field. A zero count is a reported value. A successful address reply with zero IP and MAC fields shows **No address reported** and retains the original bytes. The inspection uses Get_Attribute_Single on one registered session and leaves the ring settings and counters intact.
+
 ### Inspect Quality of Service settings
 
 In **Explore → Network objects**, choose **Quality of Service · Explicit DSCP** and select **Read QoS settings**. Use instance 1 unless the device documents another nonzero instance. An optional CIP route addresses the device at the end of a known path.

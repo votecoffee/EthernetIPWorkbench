@@ -471,6 +471,32 @@ def manager_info_reply(cip, mode, report):
     return bytes.fromhex("8E 00 00 00") + struct.pack("<H", values[attribute - 1])
 
 
+def dlr_info_reply(cip, mode, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    assert len(message) == 8 and message[:5] == bytes.fromhex("0E 03 20 47 24")
+    instance, tag, attribute = message[5:]
+    assert tag == 0x30 and (instance, route) in ((1, b""), (1, b"\x01\x03"), (2, b"\x01\x03"))
+    report.setdefault("dlr_attributes", []).append(attribute)
+    report["dlr_instance"] = instance
+    report["route_hex"] = route.hex()
+    if mode == "dlr-info-optional" and attribute == 7:
+        return bytes.fromhex("8E 00 14 01 02 03")
+    values = {
+        1: b"\x01", 2: b"\x01", 3: b"\x01", 5: bytes.fromhex("34 12"),
+        6: bytes.fromhex("0A 02 00 C0 00 00 00 00 00 00"),
+        7: bytes.fromhex("00 00 00 00 02 00 00 00 00 07"),
+        8: bytes.fromhex("00 00"),
+        10: bytes.fromhex("05 02 00 C0 02 11 22 33 44 55"),
+        11: b"\xF0", 12: bytes.fromhex("A2 00 00 80"),
+    }
+    if mode == "dlr-info-malformed":
+        values[2] = b"\x04\x00"
+        values[10] = values[10][:-1]
+    if mode == "dlr-info-empty":
+        values.update({1: b"\x00", 2: b"\x05", 10: bytes(10)})
+    return bytes.fromhex("8E 00 00 00") + values[attribute]
+
+
 def qos_info_reply(cip, mode, report):
     route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
     assert len(message) == 8 and message[:7] == bytes.fromhex("0E 03 20 48 24 01 30")
@@ -691,6 +717,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
         "acd-info": acd_info_reply,
         "link-info": link_info_reply,
         "lldp-neighbor": lldp_neighbor_reply,
+        "dlr-info": dlr_info_reply,
         "manager-info": manager_info_reply,
         "connection-data": connection_data_reply,
         "qos-info": qos_info_reply,
@@ -1094,6 +1121,7 @@ def main():
         "link-info-details", "link-info-details-optional", "link-info-details-malformed",
         "lldp-neighbor", "lldp-neighbor-empty", "lldp-neighbor-optional", "lldp-neighbor-malformed",
         "lldp-neighbor-gui",
+        "dlr-info", "dlr-info-optional", "dlr-info-empty", "dlr-info-malformed",
         "manager-info", "manager-info-optional", "manager-info-malformed",
         "connection-data", "connection-data-malformed", "connection-data-mismatch",
         "connection-data-unsupported", "connection-data-not-found",
