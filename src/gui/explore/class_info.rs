@@ -48,6 +48,11 @@ impl Explorer {
                     Self::read_link_info,
                 )
             }
+            Ok(explicit::LLDP_DATA_TABLE_CLASS) => (
+                "Read LLDP neighbor",
+                "Read one neighbor recorded in the target's LLDP table.",
+                Self::read_lldp_neighbor,
+            ),
             Ok(explicit::CONNECTION_MANAGER_CLASS) => (
                 "Read connection counters",
                 "Read the selected Connection Manager's open, close, reject and timeout counters.",
@@ -146,6 +151,17 @@ impl Explorer {
             Ok((adapter, local, instance, route)) => {
                 self.start(move || read(adapter, local, instance, route).map(Response::LinkInfo))
             }
+            Err(error) => self.notice = Some(error),
+        }
+    }
+
+    fn read_lldp_neighbor(&mut self, adapter: &str, local: Option<Ipv4Addr>) {
+        self.lldp_neighbor = None;
+        match self.inspection_request(adapter, local, &self.instance) {
+            Ok((adapter, local, instance, route)) => self.start(move || {
+                explicit::read_lldp_neighbor(adapter, local, instance, route)
+                    .map(Response::LldpNeighbor)
+            }),
             Err(error) => self.notice = Some(error),
         }
     }
@@ -273,6 +289,23 @@ pub(super) fn show_link(ui: &mut Ui, info: &LinkInfo) {
         ui,
         title,
         "link-info-results",
+        info.route.as_ref(),
+        &info.batch,
+    );
+}
+
+pub(super) fn show_lldp_neighbor(ui: &mut Ui, info: &LldpNeighborReport) {
+    let mut title = format!("LLDP neighbor {}", info.instance);
+    if let Some(label) = info.neighbor().interface_label
+        && !label.is_empty()
+    {
+        title.push_str(" · ");
+        title.push_str(&label);
+    }
+    show_inspection(
+        ui,
+        title,
+        "lldp-neighbor-results",
         info.route.as_ref(),
         &info.batch,
     );

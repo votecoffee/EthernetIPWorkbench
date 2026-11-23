@@ -398,6 +398,37 @@ def link_info_reply(cip, mode, report):
     return bytes.fromhex("8E 00 00 00") + values[attribute - 1]
 
 
+def lldp_neighbor_reply(cip, mode, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    assert route in (b"", b"\x01\x03")
+    report["route_hex"] = route.hex()
+    if message[0] == 0x11:
+        assert message == bytes.fromhex("11 03 21 00 0A 01 24 00 40")
+        report["lldp_listed"] = True
+        return bytes.fromhex("91 00 00 00 03 07 00 2C 01 00 00")
+    assert len(message) == 12 and message[:-1] == bytes.fromhex("0E 05 21 00 0A 01 25 00 2C 01 30")
+    attribute = message[-1]
+    assert 1 <= attribute <= 9
+    report.setdefault("lldp_reads", []).append(attribute)
+    if mode == "lldp-neighbor-optional" and attribute == 6:
+        return bytes.fromhex("8E 00 14 01 02 03")
+    values = [
+        struct.pack("<H", 2), bytes.fromhex("02 14 6B 34 12 04"), b"\x11Lab-Switch Port 4",
+        struct.pack("<H", 120), struct.pack("<HH", 0x0094, 0x0004),
+        bytes((2, 192, 0, 2, 41, 198, 51, 100, 5)),
+        struct.pack("<HHHBBI", 0x1234, 12, 0x0190, 2, 7, 0x89ABCDEF),
+        bytes((1, 1, 0, 2)), struct.pack("<I", 5001),
+    ]
+    if mode == "lldp-neighbor-empty":
+        values[:3] = [bytes(2), bytes(6), bytes(1)]
+        values[5:8] = [bytes(1), bytes(12), bytes(4)]
+    if mode == "lldp-neighbor-malformed":
+        values[2] = b"\x05Lab"
+        values[5] = values[5][:-4]
+        values[6] = values[6][:-1]
+    return bytes.fromhex("8E 00 00 00") + values[attribute - 1]
+
+
 def connection_data_reply(cip, mode, report):
     route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
     assert route in (b"", b"\x01\x03", b"\x01\x07")
@@ -659,6 +690,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
         "tcpip-info": tcpip_info_reply,
         "acd-info": acd_info_reply,
         "link-info": link_info_reply,
+        "lldp-neighbor": lldp_neighbor_reply,
         "manager-info": manager_info_reply,
         "connection-data": connection_data_reply,
         "qos-info": qos_info_reply,
@@ -1060,6 +1092,8 @@ def main():
         "tcpip-info", "tcpip-info-optional", "tcpip-info-malformed",
         "link-info", "link-info-optional", "link-info-malformed",
         "link-info-details", "link-info-details-optional", "link-info-details-malformed",
+        "lldp-neighbor", "lldp-neighbor-empty", "lldp-neighbor-optional", "lldp-neighbor-malformed",
+        "lldp-neighbor-gui",
         "manager-info", "manager-info-optional", "manager-info-malformed",
         "connection-data", "connection-data-malformed", "connection-data-mismatch",
         "connection-data-unsupported", "connection-data-not-found",
@@ -1124,6 +1158,7 @@ def main():
         print("Ready on loopback", flush=True)
         sequences = {
             "instance-list-gui": ("instance-list", "instance-list"),
+            "lldp-neighbor-gui": ("lldp-neighbor", "lldp-neighbor"),
             "explicit-write-gui": ("explicit-write-review", "explicit-write-review", "explicit-write-readback"),
             "explicit-write-gui-current": ("explicit-write-review", "explicit-write-review", "explicit-write-current"),
             "class3-write-gui": ("explicit-write-review", "class3-write", "class3-write"),

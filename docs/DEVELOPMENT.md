@@ -27,6 +27,7 @@ Start with [AGENTS.md](../AGENTS.md) and the [repository skill](../.agents/skill
 | src/explicit/tcpip_info/acd.rs | IPv4 conflict flags, ACD settings and retained ARP decoding |
 | src/explicit/link_info.rs | Read-only Ethernet Link Object status and counters |
 | src/explicit/link_info/port_details.rs | Port control, type, state, label and speed/duplex capabilities |
+| src/explicit/lldp_neighbor.rs | Read-only inspection of one CIP LLDP Data Table entry |
 | src/explicit/qos_info.rs | Read-only QoS Object tagging and DSCP settings |
 | src/explicit/manager_info.rs | Read-only Connection Manager Object counters |
 | src/explicit/connection_data.rs and src/gui/explore/connection_data.rs | Single Connection Manager record lookup by number or Forward_Open triad |
@@ -171,6 +172,8 @@ Run `explore_reads_address_conflict_evidence_over_a_route` with `acd-info-probe`
 Run `explore_reads_ethernet_link_diagnostics_over_a_route` with the `link-info-optional` fixture mode to verify the routed link status and optional counter rejection. The OpENer harness with `--explore` checks the independently reported speed, flags and MAC address.
 
 Run `explore_reads_ethernet_port_details_through_the_selected_route` with `link-info-details-optional` for the extended view, including the scrollable capability details. `explicit::read_link_port_details` adds attributes 6–11, and `LinkInfo::port_details()` returns their decoded values. The OpENer harness with `--explore` also checks the interface type and speed/duplex options.
+
+Run `explore_selects_and_reads_an_lldp_neighbor_through_a_route` with `lldp-neighbor-gui` for the headless Explore workflow. `explicit::read_lldp_neighbor` returns the raw batch and a typed view of the target's recorded entry. The synthetic CLI fixture checks direct and routed replies, zero and missing values, and malformed attributes. The OpENer harness checks the rejection for an absent object.
 
 Run `explore_reads_connection_manager_counters_over_a_route` with the `manager-info-optional` fixture mode to verify a routed counter and optional CIP rejection in Explore. The OpENer harness with `--explore` checks the reply handling when the stack lacks all eight optional counters.
 

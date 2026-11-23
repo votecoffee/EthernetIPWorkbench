@@ -793,6 +793,12 @@ The extended localhost test checked all eleven attributes on one registered sess
 
 Pinned Windows OpENer returned twisted-pair type and one advertised option at 100 Mb/s full duplex. It rejected the operating and administrative state attributes with CIP status `0x14`. Physical port settings and capability reporting remain open for bench verification. [Pinned OpENer capabilities encoder](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipethernetlink.c#L477)
 
+## CIP LLDP Data Table neighbors
+
+The Windows loopback fixture listed instances 7 and 300, then checked all nine Get_Attribute_Single requests for instance 300. Direct and routed tests verified the local port, advertised identity, management IPv4 octet order, zero addresses, and raw replies for malformed data. An optional routed attribute rejection retained the target's general and extended statuses. A headless Explore test selected instance 300 over route `1/3` and opened the decoded MAC reply without modifying the saved profile.
+
+The independent Windows OpENer adapter rejected all nine reads with CIP status `0x05`. The CLI retained those rejections and exited with code 1. A positive test on LLDP-capable bench hardware remains open.
+
 ## CIP Connection Manager counters
 
 The Windows loopback fixture verified eight Get_Attribute_Single reads on one registered session for each inspection. It decoded both zero and 65,535, retained raw bytes for a reply with an invalid width, and kept the target's unsupported-attribute status separate from router failures. A later timeout counter still decoded after the malformed close counter. The headless Explore checks verified the routed view, counter display, and optional rejection alongside the existing Port Object, TCP/IP Interface, and Ethernet Link workflows.

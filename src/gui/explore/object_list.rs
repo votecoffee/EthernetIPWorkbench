@@ -48,6 +48,7 @@ fn class_name(class: u32) -> &'static str {
         explicit::PORT_OBJECT_CLASS => "Port Object",
         explicit::TCPIP_INTERFACE_CLASS => "TCP/IP Interface",
         explicit::ETHERNET_LINK_CLASS => "Ethernet Link",
+        explicit::LLDP_DATA_TABLE_CLASS => "LLDP Data Table",
         _ => "Class",
     }
 }

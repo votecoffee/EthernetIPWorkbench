@@ -26,6 +26,7 @@ mod connected;
 mod connection_data;
 mod instances;
 mod link_info;
+mod lldp_neighbor;
 mod manager_info;
 mod multiple;
 mod object_list;
@@ -61,6 +62,10 @@ pub use instances::{INSTANCE_PAGE_SIZE, InstanceIds, InstancePage, find_instance
 pub use link_info::{
     ETHERNET_LINK_CLASS, LinkCapabilities, LinkControl, LinkInfo, LinkPortDetails, LinkSpeedDuplex,
     read_link_info, read_link_port_details,
+};
+pub use lldp_neighbor::{
+    LLDP_DATA_TABLE_CLASS, LldpCapabilities, LldpCipIdentity, LldpNeighbor, LldpNeighborReport,
+    LldpPreemption, read_lldp_neighbor,
 };
 pub use manager_info::{CONNECTION_MANAGER_CLASS, ManagerInfo, read_manager_info};
 pub use multiple::run_saved_reads_packet;
@@ -147,6 +152,7 @@ impl ReadPath {
                     (PORT_OBJECT_CLASS, instance) => port_info::decode(instance, attribute, bytes),
                     (TCPIP_INTERFACE_CLASS, 1..) => tcpip_info::decode(attribute, bytes),
                     (ETHERNET_LINK_CLASS, 1..) => link_info::decode(attribute, bytes),
+                    (LLDP_DATA_TABLE_CLASS, 1..) => lldp_neighbor::decode(attribute, bytes),
                     (CONNECTION_MANAGER_CLASS, 1..) => manager_info::decode(attribute, bytes),
                     (QOS_CLASS, 1..) => qos_info::decode(attribute, bytes),
                     (ASSEMBLY_CLASS, 1..) => assembly_info::decode(attribute, bytes),

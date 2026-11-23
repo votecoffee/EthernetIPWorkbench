@@ -1386,6 +1386,46 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode lldp-neighbor-gui on localhost"]
+    fn explore_selects_and_reads_an_lldp_neighbor_through_a_route() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1250.0);
+        let mut device = explore_device(&[("Serial through bridge", 6, Some("1/3"))]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "Network objects");
+        click(&mut device, &ctx, size, "LLDP neighbors");
+        click(&mut device, &ctx, size, "Find instances");
+        wait_for_explore(&mut device);
+        click(&mut device, &ctx, size, "Instance 300");
+        click(&mut device, &ctx, size, "Read LLDP neighbor");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "LLDP neighbor 300 · Lab-Switch Port 4",
+            "Route 1/3",
+            "Local Ethernet Link instance · Reply",
+            "Neighbor MAC address · Reply",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Neighbor MAC address · Reply");
+        let labels = draw(&mut device, &ctx, size);
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text.contains("02:14:6B:34:12:04"))
+        );
+        assert_eq!(device.snapshot(), saved);
+        assert!(device.connection.is_none());
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode tcpip-info-optional on localhost"]
     fn explore_inspects_a_routed_tcpip_interface_without_changing_saved_requests() {
         let ctx = egui::Context::default();

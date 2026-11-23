@@ -55,6 +55,7 @@ Usage:
   eipmaster-cli tcpip-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--diagnostics] [--route <port/link/...>]
   eipmaster-cli acd-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli link-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--port-details] [--route <port/link/...>]
+  eipmaster-cli lldp-neighbor <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli manager-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli connection-data <adapter-or-bridge-ipv4> <local-ipv4> <number|connection-serial:vendor:originator-serial> [--route <port/link/...>]
   eipmaster-cli qos-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
@@ -282,6 +283,17 @@ fn run(args: &[OsString]) -> Result<bool, String> {
                 explicit::read_link_info
             };
             let report = read(
+                adapter,
+                local,
+                explicit::parse_id(&instance.to_string_lossy())?,
+                route,
+            )?;
+            println!("{}", report.report_json()?);
+            Ok(report.is_usable())
+        }
+        [command, adapter, local, instance, options @ ..] if command == "lldp-neighbor" => {
+            let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;
+            let report = explicit::read_lldp_neighbor(
                 adapter,
                 local,
                 explicit::parse_id(&instance.to_string_lossy())?,

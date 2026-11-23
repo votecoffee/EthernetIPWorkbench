@@ -530,6 +530,74 @@ def check_link_port_details(exe, root):
     print("Ethernet Link port details passed direct and routed reads, two label formats, and malformed replies.")
 
 
+def check_lldp_neighbor(exe, root):
+    command = [exe, "list-instances", LOCAL, LOCAL, "0x10A", "--route", "1/3"]
+    result, peer = with_adapter(root, "lldp-neighbor-list", command, "lldp-neighbor")
+    assert result.returncode == 0 and not result.stderr, (result.stdout, result.stderr)
+    (root / "lldp-neighbor-list.json").write_text(result.stdout, encoding="utf-8")
+    page = json.loads(result.stdout)
+    assert page["instance_ids"] == [7, 300] and page["next_after"] is None
+    assert peer["lldp_listed"] and peer["route_hex"] == "0103"
+    assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+
+    for case, route, code in (
+        ("direct", None, 0), ("optional", "1/3", 0), ("empty", None, 0), ("malformed", None, 1),
+    ):
+        command = [exe, "lldp-neighbor", LOCAL, LOCAL, "300"]
+        if route:
+            command.extend(("--route", route))
+        mode = "lldp-neighbor" if case == "direct" else f"lldp-neighbor-{case}"
+        result, peer = with_adapter(root, f"lldp-neighbor-{case}", command, mode, encoding="utf-8")
+        assert result.returncode == code and not result.stderr, (result.stdout, result.stderr)
+        (root / f"lldp-neighbor-{case}.json").write_text(result.stdout, encoding="utf-8")
+        report = json.loads(result.stdout)
+        assert (report["class"], report["instance"], report.get("route")) == (0x10A, 300, route)
+        assert peer["lldp_reads"] == list(range(1, 10))
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert peer["route_hex"] == ("0103" if route else "")
+        rows = report["results"]
+        assert [row["path"]["attribute"] for row in rows] == list(range(1, 10))
+        neighbor = report["neighbor"]
+        assert neighbor["ttl_seconds"] == 120 and neighbor["last_change_raw"] == 5001
+        assert neighbor["system_capabilities"] == {"supported_mask": 0x94, "enabled_mask": 4}
+        if case == "empty":
+            assert neighbor["local_link_instance"] == 0 and neighbor["mac_address"] is None
+            assert neighbor["interface_label"] == "" and neighbor["cip_identity"] is None
+            assert neighbor["management_ipv4"] == [] and rows[5]["data_hex"] == "00"
+            assert neighbor["ethernet_preemption"]["additional_fragment_size_bytes"] is None
+            continue
+        assert neighbor["local_link_instance"] == 2
+        assert neighbor["mac_address"] == "02:14:6B:34:12:04"
+        assert neighbor["ethernet_preemption"] == {
+            "supported": True, "enabled": True, "active": False,
+            "additional_fragment_size_code": 2, "additional_fragment_size_bytes": 192,
+        }
+        if case == "malformed":
+            assert neighbor["interface_label"] is None and neighbor["cip_identity"] is None
+            assert neighbor["management_ipv4"] is None
+            assert rows[5]["data_hex"] == "02 C0 00 02 29"
+            assert "SHORT_STRING" in rows[2]["decode_error"]
+            assert "IPv4 address count" in rows[5]["decode_error"]
+            assert "requires 12 bytes" in rows[6]["decode_error"]
+            continue
+        assert neighbor["interface_label"] == "Lab-Switch Port 4"
+        assert neighbor["cip_identity"] == {
+            "vendor_id": 0x1234, "device_type": 12, "product_code": 0x190,
+            "major": 2, "minor": 7, "serial": 0x89ABCDEF,
+        }
+        if route:
+            assert neighbor["management_ipv4"] is None
+            assert (rows[5]["reply_from"], rows[5]["general_status"], rows[5]["extended_status"]) == (
+                "target", 0x14, [0x0302],
+            )
+        else:
+            assert neighbor["management_ipv4"] == ["192.0.2.41", "198.51.100.5"]
+            assert rows[5]["data_hex"] == "02 C0 00 02 29 C6 33 64 05"
+    result = subprocess.run([exe, "lldp-neighbor", LOCAL, LOCAL, "0"], capture_output=True, timeout=5)
+    assert result.returncode == 1 and b"requires a nonzero instance" in result.stderr
+    print("LLDP neighbor inspection passed instance listing, direct and routed reads, empty fields, and malformed replies.")
+
+
 def check_connection_data(exe, root):
     for case, mode, route, triad, status in (
         ("number", "connection-data", None, False, None),
@@ -1144,6 +1212,7 @@ def main():
     check_acd_info(exe, root)
     check_link_info(exe, root)
     check_link_port_details(exe, root)
+    check_lldp_neighbor(exe, root)
     check_manager_info(exe, root)
     check_connection_data(exe, root)
     check_qos_info(exe, root)

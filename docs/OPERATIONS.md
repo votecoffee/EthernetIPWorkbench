@@ -190,6 +190,20 @@ Enable **Include port settings and capabilities** before selecting **Read link i
 
 Compare the live speed and duplex with the configured automatic or forced mode. Forced speed and duplex apply when auto-negotiation is disabled. The report keeps the operational and administrative states separate and accepts the documented one-byte and two-byte label lengths. Capabilities describe the interface's supported features and advertised speed/duplex pairs. Unavailable values are `null`, with the underlying rejection or decode error retained in the per-attribute result. [Hilscher Ethernet Link attribute definitions](https://www.hilscher.com/fileadmin/cms_upload/de/Resources/pdf/EtherNetIP_Adapter_Protocol_API_20_EN.pdf#page=68) · [Hirschmann Ethernet Link attribute definitions](https://www.doc.hirschmann.com/pdf/Manual-IO_LioN-X_EtherNetIP_IO-Link-Master_DE_3V1_2025-09-09.pdf#page=139) · [Pinned OpENer capabilities encoder](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipethernetlink.c#L477)
 
+### Inspect LLDP neighbors
+
+In **Explore → Network objects**, choose **LLDP neighbors**. Select **Find instances**, choose a reported instance, and select **Read LLDP neighbor**. You can also enter a known instance directly when the device doesn't support listing. Enter the documented route when reading a device through a CIP bridge.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe list-instances 192.0.2.10 192.0.2.11 0x10A
+.\target\release\eipmaster-cli.exe lldp-neighbor 192.0.2.10 192.0.2.11 1
+.\target\release\eipmaster-cli.exe lldp-neighbor 192.0.2.10 192.0.2.11 1 --route 1/3
+~~~
+
+The report reads the target's recorded neighbor entry using nine Get_Attribute_Single requests on one explicit session. Use the returned local Ethernet Link instance to inspect the corresponding port with `link-info`. The neighbor's advertised validity interval, capabilities, and CIP identification come from the target's LLDP table. Treat them as recorded information from the target. Last Change is shown as the raw counter because vendor manuals differ on its units. [Hirschmann LLDP Data Table reference](https://www.doc.hirschmann.com/pdf/Manual-IO_LioN-X_EtherNetIP_IO-Link-Master_EN_3V1_2025-09-09.pdf#page=139) · [Siemens LLDP Data Table reference](https://docs.tia.siemens.cloud/r/simatic_et_200eco_pn_manual_collection_enus_20/function-manuals/communication-function-manuals/multifieldbus/ethernet/ip/supported-cip-objects-for-ethernet/ip/lldp-data-table-object)
+
+The CLI emits JSON with the decoded `neighbor` and each raw reply, CIP rejection, or decode error. An empty `management_ipv4` array means the target reported zero addresses. A `null` there means the attribute was unavailable or could not be decoded. The command exits with code 1 when it receives no usable reply or encounters a malformed or failed read.
+
 ### Inspect Quality of Service settings
 
 In **Explore → Network objects**, choose **Quality of Service · Explicit DSCP** and select **Read QoS settings**. Use instance 1 unless the device documents another nonzero instance. An optional CIP route addresses the device at the end of a known path.

@@ -99,6 +99,8 @@ Choose **Network objects → Ethernet Link · Speed**, then select **Read link i
 
 Enable **Include port settings and capabilities**, or pass `link-info --port-details`, for the port label, operating and administrative state, speed and duplex settings, and supported modes. [Ethernet port details](docs/OPERATIONS.md#inspect-ethernet-port-settings)
 
+Choose **Network objects → LLDP neighbors** to look up the local port, MAC address, label, and management addresses recorded by a supporting target. Use `lldp-neighbor` for the same report from the CLI. [LLDP neighbor inspection](docs/OPERATIONS.md#inspect-lldp-neighbors)
+
 Choose **Network objects → Quality of Service · Explicit DSCP**, then select **Read QoS settings** for the selected target's configured DSCP values and 802.1Q tag setting where supported. The CLI `qos-info` command exports the same results. [QoS inspection](docs/OPERATIONS.md#inspect-quality-of-service-settings)
 
 Choose **Connection Manager** in Explore, then select **Read connection counters** to inspect the target's cumulative open, close, rejection, and timeout totals. The CLI `manager-info` command exports the same results. [Connection Manager counters](docs/OPERATIONS.md#inspect-connection-manager-counters)

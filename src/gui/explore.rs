@@ -3,8 +3,8 @@ use assembly_scanner::{
     discovery::{self, DiscoveryTransport, ServicesTransport},
     explicit::{
         self, AssemblyInfo, AttributeListReport, AttributeWrite, Class3Size, ClassInfo,
-        ConnectionDataReport, InstancePage, LinkInfo, ManagerInfo, ObjectList, PortInfo,
-        ProfileAssemblyCheck, QosInfo, ReadPath, Reader, Route, SavedRead, SavedReadMode,
+        ConnectionDataReport, InstancePage, LinkInfo, LldpNeighborReport, ManagerInfo, ObjectList,
+        PortInfo, ProfileAssemblyCheck, QosInfo, ReadPath, Reader, Route, SavedRead, SavedReadMode,
         SavedReadReport, TcpIpInfo, WriteCurrentCheck, WriteInspection, WriteOutcome, WriteReport,
     },
 };
@@ -21,13 +21,14 @@ mod receipt;
 mod services;
 mod write;
 
-const NETWORK_PRESETS: [(&str, u32, u32); 3] = [
+const NETWORK_PRESETS: [(&str, u32, u32); 4] = [
     (
         "TCP/IP Interface · Status",
         explicit::TCPIP_INTERFACE_CLASS,
         1,
     ),
     ("Ethernet Link · Speed", explicit::ETHERNET_LINK_CLASS, 1),
+    ("LLDP neighbors", explicit::LLDP_DATA_TABLE_CLASS, 1),
     ("Quality of Service · Explicit DSCP", explicit::QOS_CLASS, 8),
 ];
 
@@ -44,6 +45,7 @@ enum Response {
     PortInfo(PortInfo),
     TcpIpInfo(TcpIpInfo),
     LinkInfo(LinkInfo),
+    LldpNeighbor(LldpNeighborReport),
     ManagerInfo(ManagerInfo),
     QosInfo(QosInfo),
     AssemblyInfo(AssemblyInfo),
@@ -93,6 +95,7 @@ pub(super) struct Explorer {
     tcpip_diagnostics: bool,
     link_info: Option<LinkInfo>,
     link_port_details: bool,
+    lldp_neighbor: Option<LldpNeighborReport>,
     manager_info: Option<ManagerInfo>,
     qos_info: Option<QosInfo>,
     assembly_info: Option<AssemblyInfo>,
@@ -138,6 +141,7 @@ impl Default for Explorer {
             tcpip_diagnostics: false,
             link_info: None,
             link_port_details: false,
+            lldp_neighbor: None,
             manager_info: None,
             qos_info: None,
             assembly_info: None,
@@ -204,6 +208,7 @@ impl Explorer {
             Ok(Ok(Response::PortInfo(info))) => self.port_info = Some(info),
             Ok(Ok(Response::TcpIpInfo(info))) => self.tcpip_info = Some(info),
             Ok(Ok(Response::LinkInfo(info))) => self.link_info = Some(info),
+            Ok(Ok(Response::LldpNeighbor(info))) => self.lldp_neighbor = Some(info),
             Ok(Ok(Response::ManagerInfo(info))) => self.manager_info = Some(info),
             Ok(Ok(Response::QosInfo(info))) => self.qos_info = Some(info),
             Ok(Ok(Response::AssemblyInfo(info))) => self.assembly_info = Some(info),
@@ -706,6 +711,9 @@ impl Device {
         }
         if let Some(info) = &explorer.link_info {
             class_info::show_link(ui, info);
+        }
+        if let Some(info) = &explorer.lldp_neighbor {
+            class_info::show_lldp_neighbor(ui, info);
         }
         if let Some(info) = &explorer.manager_info {
             class_info::show_manager(ui, info);

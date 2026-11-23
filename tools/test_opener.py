@@ -482,6 +482,21 @@ def check_link_port_details(cli, adapter, root):
     print("OpENer returned twisted-pair type and advertised 100 Mb/s full duplex.")
 
 
+def check_lldp_neighbor(cli, adapter, root):
+    root.mkdir()
+    with run_adapter(adapter, root):
+        result = subprocess.run([cli, "lldp-neighbor", ADAPTER, "127.0.0.1", "1"],
+                                capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+    (root / "result.json").write_bytes(result.stdout)
+    assert result.returncode == 1 and not result.stderr, (result.stdout, result.stderr)
+    report = json.loads(result.stdout)
+    assert (report["class"], report["instance"]) == (0x10A, 1)
+    assert [row["path"]["attribute"] for row in report["results"]] == list(range(1, 10))
+    assert all(row["status"] == "cip_rejected" and row["general_status"] == 0x05 for row in report["results"])
+    assert all(value is None for value in report["neighbor"].values())
+    print("OpENer returned CIP status 0x05 for all LLDP Data Table attributes.")
+
+
 def check_manager_info(cli, adapter, root):
     root.mkdir()
     with run_adapter(adapter, root):
@@ -889,6 +904,7 @@ def main():
         check_acd_info(cli, adapter, root / "acd-info")
         check_link_info(cli, adapter, root / "link-info")
         check_link_port_details(cli, adapter, root / "link-port-details")
+        check_lldp_neighbor(cli, adapter, root / "lldp-neighbor")
         check_manager_info(cli, adapter, root / "manager-info")
         check_connection_data(cli, adapter, root / "connection-data")
         check_qos_info(cli, adapter, root / "qos-info")

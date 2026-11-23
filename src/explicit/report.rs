@@ -253,6 +253,19 @@ impl super::LinkInfo {
     }
 }
 
+impl super::LldpNeighborReport {
+    pub fn report_json(&self) -> Result<String, String> {
+        let mut document = instance_document(
+            &self.batch,
+            super::LLDP_DATA_TABLE_CLASS,
+            self.instance,
+            self.route.as_ref(),
+        )?;
+        document["neighbor"] = json!(self.neighbor());
+        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
+    }
+}
+
 impl super::ManagerInfo {
     pub fn report_json(&self) -> Result<String, String> {
         instance_json(
