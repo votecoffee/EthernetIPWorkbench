@@ -668,6 +668,7 @@ def check_dlr_participants(exe, root):
         ("malformed", None, 3, 3, None, "unavailable"),
         ("rejected", "1/3", 3, 3, None, "unavailable"),
         ("no-count", None, None, None, 3, "unavailable"),
+        ("overflow", None, 3, 3, 2, "count_mismatch"),
     ):
         instance = 2 if route else 1
         command = [exe, "dlr-participants", LOCAL, LOCAL, str(instance)]
@@ -709,9 +710,71 @@ def check_dlr_participants(exe, root):
             assert (rows[1]["reply_from"], rows[1]["general_status"], rows[1]["extended_status"]) == (
                 "target", 0x11, [0x0302],
             )
+        if case == "overflow":
+            assert "capacity exceeded" in parsed["list_issue"]
+            assert len(parsed["entries"]) == 2 and rows[1]["data_hex"].endswith("FF " * 9 + "FF")
     result = subprocess.run([exe, "dlr-participants", LOCAL, LOCAL, "0"], capture_output=True, timeout=5)
     assert result.returncode == 1 and b"requires a nonzero instance" in result.stderr
     print("DLR participant reads passed count checks, ordered node decoding, empty lists, and partial replies.")
+
+
+def check_dlr_paging(exe, root):
+    complete = [[1, 32], [33, 32], [65, 6]]
+    for case, route, requests, returned, count_status in (
+        ("complete", None, complete, 70, "counts_match"),
+        ("empty", None, [], 0, "counts_match"),
+        ("short", "1/3", [[1, 32], [14, 32], [46, 25]], 70, "counts_changed"),
+        ("malformed", None, complete[:2], 32, "count_mismatch"),
+        ("rejected", "1/3", complete[:2], 32, "count_mismatch"),
+        ("exchange", None, complete[:2], 32, "unavailable"),
+        ("stalled", None, complete[:2], 32, "count_mismatch"),
+        ("overflow", None, complete[:2], 33, "count_mismatch"),
+        ("limit", None, [[first, 32] for first in range(1, 1025, 32)], 1024, "count_mismatch"),
+    ):
+        command = [exe, "dlr-participants", LOCAL, LOCAL, "1", "--paged"]
+        if route:
+            command.extend(("--route", route))
+        mode = "dlr-paged" if case == "complete" else f"dlr-paged-{case}"
+        result, peer = with_adapter(root, f"dlr-paged-{case}", command, mode, encoding="utf-8")
+        assert not result.stderr and result.returncode == (0 if count_status == "counts_match" else 1), (
+            result.stdout, result.stderr,
+        )
+        (root / f"dlr-paged-{case}.json").write_text(result.stdout, encoding="utf-8")
+        report = json.loads(result.stdout)
+        assert report["list_service"] == "Get_Member" and report.get("route") == route
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert peer["route_hex"] == ("0103" if route else "")
+        assert peer["dlr_count_reads"] == (1 if case == "exchange" else 2)
+        assert peer.get("dlr_page_requests", []) == requests
+        assert [[page["first_member"], page["requested_count"]] for page in report["pages"]] == requests
+        assert [row["path"]["attribute"] for row in report["results"]] == [8, 8]
+        parsed = report["participant_list"]
+        before = {"empty": 0, "limit": 1050}.get(case, 70)
+        after = {"short": 71, "exchange": None}.get(case, before)
+        assert (parsed["count_before"], parsed["count_after"], parsed["returned_count"], parsed["count_status"]) == (
+            before, after, returned, count_status,
+        )
+        assert [node["mac_address"] for node in parsed["entries"]] == [
+            f"02:00:00:20:{node >> 8:02X}:{node & 0xFF:02X}" for node in range(1, returned + 1)
+        ]
+        if case == "short":
+            assert [page["returned_count"] for page in report["pages"]] == [13, 32, 25]
+        if case == "malformed":
+            last = report["pages"][-1]
+            assert "first member 34, expected 33" in last["decode_error"] and last["data_hex"].startswith("20 00 22 00")
+        if case == "rejected":
+            last = report["pages"][-1]
+            assert (last["reply_from"], last["general_status"], last["extended_status"]) == ("target", 0x0C, [0x0304])
+        if case == "exchange":
+            assert report["results"][-1]["status"] == "not_attempted"
+            assert "Unexpected CIP reply service" in report["pages"][-1]["error"]
+        if case == "stalled":
+            assert "returned count 0" in report["pages"][-1]["decode_error"]
+        if case == "overflow":
+            assert "capacity exceeded" in parsed["list_issue"]
+        if case == "limit":
+            assert "32-page read limit" in parsed["list_issue"]
+    print("DLR Get_Member paging passed sequential ranges, short pages, count changes, partial results, and limits.")
 
 
 def check_time_sync(exe, root):
@@ -1395,6 +1458,7 @@ def main():
     check_lldp_neighbor(exe, root)
     check_dlr_info(exe, root)
     check_dlr_participants(exe, root)
+    check_dlr_paging(exe, root)
     check_time_sync(exe, root)
     check_manager_info(exe, root)
     check_connection_data(exe, root)

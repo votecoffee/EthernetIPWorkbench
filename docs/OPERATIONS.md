@@ -224,11 +224,14 @@ In **Explore → Network objects → Device Level Ring · Status**, point Device
 ~~~powershell
 .\target\release\eipmaster-cli.exe dlr-participants 192.0.2.10 192.0.2.11 1
 .\target\release\eipmaster-cli.exe dlr-participants 192.0.2.10 192.0.2.11 2 --route 1/3
+.\target\release\eipmaster-cli.exe dlr-participants 192.0.2.10 192.0.2.11 2 --paged --route 1/3
 ~~~
 
 The command reads the count, list, and count again on one registered TCP session using Get_Attribute_Single. Addresses stay in the order returned by the supervisor, including participants reported without an IPv4 address. The single list reply is subject to the target's reply-size limit. [Rockwell Automation participant list reference](https://literature.rockwellautomation.com/idc/groups/literature/documents/at/290e-at001_-en-p.pdf#page=51)
 
-CLI exit code 0 means both reported counts agree with the decoded list length. A count change, length mismatch, unavailable field, or malformed reply returns code 1 with the report and any decoded entries. A successful zero-entry reply yields an empty list. Matching counts check the length across the three requests. Membership can change while the size stays the same. Expand **Participant replies** to review the raw replies, including any CIP rejection from the supervisor or route.
+For a supervisor that supports Get_Member, enable **Read participants in pages** or pass `--paged`. This reads up to 32 entries per request and stops after at most 32 pages on the same explicit session. A valid short page advances by the number of entries returned. The initial count bounds the requests, so a zero count skips the page reads. A failed or malformed page stops the scan and leaves earlier entries in the report. An all-FF record marking a supervisor capacity overflow produces a warning. [IEC 61158-4-2 DLR participant list, section 7.9.4.10](https://asme.isodoc.my/iec/IEC%2061158-4-2-2014%20PDF.pdf) · [IEC 61158-6-2 sequential member format, section 4.1.8.1.21.5](https://previewnorm.com/iec/IEC%2061158-6-2-2019%20PDF.pdf)
+
+CLI exit code 0 means both counts agree with the decoded list length and the read completed. Count changes, mismatches, unavailable fields, malformed replies, and capacity limits return code 1 with the report and any decoded entries. Matching counts check the total length. Membership can change while the size stays the same. Expand **Participant replies** to review the raw replies and any CIP rejection from the supervisor or route.
 
 ### Inspect CIP Sync clock status
 

@@ -513,6 +513,8 @@ def dlr_participants_reply(cip, mode, report):
                          for n in range(1, 56))
     if mode == "dlr-participants-empty":
         nodes = b""
+    if mode == "dlr-participants-overflow":
+        nodes = nodes[:-10] + b"\xff" * 10
     before = after = len(nodes) // 10
     if mode == "dlr-participants-mismatch":
         before = after = 4
@@ -526,6 +528,50 @@ def dlr_participants_reply(cip, mode, report):
         return bytes.fromhex("8E 00 14 00")
     body = nodes if attribute == 9 else struct.pack("<H", before if len(attributes) == 1 else after)
     return bytes.fromhex("8E 00 00 00") + body
+
+
+def dlr_paged_reply(cip, mode, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    assert route in (b"", b"\x01\x03")
+    report["route_hex"] = route.hex()
+    total = {"dlr-paged-empty": 0, "dlr-paged-limit": 1050}.get(mode, 70)
+    if message[0] == 0x0E:
+        assert message == bytes.fromhex("0E 03 20 47 24 01 30 08")
+        count_reads = report.get("dlr_count_reads", 0) + 1
+        assert count_reads <= 2
+        report["dlr_count_reads"] = count_reads
+        if mode == "dlr-paged-short" and count_reads == 2:
+            total += 1
+        return bytes.fromhex("8E 00 00 00") + struct.pack("<H", total)
+
+    assert message[:10] == bytes.fromhex("18 05 20 47 24 01 30 09 29 00")
+    assert len(message) == 15 and message[12] == 1
+    flags = struct.unpack_from("<H", message, 10)[0]
+    first = flags & 0x7FFF
+    requested = struct.unpack_from("<H", message, 13)[0]
+    assert flags & 0x8000 and 1 <= first <= total and requested == min(32, total - first + 1)
+    pages = report.setdefault("dlr_page_requests", [])
+    pages.append([first, requested])
+    assert report.get("dlr_count_reads") == 1
+    returned = 13 if first == 1 and mode == "dlr-paged-short" else requested
+    reply_first = first
+    if len(pages) == 2:
+        if mode == "dlr-paged-malformed":
+            reply_first += 1
+        if mode == "dlr-paged-rejected":
+            return bytes.fromhex("98 00 0C 01 04 03")
+        if mode == "dlr-paged-exchange":
+            return bytes.fromhex("8E 00 00 00")
+        if mode == "dlr-paged-stalled":
+            return bytes.fromhex("98 00 00 00 00 00")
+        if mode == "dlr-paged-overflow":
+            returned = 2
+    nodes = b"".join(struct.pack("<I", 0xC0000200 + node % 254 + 1)
+                     + bytes((2, 0, 0, 0x20, node >> 8, node & 0xFF))
+                     for node in range(first, first + returned))
+    if mode == "dlr-paged-overflow" and len(pages) == 2:
+        nodes = nodes[:-10] + b"\xFF" * 10
+    return bytes.fromhex("98 00 00 00") + struct.pack("<HH", returned, reply_first) + nodes
 
 
 def time_sync_reply(cip, mode, report):
@@ -774,6 +820,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
         "lldp-neighbor": lldp_neighbor_reply,
         "dlr-info": dlr_info_reply,
         "dlr-participants": dlr_participants_reply,
+        "dlr-paged": dlr_paged_reply,
         "time-sync": time_sync_reply,
         "manager-info": manager_info_reply,
         "connection-data": connection_data_reply,
@@ -1181,7 +1228,10 @@ def main():
         "dlr-info", "dlr-info-optional", "dlr-info-empty", "dlr-info-malformed",
         "dlr-participants", "dlr-participants-changed", "dlr-participants-mismatch", "dlr-participants-empty",
         "dlr-participants-malformed", "dlr-participants-rejected", "dlr-participants-no-count",
-        "dlr-participants-large",
+        "dlr-participants-large", "dlr-participants-overflow",
+        "dlr-paged", "dlr-paged-empty", "dlr-paged-short", "dlr-paged-malformed",
+        "dlr-paged-rejected", "dlr-paged-exchange", "dlr-paged-stalled",
+        "dlr-paged-limit", "dlr-paged-overflow",
         "time-sync", "time-sync-optional", "time-sync-empty", "time-sync-malformed",
         "manager-info", "manager-info-optional", "manager-info-malformed",
         "connection-data", "connection-data-malformed", "connection-data-mismatch",

@@ -5,6 +5,9 @@ use crate::explicit::{Route, SavedReadBatch, SavedReadOutcome, batch::read_objec
 use serde::Serialize;
 use std::net::Ipv4Addr;
 
+mod pages;
+pub use pages::{DlrParticipantPage, read_dlr_participants_paged};
+
 const ATTRIBUTES: &[(u32, &str)] = &[
     (8, "Ring participant count before"),
     PARTICIPANTS_ATTRIBUTE,
@@ -18,6 +21,9 @@ pub struct DlrParticipantReport {
     pub count_before: Option<u16>,
     pub participants: Option<Vec<DlrNodeAddress>>,
     pub count_after: Option<u16>,
+    /// Page results are present when the caller selected Get_Member.
+    pub pages: Option<Vec<DlrParticipantPage>>,
+    pub list_issue: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -42,6 +48,10 @@ impl DlrParticipantReport {
             (Some(_), Some(_), Some(_)) => CountMismatch,
             _ => Unavailable,
         }
+    }
+
+    pub fn is_complete(&self) -> bool {
+        self.count_status() == DlrParticipantCountStatus::CountsMatch && self.list_issue.is_none()
     }
 }
 
@@ -70,9 +80,11 @@ pub fn read_dlr_participants(
         _ => None,
     };
     let count_before = reply(0).and_then(|bytes| uint(bytes).ok());
-    let participants = reply(1)
-        .and_then(|bytes| records(bytes).ok())
-        .map(|records| records.iter().map(decode_node_address).collect());
+    let decoded = reply(1).and_then(|bytes| records(bytes).ok());
+    let participants = decoded.as_ref().map(RingRecords::nodes);
+    let list_issue = decoded
+        .is_some_and(|records| records.overflow)
+        .then(|| OVERFLOW_MESSAGE.into());
     let count_after = reply(2).and_then(|bytes| uint(bytes).ok());
     Ok(DlrParticipantReport {
         instance,
@@ -81,15 +93,35 @@ pub fn read_dlr_participants(
         count_before,
         participants,
         count_after,
+        pages: None,
+        list_issue,
     })
 }
 
 pub(super) fn describe(bytes: &[u8]) -> Result<String, String> {
-    let count = records(bytes)?.len();
-    Ok(format!("{count} participant records"))
+    let reply = records(bytes)?;
+    let count = reply.addresses.len();
+    if reply.overflow {
+        Ok(format!("{count} participant records · {OVERFLOW_MESSAGE}"))
+    } else {
+        Ok(format!("{count} participant records"))
+    }
 }
 
-fn records(bytes: &[u8]) -> Result<&[[u8; 10]], String> {
+const OVERFLOW_MESSAGE: &str = "Supervisor participant list capacity exceeded.";
+
+struct RingRecords<'a> {
+    addresses: &'a [[u8; 10]],
+    overflow: bool,
+}
+
+impl RingRecords<'_> {
+    fn nodes(&self) -> Vec<DlrNodeAddress> {
+        self.addresses.iter().map(decode_node_address).collect()
+    }
+}
+
+fn records(bytes: &[u8]) -> Result<RingRecords<'_>, String> {
     let (records, trailing) = bytes.as_chunks::<10>();
     if !trailing.is_empty() {
         return Err(format!(
@@ -97,5 +129,16 @@ fn records(bytes: &[u8]) -> Result<&[[u8; 10]], String> {
             bytes.len()
         ));
     }
-    Ok(records)
+    const OVERFLOW_RECORD: [u8; 10] = [0xff; 10];
+    let (addresses, overflow) = match records.split_last() {
+        Some((last, addresses)) if *last == OVERFLOW_RECORD => (addresses, true),
+        _ => (records, false),
+    };
+    if addresses.contains(&OVERFLOW_RECORD) {
+        return Err("DLR overflow marker appears before the last record".into());
+    }
+    Ok(RingRecords {
+        addresses,
+        overflow,
+    })
 }

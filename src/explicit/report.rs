@@ -294,6 +294,34 @@ impl super::DlrParticipantReport {
             "count_status": self.count_status(),
             "entries": self.participants,
         });
+        if let Some(issue) = &self.list_issue {
+            document["participant_list"]["list_issue"] = json!(issue);
+        }
+        if let Some(pages) = &self.pages {
+            let path = ReadPath {
+                class: super::DLR_CLASS,
+                instance: self.instance,
+                attribute: Some(9),
+            };
+            let pages = pages.iter().map(|page| {
+                let mut result = match &page.reply {
+                    Ok(bytes) => json!({"reply_from": "target", "data_hex": hex(bytes), "bytes": bytes.len()}),
+                    Err(error) => read_reply_document(
+                        self.batch.adapter_or_bridge, path, self.route.as_ref(), None, Err(error),
+                    ).unwrap_or_else(|error| json!({"error": error})),
+                };
+                match page.returned_count() {
+                    Ok(Some(count)) => result["returned_count"] = json!(count),
+                    Err(error) => result["decode_error"] = json!(error),
+                    Ok(None) => {}
+                }
+                result["first_member"] = json!(page.first_member);
+                result["requested_count"] = json!(page.requested_count);
+                result
+            }).collect::<Vec<_>>();
+            document["list_service"] = json!("Get_Member");
+            document["pages"] = json!(pages);
+        }
         serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
     }
 }

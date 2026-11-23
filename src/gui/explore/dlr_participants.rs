@@ -1,5 +1,8 @@
-use super::{AMBER, DlrParticipantReport, Explorer, Ipv4Addr, Response, Ui, batch, egui, explicit};
-use explicit::DlrParticipantCountStatus;
+use super::{
+    AMBER, DlrParticipantReport, Explorer, Ipv4Addr, Response, Ui, batch, egui, explicit,
+    show_reply_payload,
+};
+use explicit::{DlrParticipantCountStatus, DlrParticipantPage};
 
 impl Explorer {
     pub(super) fn dlr_participants_action(
@@ -8,6 +11,13 @@ impl Explorer {
         adapter: &str,
         local: Option<Ipv4Addr>,
     ) {
+        ui.checkbox(
+            &mut self.dlr_participants_paged,
+            "Read participants in pages",
+        )
+        .on_hover_text(
+            "Use Get_Member for supervisors that limit the size of a single list reply.",
+        );
         if !ui
             .add_enabled(!self.busy(), egui::Button::new("Read ring participants"))
             .on_hover_text(
@@ -18,10 +28,14 @@ impl Explorer {
             return;
         }
         self.dlr_participants = None;
+        let read = if self.dlr_participants_paged {
+            explicit::read_dlr_participants_paged
+        } else {
+            explicit::read_dlr_participants
+        };
         match self.inspection_request(adapter, local, &self.instance) {
             Ok((adapter, local, instance, route)) => self.start(move || {
-                explicit::read_dlr_participants(adapter, local, instance, route)
-                    .map(Response::DlrParticipants)
+                read(adapter, local, instance, route).map(Response::DlrParticipants)
             }),
             Err(error) => self.notice = Some(error),
         }
@@ -39,6 +53,9 @@ pub(super) fn show(ui: &mut Ui, info: &DlrParticipantReport) {
             ));
             if let Some(route) = &info.route {
                 ui.small(format!("Route {route}"));
+            }
+            if let Some(pages) = &info.pages {
+                ui.small(format!("Get_Member pages requested · {}", pages.len()));
             }
             let count = |value: Option<u16>| {
                 value.map_or_else(|| "Unavailable".into(), |value| value.to_string())
@@ -67,6 +84,9 @@ pub(super) fn show(ui: &mut Ui, info: &DlrParticipantReport) {
             if let Some(warning) = warning {
                 ui.colored_label(AMBER, warning);
             }
+            if let Some(issue) = &info.list_issue {
+                ui.colored_label(AMBER, issue);
+            }
             if let Some(nodes) = &info.participants
                 && !nodes.is_empty()
             {
@@ -86,8 +106,31 @@ pub(super) fn show(ui: &mut Ui, info: &DlrParticipantReport) {
                 for (index, result) in info.batch.results.iter().enumerate() {
                     ui.push_id(index, |ui| batch::show_result(ui, result));
                 }
+                if let Some(pages) = &info.pages {
+                    for page in pages {
+                        show_page(ui, page);
+                    }
+                }
             });
         });
+}
+
+fn show_page(ui: &mut Ui, page: &DlrParticipantPage) {
+    let last = page.first_member + page.requested_count - 1;
+    ui.collapsing(
+        format!("Get_Member {}–{last}", page.first_member),
+        |ui| match &page.reply {
+            Ok(bytes) => {
+                let decoded = page
+                    .returned_count()
+                    .map(|count| count.map(|count| format!("{count} participant records")));
+                show_reply_payload(ui, bytes, &decoded);
+            }
+            Err(error) => {
+                ui.colored_label(AMBER, error.to_string());
+            }
+        },
+    );
 }
 
 fn show_columns(ui: &mut Ui, ipv4: &str, mac: &str) {

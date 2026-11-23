@@ -811,6 +811,12 @@ The Windows fixture verified count, list, and count requests in one TCP session.
 
 The independent OpENer loopback adapter with its basic DLR object enabled returned CIP status `0x14` for all three reads. The CLI preserved each response and reported the participant list unavailable. Positive replies were simulated. Physical supervisor list behavior and reply-size limits remain open. [Rockwell Automation participant list reference](https://literature.rockwellautomation.com/idc/groups/literature/documents/at/290e-at001_-en-p.pdf#page=51)
 
+#### DLR Get_Member paging
+
+The Windows fixture verified the extended Get_Member request path for attribute 9 and the first member ID and count in each reply. It combined a 70-entry list across three pages. A routed short reply advanced to the next returned member and retained the changed count. Rejected, stalled, malformed, and interrupted pages preserved previously decoded addresses. The fixture verified the 32-page bound with 1,024 returned entries, and confirmed that the capacity marker produced a warning in both read modes. Headless Explore passed the paged workflow and the existing DLR views.
+
+The independent OpENer loopback adapter rejected the initial participant count, so the paged inspection stopped before sending Get_Member and retained the CIP outcomes. Positive page replies were verified with the synthetic fixture. Physical supervisor support for this request format remains open.
+
 ## CIP Sync clock status
 
 The Windows loopback fixture verified nine Time Sync attribute reads on one registered session over direct and routed paths. The replies exercised negative offsets, 64-bit maximum offsets, grandmaster identity and property words, and a counted port-state list with an unknown state code. The fixture also confirmed that a false synchronization flag and zero ports remain valid values. Malformed fields retained the raw bytes and decode errors. The headless Explore check displayed the routed grandmaster and the separate optional attribute rejection.

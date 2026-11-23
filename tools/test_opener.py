@@ -533,19 +533,29 @@ def check_dlr_info(cli, adapter, root):
 def check_dlr_participants_unavailable(cli, adapter, root):
     root.mkdir()
     with run_adapter(adapter, root):
-        result = subprocess.run([cli, "dlr-participants", ADAPTER, "127.0.0.1", "1"],
-                                capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
-    (root / "result.json").write_bytes(result.stdout)
-    assert result.returncode == 1 and not result.stderr, (result.stdout, result.stderr)
-    report = json.loads(result.stdout)
-    assert (report["class"], report["instance"]) == (0x47, 1)
-    assert [row["path"]["attribute"] for row in report["results"]] == [8, 9, 8]
-    assert all(row["status"] == "cip_rejected" and row["general_status"] == 0x14 for row in report["results"])
-    assert report["participant_list"] == {
-        "count_before": None, "count_after": None, "returned_count": None,
-        "count_status": "unavailable", "entries": None,
-    }
-    print("DLR-enabled OpENer returned CIP status 0x14 for the participant count and list.")
+        for paged in (False, True):
+            command = [cli, "dlr-participants", ADAPTER, "127.0.0.1", "1"]
+            if paged:
+                command.append("--paged")
+            result = subprocess.run(command, capture_output=True, timeout=10,
+                                    creationflags=subprocess.CREATE_NO_WINDOW)
+            (root / ("paged.json" if paged else "result.json")).write_bytes(result.stdout)
+            assert result.returncode == 1 and not result.stderr, (result.stdout, result.stderr)
+            report = json.loads(result.stdout)
+            assert (report["class"], report["instance"]) == (0x47, 1)
+            attrs = [8, 8] if paged else [8, 9, 8]
+            assert [row["path"]["attribute"] for row in report["results"]] == attrs
+            assert all(row["status"] == "cip_rejected" and row["general_status"] == 0x14
+                       for row in report["results"])
+            participant_list = report["participant_list"]
+            if paged:
+                assert report["pages"] == [] and report["list_service"] == "Get_Member"
+                assert participant_list.pop("list_issue") == "The initial participant count was unavailable."
+            assert participant_list == {
+                "count_before": None, "count_after": None, "returned_count": None,
+                "count_status": "unavailable", "entries": None,
+            }
+    print("DLR-enabled OpENer rejected the participant attributes. Paged reads stopped before requesting members.")
 
 
 def check_time_sync_unavailable(cli, adapter, root):

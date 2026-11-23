@@ -57,7 +57,7 @@ Usage:
   eipmaster-cli link-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--port-details] [--route <port/link/...>]
   eipmaster-cli lldp-neighbor <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli dlr-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--supervisor-details] [--route <port/link/...>]
-  eipmaster-cli dlr-participants <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
+  eipmaster-cli dlr-participants <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--paged] [--route <port/link/...>]
   eipmaster-cli time-sync-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli manager-info <adapter-or-bridge-ipv4> <local-ipv4> <instance> [--route <port/link/...>]
   eipmaster-cli connection-data <adapter-or-bridge-ipv4> <local-ipv4> <number|connection-serial:vendor:originator-serial> [--route <port/link/...>]
@@ -323,15 +323,25 @@ fn run(args: &[OsString]) -> Result<bool, String> {
             Ok(report.is_usable())
         }
         [command, adapter, local, instance, options @ ..] if command == "dlr-participants" => {
-            let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;
-            let report = explicit::read_dlr_participants(
+            let (paged, endpoint_options) = match options {
+                [option, rest @ ..] if option == "--paged" => (true, rest),
+                [rest @ .., option] if option == "--paged" => (true, rest),
+                _ => (false, options),
+            };
+            let (adapter, local, route) = explicit_endpoint(adapter, local, endpoint_options)?;
+            let read = if paged {
+                explicit::read_dlr_participants_paged
+            } else {
+                explicit::read_dlr_participants
+            };
+            let report = read(
                 adapter,
                 local,
                 explicit::parse_id(&instance.to_string_lossy())?,
                 route,
             )?;
             println!("{}", report.report_json()?);
-            Ok(report.count_status() == explicit::DlrParticipantCountStatus::CountsMatch)
+            Ok(report.is_complete())
         }
         [command, adapter, local, instance, options @ ..] if command == "time-sync-info" => {
             let (adapter, local, route) = explicit_endpoint(adapter, local, options)?;

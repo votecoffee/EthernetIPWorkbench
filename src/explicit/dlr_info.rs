@@ -5,7 +5,10 @@ use serde::Serialize;
 use std::net::Ipv4Addr;
 
 mod participants;
-pub use participants::{DlrParticipantCountStatus, DlrParticipantReport, read_dlr_participants};
+pub use participants::{
+    DlrParticipantCountStatus, DlrParticipantPage, DlrParticipantReport, read_dlr_participants,
+    read_dlr_participants_paged,
+};
 
 pub const DLR_CLASS: u32 = 0x47;
 const BASIC_ATTRIBUTE_COUNT: usize = 4;

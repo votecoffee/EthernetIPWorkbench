@@ -48,6 +48,16 @@ pub enum SavedReadOutcome {
     NotAttempted,
 }
 
+impl From<Result<Vec<u8>, RoutedReadError>> for SavedReadOutcome {
+    fn from(reply: Result<Vec<u8>, RoutedReadError>) -> Self {
+        match reply {
+            Ok(bytes) => Self::Reply(bytes),
+            Err(error @ RoutedReadError::Exchange(_)) => Self::ExchangeFailed(error),
+            Err(error) => Self::Rejected(error),
+        }
+    }
+}
+
 impl SavedReadBatch {
     pub(super) fn is_usable_inspection(&self) -> bool {
         self.is_usable_inspection_with_raw_attribute(None)
@@ -241,14 +251,9 @@ pub(super) fn run_ordered(
         let outcome = if session_lost {
             SavedReadOutcome::NotAttempted
         } else {
-            match query(&request) {
-                Ok(bytes) => SavedReadOutcome::Reply(bytes),
-                Err(error @ RoutedReadError::Exchange(_)) => {
-                    session_lost = true;
-                    SavedReadOutcome::ExchangeFailed(error)
-                }
-                Err(error) => SavedReadOutcome::Rejected(error),
-            }
+            let outcome = SavedReadOutcome::from(query(&request));
+            session_lost = matches!(outcome, SavedReadOutcome::ExchangeFailed(_));
+            outcome
         };
         results.push(SavedReadResult { request, outcome });
     }

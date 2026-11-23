@@ -103,7 +103,7 @@ Choose **Network objects → LLDP neighbors** to look up the local port, MAC add
 
 Choose **Network objects → Device Level Ring · Status** to read the target's ring topology, network status, and active supervisor. Enable **Include supervisor details** to read fault counters and the last active nodes on supporting targets. The CLI offers the same inspection through `dlr-info`. [Device Level Ring diagnostics](docs/OPERATIONS.md#inspect-device-level-ring-status)
 
-Select **Read ring participants**, or run `dlr-participants`, to see the active supervisor's recorded IPv4 and MAC addresses and compare the number of returned entries with its reported counts. [Ring participant list](docs/OPERATIONS.md#read-the-device-level-ring-participant-list)
+Select **Read ring participants**, or run `dlr-participants`, to see the active supervisor's recorded IPv4 and MAC addresses and compare the number of returned entries with its reported counts. For supervisors with a small reply limit, enable **Read participants in pages** or use `--paged`. [Ring participant list](docs/OPERATIONS.md#read-the-device-level-ring-participant-list)
 
 Choose **Network objects → CIP Sync · Clock status** to read the device's PTP state, grandmaster identity, and reported clock offsets. Use `time-sync-info` for the same report from the CLI. [CIP Sync diagnostics](docs/OPERATIONS.md#inspect-cip-sync-clock-status)
 

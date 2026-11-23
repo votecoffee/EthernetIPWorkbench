@@ -61,8 +61,8 @@ pub use connection_data::{
     ConnectionTriad, read_connection_data,
 };
 pub use dlr_info::{
-    DLR_CLASS, DlrNodeAddress, DlrParticipantCountStatus, DlrParticipantReport, DlrReport,
-    DlrStatus, read_dlr_info, read_dlr_participants,
+    DLR_CLASS, DlrNodeAddress, DlrParticipantCountStatus, DlrParticipantPage, DlrParticipantReport,
+    DlrReport, DlrStatus, read_dlr_info, read_dlr_participants, read_dlr_participants_paged,
 };
 pub use instances::{INSTANCE_PAGE_SIZE, InstanceIds, InstancePage, find_instances_page};
 pub use link_info::{
@@ -277,6 +277,21 @@ impl Reader {
             .as_mut()
             .ok_or(RoutedReadError::Exchange(EipError::Closed))
             .and_then(|session| session.read_routed(path, route));
+        if matches!(&result, Err(RoutedReadError::Exchange(_))) {
+            self.0 = None;
+        }
+        result
+    }
+    fn read_service(
+        &mut self,
+        request: Vec<u8>,
+        route: Option<&Route>,
+    ) -> std::result::Result<Vec<u8>, RoutedReadError> {
+        let result = self
+            .0
+            .as_mut()
+            .ok_or(RoutedReadError::Exchange(EipError::Closed))?
+            .read_service(request, route);
         if matches!(&result, Err(RoutedReadError::Exchange(_))) {
             self.0 = None;
         }
