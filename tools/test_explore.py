@@ -658,6 +658,62 @@ def check_dlr_info(exe, root):
     print("DLR inspection passed direct and routed reads, fault endpoints, unavailable fields, and malformed replies.")
 
 
+def check_dlr_participants(exe, root):
+    for case, route, before, after, returned, status in (
+        ("stable", None, 3, 3, 3, "counts_match"),
+        ("large", None, 55, 55, 55, "counts_match"),
+        ("changed", "1/3", 2, 4, 3, "counts_changed"),
+        ("mismatch", None, 4, 4, 3, "count_mismatch"),
+        ("empty", None, 0, 0, 0, "counts_match"),
+        ("malformed", None, 3, 3, None, "unavailable"),
+        ("rejected", "1/3", 3, 3, None, "unavailable"),
+        ("no-count", None, None, None, 3, "unavailable"),
+    ):
+        instance = 2 if route else 1
+        command = [exe, "dlr-participants", LOCAL, LOCAL, str(instance)]
+        if route:
+            command.extend(("--route", route))
+        mode = "dlr-participants" if case == "stable" else f"dlr-participants-{case}"
+        result, peer = with_adapter(root, f"dlr-participants-{case}", command, mode, encoding="utf-8")
+        assert result.returncode == (0 if status == "counts_match" else 1) and not result.stderr, (
+            result.stdout, result.stderr,
+        )
+        (root / f"dlr-participants-{case}.json").write_text(result.stdout, encoding="utf-8")
+        report = json.loads(result.stdout)
+        assert (report["class"], report["instance"], report.get("route")) == (0x47, instance, route)
+        assert peer["registrations"] == 1 and peer["unregistered"] and not peer["forward_close"]
+        assert peer["dlr_participant_attributes"] == [8, 9, 8] and peer["dlr_instance"] == instance
+        assert peer["route_hex"] == ("0103" if route else "")
+        rows = report["results"]
+        assert [row["path"]["attribute"] for row in rows] == [8, 9, 8]
+        parsed = report["participant_list"]
+        assert (parsed["count_before"], parsed["count_after"], parsed["returned_count"], parsed["count_status"]) == (
+            before, after, returned, status,
+        )
+        if returned == 3:
+            assert parsed["entries"] == [
+                {"ipv4": "198.51.100.70", "mac_address": "02:11:22:33:44:55"},
+                {"ipv4": None, "mac_address": "02:11:22:33:44:03"},
+                {"ipv4": "192.0.2.4", "mac_address": None},
+            ]
+        if case == "large":
+            assert len(parsed["entries"]) == 55 and len(bytes.fromhex(rows[1]["data_hex"])) == 550
+            assert parsed["entries"][-1] == {"ipv4": "192.0.2.55", "mac_address": "02:00:00:00:20:37"}
+        if case == "empty":
+            assert parsed["entries"] == [] and rows[1]["bytes"] == 0
+        if case == "malformed":
+            assert parsed["entries"] is None and rows[1]["data_hex"].endswith(" AA")
+            assert "Each record requires 10 bytes" in rows[1]["decode_error"]
+        if case == "rejected":
+            assert parsed["entries"] is None
+            assert (rows[1]["reply_from"], rows[1]["general_status"], rows[1]["extended_status"]) == (
+                "target", 0x11, [0x0302],
+            )
+    result = subprocess.run([exe, "dlr-participants", LOCAL, LOCAL, "0"], capture_output=True, timeout=5)
+    assert result.returncode == 1 and b"requires a nonzero instance" in result.stderr
+    print("DLR participant reads passed count checks, ordered node decoding, empty lists, and partial replies.")
+
+
 def check_time_sync(exe, root):
     attrs = [1, 2, 8, 18, 5, 6, 7, 12, 27]
     for case, mode, route, code in (
@@ -1338,6 +1394,7 @@ def main():
     check_link_port_details(exe, root)
     check_lldp_neighbor(exe, root)
     check_dlr_info(exe, root)
+    check_dlr_participants(exe, root)
     check_time_sync(exe, root)
     check_manager_info(exe, root)
     check_connection_data(exe, root)

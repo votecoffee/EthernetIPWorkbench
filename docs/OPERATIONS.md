@@ -217,6 +217,19 @@ The inspection reads network topology and status, the active supervisor address,
 
 The CLI reports structured values under `dlr`. Review the per-attribute result for any unreported, unsupported, or malformed field. A zero count is a reported value. A successful address reply with zero IP and MAC fields shows **No address reported** and retains the original bytes. The inspection uses Get_Attribute_Single on one registered session and leaves the ring settings and counters intact.
 
+### Read the Device Level Ring participant list
+
+In **Explore → Network objects → Device Level Ring · Status**, point Device at a supporting active supervisor, select the documented DLR instance, and choose **Read ring participants**. For a supervisor reached through a CIP bridge, use the first bridge address and its documented route.
+
+~~~powershell
+.\target\release\eipmaster-cli.exe dlr-participants 192.0.2.10 192.0.2.11 1
+.\target\release\eipmaster-cli.exe dlr-participants 192.0.2.10 192.0.2.11 2 --route 1/3
+~~~
+
+The command reads the count, list, and count again on one registered TCP session using Get_Attribute_Single. Addresses stay in the order returned by the supervisor, including participants reported without an IPv4 address. The single list reply is subject to the target's reply-size limit. [Rockwell Automation participant list reference](https://literature.rockwellautomation.com/idc/groups/literature/documents/at/290e-at001_-en-p.pdf#page=51)
+
+CLI exit code 0 means both reported counts agree with the decoded list length. A count change, length mismatch, unavailable field, or malformed reply returns code 1 with the report and any decoded entries. A successful zero-entry reply yields an empty list. Matching counts check the length across the three requests. Membership can change while the size stays the same. Expand **Participant replies** to review the raw replies, including any CIP rejection from the supervisor or route.
+
 ### Inspect CIP Sync clock status
 
 In **Explore → Network objects**, choose **CIP Sync · Clock status** and select **Read clock status**. The preset uses Time Sync Object class `0x43`, instance 1. Enter a documented CIP route to inspect the device at the end of that route.

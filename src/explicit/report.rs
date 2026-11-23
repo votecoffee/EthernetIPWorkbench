@@ -279,6 +279,25 @@ impl super::DlrReport {
     }
 }
 
+impl super::DlrParticipantReport {
+    pub fn report_json(&self) -> Result<String, String> {
+        let mut document = instance_document(
+            &self.batch,
+            super::DLR_CLASS,
+            self.instance,
+            self.route.as_ref(),
+        )?;
+        document["participant_list"] = json!({
+            "count_before": self.count_before,
+            "count_after": self.count_after,
+            "returned_count": self.participants.as_ref().map(Vec::len),
+            "count_status": self.count_status(),
+            "entries": self.participants,
+        });
+        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())
+    }
+}
+
 impl super::TimeSyncReport {
     pub fn report_json(&self) -> Result<String, String> {
         let mut document = instance_document(

@@ -497,6 +497,37 @@ def dlr_info_reply(cip, mode, report):
     return bytes.fromhex("8E 00 00 00") + values[attribute]
 
 
+def dlr_participants_reply(cip, mode, report):
+    route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
+    assert len(message) == 8 and message[:5] == bytes.fromhex("0E 03 20 47 24")
+    instance, tag, attribute = message[5:]
+    assert tag == 0x30 and (instance, route) in ((1, b""), (1, b"\x01\x03"), (2, b"\x01\x03"))
+    attributes = report.setdefault("dlr_participant_attributes", [])
+    assert attribute == (8, 9, 8)[len(attributes)]
+    attributes.append(attribute)
+    report["dlr_instance"] = instance
+    report["route_hex"] = route.hex()
+    nodes = bytes.fromhex("46 64 33 C6 02 11 22 33 44 55 00 00 00 00 02 11 22 33 44 03 04 02 00 C0 00 00 00 00 00 00")
+    if mode == "dlr-participants-large":
+        nodes = b"".join(struct.pack("<I", 0xC0000200 + n) + bytes((2, 0, 0, 0, 0x20, n))
+                         for n in range(1, 56))
+    if mode == "dlr-participants-empty":
+        nodes = b""
+    before = after = len(nodes) // 10
+    if mode == "dlr-participants-mismatch":
+        before = after = 4
+    if mode == "dlr-participants-changed":
+        before, after = 2, 4
+    if mode == "dlr-participants-malformed":
+        nodes += b"\xAA"
+    if mode == "dlr-participants-rejected" and attribute == 9:
+        return bytes.fromhex("8E 00 11 01 02 03")
+    if mode == "dlr-participants-no-count" and attribute == 8:
+        return bytes.fromhex("8E 00 14 00")
+    body = nodes if attribute == 9 else struct.pack("<H", before if len(attributes) == 1 else after)
+    return bytes.fromhex("8E 00 00 00") + body
+
+
 def time_sync_reply(cip, mode, report):
     route, message = routed_request(cip) if cip[0] == 0x52 else (b"", cip)
     assert route in (b"", b"\x01\x03")
@@ -742,6 +773,7 @@ def serve(tcp, udp, source, mode, report, serial_delta=0, multicast_port=None):
         "link-info": link_info_reply,
         "lldp-neighbor": lldp_neighbor_reply,
         "dlr-info": dlr_info_reply,
+        "dlr-participants": dlr_participants_reply,
         "time-sync": time_sync_reply,
         "manager-info": manager_info_reply,
         "connection-data": connection_data_reply,
@@ -1147,6 +1179,9 @@ def main():
         "lldp-neighbor", "lldp-neighbor-empty", "lldp-neighbor-optional", "lldp-neighbor-malformed",
         "lldp-neighbor-gui",
         "dlr-info", "dlr-info-optional", "dlr-info-empty", "dlr-info-malformed",
+        "dlr-participants", "dlr-participants-changed", "dlr-participants-mismatch", "dlr-participants-empty",
+        "dlr-participants-malformed", "dlr-participants-rejected", "dlr-participants-no-count",
+        "dlr-participants-large",
         "time-sync", "time-sync-optional", "time-sync-empty", "time-sync-malformed",
         "manager-info", "manager-info-optional", "manager-info-malformed",
         "connection-data", "connection-data-malformed", "connection-data-mismatch",

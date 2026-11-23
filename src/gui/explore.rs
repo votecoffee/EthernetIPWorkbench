@@ -3,10 +3,10 @@ use assembly_scanner::{
     discovery::{self, DiscoveryTransport, ServicesTransport},
     explicit::{
         self, AssemblyInfo, AttributeListReport, AttributeWrite, Class3Size, ClassInfo,
-        ConnectionDataReport, DlrReport, InstancePage, LinkInfo, LldpNeighborReport, ManagerInfo,
-        ObjectList, PortInfo, ProfileAssemblyCheck, QosInfo, ReadPath, Reader, Route, SavedRead,
-        SavedReadMode, SavedReadReport, TcpIpInfo, TimeSyncReport, WriteCurrentCheck,
-        WriteInspection, WriteOutcome, WriteReport,
+        ConnectionDataReport, DlrParticipantReport, DlrReport, InstancePage, LinkInfo,
+        LldpNeighborReport, ManagerInfo, ObjectList, PortInfo, ProfileAssemblyCheck, QosInfo,
+        ReadPath, Reader, Route, SavedRead, SavedReadMode, SavedReadReport, TcpIpInfo,
+        TimeSyncReport, WriteCurrentCheck, WriteInspection, WriteOutcome, WriteReport,
     },
 };
 use std::sync::Arc;
@@ -16,6 +16,7 @@ mod attributes;
 mod batch;
 mod class_info;
 mod connection_data;
+mod dlr_participants;
 mod instances;
 mod object_list;
 mod receipt;
@@ -51,6 +52,7 @@ enum Response {
     LinkInfo(LinkInfo),
     LldpNeighbor(LldpNeighborReport),
     DlrInfo(DlrReport),
+    DlrParticipants(DlrParticipantReport),
     TimeSync(TimeSyncReport),
     ManagerInfo(ManagerInfo),
     QosInfo(QosInfo),
@@ -103,6 +105,7 @@ pub(super) struct Explorer {
     link_port_details: bool,
     lldp_neighbor: Option<LldpNeighborReport>,
     dlr_info: Option<DlrReport>,
+    dlr_participants: Option<DlrParticipantReport>,
     dlr_supervisor_details: bool,
     time_sync: Option<TimeSyncReport>,
     manager_info: Option<ManagerInfo>,
@@ -152,6 +155,7 @@ impl Default for Explorer {
             link_port_details: false,
             lldp_neighbor: None,
             dlr_info: None,
+            dlr_participants: None,
             dlr_supervisor_details: false,
             time_sync: None,
             manager_info: None,
@@ -222,6 +226,7 @@ impl Explorer {
             Ok(Ok(Response::LinkInfo(info))) => self.link_info = Some(info),
             Ok(Ok(Response::LldpNeighbor(info))) => self.lldp_neighbor = Some(info),
             Ok(Ok(Response::DlrInfo(info))) => self.dlr_info = Some(info),
+            Ok(Ok(Response::DlrParticipants(info))) => self.dlr_participants = Some(info),
             Ok(Ok(Response::TimeSync(info))) => self.time_sync = Some(info),
             Ok(Ok(Response::ManagerInfo(info))) => self.manager_info = Some(info),
             Ok(Ok(Response::QosInfo(info))) => self.qos_info = Some(info),
@@ -731,6 +736,9 @@ impl Device {
         }
         if let Some(info) = &explorer.dlr_info {
             class_info::show_dlr(ui, info);
+        }
+        if let Some(info) = &explorer.dlr_participants {
+            dlr_participants::show(ui, info);
         }
         if let Some(info) = &explorer.time_sync {
             time_sync::show(ui, info);

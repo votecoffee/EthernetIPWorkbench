@@ -54,6 +54,7 @@ impl Explorer {
                 Self::read_lldp_neighbor,
             ),
             Ok(explicit::DLR_CLASS) => {
+                self.dlr_participants_action(ui, adapter, local);
                 ui.checkbox(
                     &mut self.dlr_supervisor_details,
                     "Include supervisor details",

@@ -805,6 +805,12 @@ The Windows loopback fixture verified direct status reads and routed supervisor 
 
 The Windows OpENer fixture initialized the pinned stack's basic DLR object through the loopback launcher. Independent replies reported linear topology, normal status, no supervisor address, and capability flags `0x00000082`. Its six optional supervisor reads returned CIP status `0x14`. Supervisor data and ring faults were exercised by the synthetic fixture. Physical ring and supervisor acceptance remains open. [Pinned OpENer DLR implementation](https://github.com/EIPStackGroup/OpENer/blob/0e1ab7ee5c272950c0dc8daf7793008d7a518912/source/src/cip/cipdlr.c)
 
+### DLR participant lists
+
+The Windows fixture verified count, list, and count requests in one TCP session. It returned ordered, partially addressed nodes and a 55-record list with a 550-byte payload. Direct and routed cases covered changing counts, stable counts that disagreed with the list, zero entries, missing counts, malformed records, and a target reply-size rejection. The headless Explore test displayed the returned addresses and changed-count warning together, and the existing DLR status view still passed.
+
+The independent OpENer loopback adapter with its basic DLR object enabled returned CIP status `0x14` for all three reads. The CLI preserved each response and reported the participant list unavailable. Positive replies were simulated. Physical supervisor list behavior and reply-size limits remain open. [Rockwell Automation participant list reference](https://literature.rockwellautomation.com/idc/groups/literature/documents/at/290e-at001_-en-p.pdf#page=51)
+
 ## CIP Sync clock status
 
 The Windows loopback fixture verified nine Time Sync attribute reads on one registered session over direct and routed paths. The replies exercised negative offsets, 64-bit maximum offsets, grandmaster identity and property words, and a counted port-state list with an unknown state code. The fixture also confirmed that a false synchronization flag and zero ports remain valid values. Malformed fields retained the raw bytes and decode errors. The headless Explore check displayed the routed grandmaster and the separate optional attribute rejection.

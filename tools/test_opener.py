@@ -530,6 +530,24 @@ def check_dlr_info(cli, adapter, root):
     print("DLR-enabled OpENer reported linear topology, normal status, and unsupported supervisor details.")
 
 
+def check_dlr_participants_unavailable(cli, adapter, root):
+    root.mkdir()
+    with run_adapter(adapter, root):
+        result = subprocess.run([cli, "dlr-participants", ADAPTER, "127.0.0.1", "1"],
+                                capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+    (root / "result.json").write_bytes(result.stdout)
+    assert result.returncode == 1 and not result.stderr, (result.stdout, result.stderr)
+    report = json.loads(result.stdout)
+    assert (report["class"], report["instance"]) == (0x47, 1)
+    assert [row["path"]["attribute"] for row in report["results"]] == [8, 9, 8]
+    assert all(row["status"] == "cip_rejected" and row["general_status"] == 0x14 for row in report["results"])
+    assert report["participant_list"] == {
+        "count_before": None, "count_after": None, "returned_count": None,
+        "count_status": "unavailable", "entries": None,
+    }
+    print("DLR-enabled OpENer returned CIP status 0x14 for the participant count and list.")
+
+
 def check_time_sync_unavailable(cli, adapter, root):
     root.mkdir()
     with run_adapter(adapter, root):
@@ -942,6 +960,7 @@ def main():
     check_capture(report, args.seconds)
     if args.dlr:
         check_dlr_info(cli, adapter, root / "dlr-info")
+        check_dlr_participants_unavailable(cli, adapter, root / "dlr-participants")
     if args.explore:
         check_identity_discovery_tcp(cli, adapter, root / "list-identity-tcp")
         check_list_services(cli, adapter, root / "list-services")

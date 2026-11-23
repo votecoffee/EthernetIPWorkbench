@@ -4,8 +4,13 @@ use super::{Route, SavedReadBatch, SavedReadOutcome, batch::read_object_attribut
 use serde::Serialize;
 use std::net::Ipv4Addr;
 
+mod participants;
+pub use participants::{DlrParticipantCountStatus, DlrParticipantReport, read_dlr_participants};
+
 pub const DLR_CLASS: u32 = 0x47;
 const BASIC_ATTRIBUTE_COUNT: usize = 4;
+const SUPERVISOR_ATTRIBUTE_COUNT: usize = 10;
+const PARTICIPANTS_ATTRIBUTE: (u32, &str) = (9, "Ring participant list");
 pub(super) const ATTRIBUTES: &[(u32, &str)] = &[
     (1, "Network topology"),
     (2, "Network status"),
@@ -17,6 +22,7 @@ pub(super) const ATTRIBUTES: &[(u32, &str)] = &[
     (7, "Last active node on port 2"),
     (8, "Ring participant count"),
     (11, "Active supervisor precedence"),
+    PARTICIPANTS_ATTRIBUTE,
 ];
 
 const TOPOLOGY: &[&str] = &["Linear", "Ring"];
@@ -123,7 +129,7 @@ pub fn read_dlr_info(
         return Err("DLR inspection requires a nonzero instance".into());
     }
     let attributes = if supervisor_details {
-        ATTRIBUTES
+        &ATTRIBUTES[..SUPERVISOR_ATTRIBUTE_COUNT]
     } else {
         &ATTRIBUTES[..BASIC_ATTRIBUTE_COUNT]
     };
@@ -156,6 +162,7 @@ pub(super) fn decode(attribute: u32, bytes: &[u8]) -> Option<Result<String, Stri
                 (None, None) => "No address reported".into(),
             })
         }
+        9 => participants::describe(bytes),
         11 => usint(bytes).map(|precedence| precedence.to_string()),
         12 => capability_flags(bytes).map(|flags| {
             let names = CAPABILITIES
@@ -201,13 +208,17 @@ fn capability_flags(bytes: &[u8]) -> Result<u32, String> {
 }
 
 fn node_address(bytes: &[u8]) -> Result<DlrNodeAddress, String> {
-    let &[a, b, c, d, e, f, g, h, i, j] = bytes else {
-        return Err("DLR node address requires a four-byte IPv4 UDINT and six-byte MAC".into());
-    };
+    bytes
+        .try_into()
+        .map(decode_node_address)
+        .map_err(|_| "DLR node address requires a four-byte IPv4 UDINT and six-byte MAC".into())
+}
+
+fn decode_node_address(&[a, b, c, d, e, f, g, h, i, j]: &[u8; 10]) -> DlrNodeAddress {
     let address = u32::from_le_bytes([a, b, c, d]);
     let mac = [e, f, g, h, i, j];
-    Ok(DlrNodeAddress {
+    DlrNodeAddress {
         ipv4: (address != 0).then(|| Ipv4Addr::from(address)),
         mac_address: (mac != [0; 6]).then(|| super::link_info::format_mac(&mac)),
-    })
+    }
 }

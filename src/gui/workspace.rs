@@ -1255,6 +1255,46 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires tools/loopback_adapter.py --mode dlr-participants-changed on localhost"]
+    fn explore_keeps_routed_dlr_participants_when_the_count_changes() {
+        let ctx = egui::Context::default();
+        ctx.style_mut(|style| style.animation_time = 0.0);
+        let size = egui::vec2(1240.0, 1250.0);
+        let mut device = explore_device(&[("Serial through bridge", 6, Some("1/3"))]);
+        let saved = device.snapshot();
+        click(&mut device, &ctx, size, "Saved reads");
+        click(&mut device, &ctx, size, "Serial through bridge");
+        click(&mut device, &ctx, size, "Network objects");
+        click(&mut device, &ctx, size, "Device Level Ring · Status");
+        click(&mut device, &ctx, size, "Read ring participants");
+        wait_for_explore(&mut device);
+        let labels = draw(&mut device, &ctx, size);
+        for expected in [
+            "Ring participants · Instance 1",
+            "Route 1/3",
+            "Count before 2 · Returned 3 · Count after 4",
+            "Reported count changed during the read.",
+            "198.51.100.70",
+            "02:11:22:33:44:03",
+            "192.0.2.4",
+        ] {
+            assert!(
+                labels.iter().any(|(text, _)| text == expected),
+                "{expected}"
+            );
+        }
+        click(&mut device, &ctx, size, "Participant replies");
+        let labels = draw(&mut device, &ctx, size);
+        assert!(
+            labels
+                .iter()
+                .any(|(text, _)| text == "Ring participant count after · Reply")
+        );
+        assert_eq!(device.snapshot(), saved);
+        assert!(device.connection.is_none());
+    }
+
+    #[test]
     #[ignore = "requires tools/loopback_adapter.py --mode dlr-info-optional on localhost"]
     fn explore_reads_ring_fault_and_supervisor_details_through_a_route() {
         let ctx = egui::Context::default();
